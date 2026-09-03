@@ -30,7 +30,7 @@ class _NoriPlusScreenState extends State<NoriPlusScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.linen,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         leading: IconButton(
@@ -91,7 +91,7 @@ class _NoriPlusScreenState extends State<NoriPlusScreen> {
                   'Terms of Service and Privacy Policy apply.',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.labelSm.copyWith(
-                    color: AppColors.onSurfaceVariant,
+                    color: AppColors.inkMuted,
                   ),
                 ),
               ],
@@ -115,20 +115,10 @@ class _PlusHero extends StatelessWidget {
           height: 120,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: AppColors.primaryFixed,
-            border: Border.all(
-              color: AppColors.surfaceContainerLowest,
-              width: 4,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.18),
-                blurRadius: 24,
-                spreadRadius: 4,
-              ),
-            ],
+            color: AppColors.mossLight,
+            border: Border.all(color: AppColors.ink, width: AppBorder.thick),
           ),
-          child: const Icon(Icons.pets, color: AppColors.primary, size: 58),
+          child: const Icon(Icons.pets, color: AppColors.mossDark, size: 58),
         ),
         const SizedBox(height: AppSpacing.stackSm),
         Row(
@@ -137,24 +127,18 @@ class _PlusHero extends StatelessWidget {
             Text(
               'Nori Plus',
               style: AppTextStyles.headlineLgMobile.copyWith(
-                color: AppColors.primary,
+                color: AppColors.mossDark,
               ),
             ),
             const SizedBox(width: AppSpacing.unit),
-            const Icon(
-              Icons.stars,
-              color: AppColors.tertiaryFixedDim,
-              size: 26,
-            ),
+            const Icon(Icons.stars, color: AppColors.mustardDark, size: 26),
           ],
         ),
         const SizedBox(height: AppSpacing.unit),
         Text(
           'Unlock exclusive pets, unlimited habits, and reach your goals faster.',
           textAlign: TextAlign.center,
-          style: AppTextStyles.bodyLg.copyWith(
-            color: AppColors.onSurfaceVariant,
-          ),
+          style: AppTextStyles.bodyLg.copyWith(color: AppColors.inkMuted),
         ),
       ],
     );
@@ -168,16 +152,9 @@ class _FeatureComparisonCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
+        color: AppColors.white,
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.onSurface.withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 5),
-          ),
-        ],
+        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
       ),
       clipBehavior: Clip.antiAlias,
       child: const Column(
@@ -244,11 +221,11 @@ class _ComparisonRow extends StatelessWidget {
         vertical: isHeader ? AppSpacing.gutter : AppSpacing.stackSm,
       ),
       decoration: BoxDecoration(
-        color: isHeader || alternate
-            ? AppColors.surfaceContainerLow
-            : AppColors.surfaceContainerLowest,
+        color: isHeader || alternate ? AppColors.linenAlt : AppColors.white,
         border: showDivider
-            ? const Border(bottom: BorderSide(color: AppColors.outlineVariant))
+            ? const Border(
+                bottom: BorderSide(color: AppColors.ink, width: AppBorder.thin),
+              )
             : null,
       ),
       child: Row(
@@ -258,20 +235,18 @@ class _ComparisonRow extends StatelessWidget {
             child: Text(
               label,
               style: baseStyle.copyWith(
-                color: isHeader
-                    ? AppColors.onSurfaceVariant
-                    : AppColors.onSurface,
+                color: isHeader ? AppColors.inkMuted : AppColors.ink,
               ),
             ),
           ),
           Expanded(
             flex: 2,
             child: IconTheme(
-              data: const IconThemeData(color: AppColors.outline, size: 22),
+              data: const IconThemeData(color: AppColors.inkFaint, size: 22),
               child: DefaultTextStyle(
                 textAlign: TextAlign.center,
                 style: AppTextStyles.labelSm.copyWith(
-                  color: AppColors.onSurfaceVariant,
+                  color: AppColors.inkMuted,
                 ),
                 child: free,
               ),
@@ -280,11 +255,11 @@ class _ComparisonRow extends StatelessWidget {
           Expanded(
             flex: 3,
             child: IconTheme(
-              data: const IconThemeData(color: AppColors.primary, size: 22),
+              data: const IconThemeData(color: AppColors.mossDark, size: 22),
               child: DefaultTextStyle(
                 textAlign: TextAlign.center,
                 style: AppTextStyles.labelSm.copyWith(
-                  color: AppColors.primary,
+                  color: AppColors.mossDark,
                   fontWeight: FontWeight.w700,
                 ),
                 child: plus,
@@ -318,15 +293,10 @@ class _PlanCard extends StatelessWidget {
       clipBehavior: Clip.none,
       children: [
         Material(
-          color: selected
-              ? AppColors.primaryFixed.withValues(alpha: 0.55)
-              : AppColors.surface,
+          color: selected ? AppColors.mossLight : AppColors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.sm),
-            side: BorderSide(
-              color: selected ? AppColors.primary : AppColors.outlineVariant,
-              width: 2,
-            ),
+            side: BorderSide(color: AppColors.ink, width: AppBorder.standard),
           ),
           child: InkWell(
             onTap: onTap,
@@ -343,14 +313,14 @@ class _PlanCard extends StatelessWidget {
                           title,
                           style: AppTextStyles.headlineMd.copyWith(
                             color: selected
-                                ? AppColors.primary
-                                : AppColors.onSurface,
+                                ? AppColors.mossDark
+                                : AppColors.ink,
                           ),
                         ),
                         Text(
                           price,
                           style: AppTextStyles.bodyMd.copyWith(
-                            color: AppColors.onSurfaceVariant,
+                            color: AppColors.inkMuted,
                           ),
                         ),
                       ],
@@ -361,19 +331,17 @@ class _PlanCard extends StatelessWidget {
                     height: 26,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: selected ? AppColors.primary : Colors.transparent,
+                      color: selected ? AppColors.moss : AppColors.white,
                       border: Border.all(
-                        color: selected
-                            ? AppColors.primary
-                            : AppColors.outlineVariant,
-                        width: 2,
+                        color: AppColors.ink,
+                        width: AppBorder.thin,
                       ),
                     ),
                     child: selected
                         ? const Icon(
                             Icons.check,
                             size: 17,
-                            color: AppColors.onPrimary,
+                            color: AppColors.white,
                           )
                         : null,
                   ),
@@ -392,14 +360,14 @@ class _PlanCard extends StatelessWidget {
                 vertical: 4,
               ),
               decoration: BoxDecoration(
-                color: AppColors.tertiaryFixedDim,
+                color: AppColors.mustard,
                 borderRadius: BorderRadius.circular(AppRadius.full),
-                border: Border.all(color: AppColors.tertiaryContainer),
+                border: Border.all(color: AppColors.ink, width: AppBorder.thin),
               ),
               child: Text(
                 badge!,
                 style: AppTextStyles.labelSm.copyWith(
-                  color: AppColors.onTertiaryFixedVariant,
+                  color: AppColors.mustardDark,
                 ),
               ),
             ),

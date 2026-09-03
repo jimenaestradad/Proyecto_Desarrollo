@@ -45,7 +45,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       name: enteredName.isEmpty ? 'New Habit' : enteredName,
       subtitle: _selectedCategory,
       icon: _selectedIcon,
-      color: AppColors.primary,
+      color: AppColors.terracotta,
       xpReward: _xpReward,
       repeat: _repeat,
     );
@@ -98,9 +98,12 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                           IconButton.filled(
                             onPressed: () => Navigator.pop(context),
                             style: IconButton.styleFrom(
-                              backgroundColor:
-                                  AppColors.surfaceContainerHighest,
-                              foregroundColor: AppColors.onSurfaceVariant,
+                              backgroundColor: AppColors.white,
+                              foregroundColor: AppColors.ink,
+                              side: const BorderSide(
+                                color: AppColors.ink,
+                                width: AppBorder.thin,
+                              ),
                             ),
                             icon: const Icon(Icons.close),
                           ),
@@ -172,7 +175,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                           Text(
                             '$_xpReward XP',
                             style: AppTextStyles.headlineMd.copyWith(
-                              color: AppColors.primary,
+                              color: AppColors.terracottaDark,
                             ),
                           ),
                         ],
@@ -180,12 +183,10 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                       const SizedBox(height: AppSpacing.unit),
                       SliderTheme(
                         data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: AppColors.primary,
-                          inactiveTrackColor: AppColors.primaryFixed,
-                          thumbColor: AppColors.primary,
-                          overlayColor: AppColors.primary.withValues(
-                            alpha: 0.12,
-                          ),
+                          activeTrackColor: AppColors.moss,
+                          inactiveTrackColor: AppColors.mossLight,
+                          thumbColor: AppColors.moss,
+                          overlayColor: AppColors.moss.withValues(alpha: 0.12),
                           trackHeight: 12,
                         ),
                         child: Slider(
@@ -222,14 +223,14 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                               label: Text(repeat.label),
                               selected: _repeat == repeat,
                               showCheckmark: false,
-                              selectedColor: AppColors.secondaryContainer,
-                              backgroundColor:
-                                  AppColors.surfaceContainerHighest,
-                              side: BorderSide.none,
+                              selectedColor: AppColors.mossLight,
+                              backgroundColor: AppColors.white,
+                              side: const BorderSide(
+                                color: AppColors.ink,
+                                width: AppBorder.thin,
+                              ),
                               labelStyle: AppTextStyles.labelLg.copyWith(
-                                color: _repeat == repeat
-                                    ? AppColors.onSecondaryContainer
-                                    : AppColors.onSurfaceVariant,
+                                color: AppColors.ink,
                               ),
                               onSelected: (_) =>
                                   setState(() => _repeat = repeat),
@@ -250,24 +251,24 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
   InputDecoration _fieldDecoration({String? hintText}) {
     return InputDecoration(
       hintText: hintText,
-      hintStyle: AppTextStyles.bodyLg.copyWith(color: AppColors.outline),
+      hintStyle: AppTextStyles.bodyLg.copyWith(color: AppColors.inkFaint),
       filled: true,
-      fillColor: AppColors.surfaceContainerHighest,
+      fillColor: AppColors.white,
       contentPadding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.containerPaddingMobile,
         vertical: AppSpacing.gutter,
       ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        borderSide: BorderSide.none,
+        borderSide: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        borderSide: BorderSide.none,
+        borderSide: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        borderSide: const BorderSide(color: AppColors.primary, width: 2),
+        borderSide: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
       ),
     );
   }
@@ -282,7 +283,7 @@ class _FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       label,
-      style: AppTextStyles.labelLg.copyWith(color: AppColors.onSurfaceVariant),
+      style: AppTextStyles.labelLg.copyWith(color: AppColors.inkMuted),
     );
   }
 }
@@ -301,8 +302,10 @@ class _IconChoice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? AppColors.primary : AppColors.surfaceContainerHighest,
-      shape: const CircleBorder(),
+      color: selected ? AppColors.moss : AppColors.white,
+      shape: CircleBorder(
+        side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -311,7 +314,7 @@ class _IconChoice extends StatelessWidget {
           child: Icon(
             icon,
             size: 30,
-            color: selected ? AppColors.onPrimary : AppColors.onSurfaceVariant,
+            color: selected ? AppColors.white : AppColors.ink,
           ),
         ),
       ),

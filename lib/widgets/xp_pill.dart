@@ -20,22 +20,19 @@ class XpPill extends StatelessWidget {
         vertical: compact ? 4 : 7,
       ),
       decoration: BoxDecoration(
-        color: AppColors.primaryFixed,
+        color: AppColors.mustard,
         borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.star,
-            size: compact ? 14 : 18,
-            color: AppColors.tertiaryFixedDim,
-          ),
+          Icon(Icons.star, size: compact ? 14 : 18, color: AppColors.ink),
           const SizedBox(width: 4),
           Text(
             '$formatted XP',
             style: (compact ? AppTextStyles.labelSm : AppTextStyles.labelLg)
-                .copyWith(color: AppColors.primary),
+                .copyWith(color: AppColors.ink),
           ),
         ],
       ),

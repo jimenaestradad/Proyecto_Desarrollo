@@ -17,61 +17,53 @@ class HabitTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppRadius.sm),
       onTap: () => onToggle(!completed),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: completed
-              ? AppColors.surfaceContainer
-              : AppColors.surfaceContainerLowest,
+          color: completed ? AppColors.white : AppColors.linenAlt,
           borderRadius: BorderRadius.circular(AppRadius.sm),
-          border: Border.all(color: AppColors.surfaceContainerHigh),
+          border: Border.all(color: AppColors.ink, width: AppBorder.thin),
         ),
         child: Row(
           children: [
             _Checkbox(checked: completed),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Container(
-              width: 48,
-              height: 48,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: habit.color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(AppRadius.sm),
+                color: habit.color,
+                borderRadius: BorderRadius.circular(AppRadius.sm * 0.75),
+                border: Border.all(color: AppColors.ink, width: AppBorder.thin),
               ),
-              child: Icon(habit.icon, color: habit.color),
+              child: Icon(habit.icon, color: AppColors.ink, size: 20),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     habit.name,
-                    style: AppTextStyles.bodyLg.copyWith(
-                      color: completed
-                          ? AppColors.onSurfaceVariant
-                          : AppColors.onSurface,
+                    style: AppTextStyles.bodyMd.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: completed ? AppColors.inkFaint : AppColors.ink,
                       decoration: completed ? TextDecoration.lineThrough : null,
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(habit.subtitle, style: AppTextStyles.labelSm),
+                  Text(
+                    habit.subtitle,
+                    style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
+                  ),
                 ],
               ),
             ),
             const SizedBox(width: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: completed
-                    ? AppColors.surfaceContainerHighest
-                    : AppColors.primaryFixed.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(AppRadius.sm * 0.5),
-              ),
-              child: Text(
-                '+${habit.xpReward} XP',
-                style: AppTextStyles.labelSm.copyWith(
-                  color: completed ? AppColors.onSurface : AppColors.primary,
-                  fontWeight: FontWeight.w700,
-                ),
+            Text(
+              '+${habit.xpReward}',
+              style: AppTextStyles.labelSm.copyWith(
+                color: completed ? AppColors.inkFaint : AppColors.terracottaDark,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
@@ -90,18 +82,15 @@ class _Checkbox extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 150),
-      width: 28,
-      height: 28,
+      width: 22,
+      height: 22,
       decoration: BoxDecoration(
-        color: checked ? AppColors.primary : AppColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: checked ? AppColors.primary : AppColors.outlineVariant,
-          width: 2,
-        ),
+        color: checked ? AppColors.moss : AppColors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
       ),
       child: checked
-          ? const Icon(Icons.check, size: 18, color: AppColors.onPrimary)
+          ? const Icon(Icons.check, size: 15, color: AppColors.white)
           : null,
     );
   }

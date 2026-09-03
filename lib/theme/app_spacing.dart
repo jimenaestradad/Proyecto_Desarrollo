@@ -1,4 +1,4 @@
-/// Spacing and radius tokens copied from the mockup's Tailwind config.
+/// Spacing tokens shared across screens.
 class AppSpacing {
   AppSpacing._();
 
@@ -14,8 +14,19 @@ class AppSpacing {
 class AppRadius {
   AppRadius._();
 
-  static const double sm = 16; // Tailwind `DEFAULT` (1rem)
-  static const double md = 32; // Tailwind `lg` (2rem)
-  static const double lg = 48; // Tailwind `xl` (3rem)
+  static const double sm = 16;
+  static const double md = 24;
+  static const double lg = 32;
   static const double full = 9999;
+}
+
+/// Ink-outline widths for the "Flat Storybook" design system. Every bordered
+/// shape uses [AppColors.ink] at one of these weights instead of blurred
+/// elevation shadows.
+class AppBorder {
+  AppBorder._();
+
+  static const double thin = 2;
+  static const double standard = 2.5;
+  static const double thick = 3;
 }

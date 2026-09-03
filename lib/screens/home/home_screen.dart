@@ -64,9 +64,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         onPressed: _openAddHabit,
-        shape: const CircleBorder(),
-        backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.onPrimary,
+        shape: const CircleBorder(
+          side: BorderSide(color: AppColors.ink, width: AppBorder.standard),
+        ),
+        backgroundColor: AppColors.terracotta,
+        foregroundColor: AppColors.white,
+        elevation: 0,
         child: const Icon(Icons.add),
       ),
       body: SafeArea(
@@ -105,7 +108,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Expanded(
                                   child: _StatCard(
                                     icon: Icons.favorite,
-                                    iconColor: AppColors.error,
+                                    iconBg: AppColors.blush,
+                                    iconColor: AppColors.terracottaDark,
                                     label: 'Happiness',
                                     value: '${(completion * 100).round()}%',
                                   ),
@@ -114,7 +118,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Expanded(
                                   child: _StatCard(
                                     icon: Icons.local_fire_department,
-                                    iconColor: AppColors.tertiary,
+                                    iconBg: AppColors.mustardLight,
+                                    iconColor: AppColors.mustardDark,
                                     label: 'Streak',
                                     value: '${user.currentStreak} days',
                                   ),
@@ -133,24 +138,32 @@ class _HomeScreenState extends State<HomeScreen> {
                                 height: isWide ? 360 : 260,
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color: AppColors.primaryFixed,
+                                  color: AppColors.mossLight,
                                   borderRadius: BorderRadius.circular(
                                     AppRadius.lg,
                                   ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.primary.withValues(
-                                        alpha: 0.12,
+                                  border: Border.all(
+                                    color: AppColors.ink,
+                                    width: AppBorder.standard,
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.pets,
+                                      size: isWide ? 128 : 96,
+                                      color: AppColors.ink,
+                                    ),
+                                    const SizedBox(height: AppSpacing.unit),
+                                    Text(
+                                      'tap to dress up Nori',
+                                      style: AppTextStyles.headlineMd.copyWith(
+                                        fontSize: 13,
+                                        color: AppColors.mossDark,
                                       ),
-                                      blurRadius: 28,
-                                      offset: const Offset(0, 12),
                                     ),
                                   ],
-                                ),
-                                child: Icon(
-                                  Icons.pets,
-                                  size: isWide ? 128 : 96,
-                                  color: AppColors.primary,
                                 ),
                               ),
                             ),
@@ -188,24 +201,22 @@ class _HomeHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Nori',
-                style: AppTextStyles.headlineMd.copyWith(
-                  color: AppColors.primary,
-                ),
-              ),
+              Text('Nori', style: AppTextStyles.headlineMd),
               const SizedBox(height: 2),
               Row(
                 children: [
-                  Text('Lvl ${user.level}', style: AppTextStyles.labelSm),
+                  Text(
+                    'LEVEL ${user.level}',
+                    style: AppTextStyles.labelSm,
+                  ),
                   const SizedBox(width: AppSpacing.unit),
                   Flexible(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 104),
                       child: ProgressBarPill(
                         progress: user.levelProgress,
-                        height: 6,
-                        color: AppColors.secondary,
+                        height: 8,
+                        color: AppColors.moss,
                       ),
                     ),
                   ),
@@ -224,12 +235,14 @@ class _HomeHeader extends StatelessWidget {
 class _StatCard extends StatelessWidget {
   const _StatCard({
     required this.icon,
+    required this.iconBg,
     required this.iconColor,
     required this.label,
     required this.value,
   });
 
   final IconData icon;
+  final Color iconBg;
   final Color iconColor;
   final String label;
   final String value;
@@ -239,23 +252,26 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.gutter),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
+        color: AppColors.white,
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.onSurface.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: iconColor, size: 28),
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: iconBg,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, color: iconColor, size: 16),
+          ),
           const SizedBox(height: AppSpacing.unit),
-          Text(label, style: AppTextStyles.labelSm),
+          Text(label.toUpperCase(), style: AppTextStyles.labelSm),
           const SizedBox(height: 2),
           Text(value, style: AppTextStyles.headlineMd),
         ],
@@ -282,16 +298,9 @@ class _TodayGoalCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.containerPaddingMobile),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
+        color: AppColors.white,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.surfaceContainerHigh),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -308,7 +317,7 @@ class _TodayGoalCard extends StatelessWidget {
                     Text(
                       'Keep the streak alive!',
                       style: AppTextStyles.bodyMd.copyWith(
-                        color: AppColors.onSurfaceVariant,
+                        color: AppColors.inkFaint,
                       ),
                     ),
                   ],
@@ -317,20 +326,20 @@ class _TodayGoalCard extends StatelessWidget {
               const SizedBox(width: AppSpacing.unit),
               Text(
                 '$completedCount / ${habits.length}',
-                style: AppTextStyles.labelLg.copyWith(color: AppColors.primary),
+                style: AppTextStyles.labelLg.copyWith(
+                  color: AppColors.terracottaDark,
+                ),
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.stackSm),
-          ProgressBarPill(progress: completion),
+          ProgressBarPill(progress: completion, color: AppColors.terracotta),
           const SizedBox(height: AppSpacing.stackMd),
           if (habits.isEmpty)
             Text(
               'No habits scheduled for today.',
               textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMd.copyWith(
-                color: AppColors.onSurfaceVariant,
-              ),
+              style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkFaint),
             )
           else
             for (var index = 0; index < habits.length; index++) ...[

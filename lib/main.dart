@@ -1,11 +1,15 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'firebase_options.dart';
 import 'navigation/nori_shell.dart';
 import 'screens/onboarding/login_screen.dart';
 import 'screens/onboarding/sign_up_screen.dart';
 import 'screens/onboarding/welcome_screen.dart';
 import 'theme/app_theme.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const NoriApp());
 }
 

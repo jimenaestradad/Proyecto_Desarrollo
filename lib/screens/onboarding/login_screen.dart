@@ -79,22 +79,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(AppSpacing.stackMd),
                           decoration: BoxDecoration(
-                            color: AppColors.surfaceContainerLowest,
+                            color: AppColors.white,
                             borderRadius: BorderRadius.circular(AppRadius.lg),
                             border: Border.all(
-                              color: AppColors.outlineVariant.withValues(
-                                alpha: 0.3,
-                              ),
+                              color: AppColors.ink,
+                              width: AppBorder.standard,
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.onPrimaryFixed.withValues(
-                                  alpha: 0.08,
-                                ),
-                                blurRadius: AppSpacing.stackMd,
-                                offset: const Offset(0, AppSpacing.unit),
-                              ),
-                            ],
                           ),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -110,9 +100,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               _socialButton(
                                 label: 'Continue with Apple',
                                 icon: Icons.apple,
-                                backgroundColor: AppColors.inverseSurface,
-                                foregroundColor: AppColors.inverseOnSurface,
-                                borderColor: AppColors.inverseSurface,
+                                backgroundColor: AppColors.ink,
+                                foregroundColor: AppColors.white,
+                                borderColor: AppColors.ink,
                                 onPressed: () => _showMessage('Coming soon'),
                               ),
                               const SizedBox(height: AppSpacing.stackMd),
@@ -142,7 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   Text(
                                     "Don't have an account?",
                                     style: AppTextStyles.bodyMd.copyWith(
-                                      color: AppColors.onSurfaceVariant,
+                                      color: AppColors.inkMuted,
                                     ),
                                   ),
                                   TextButton(
@@ -176,9 +166,9 @@ class _LoginScreenState extends State<LoginScreen> {
     required String label,
     required IconData icon,
     required VoidCallback onPressed,
-    Color backgroundColor = AppColors.surface,
-    Color foregroundColor = AppColors.onSurface,
-    Color borderColor = AppColors.surfaceContainerHighest,
+    Color backgroundColor = AppColors.linenAlt,
+    Color foregroundColor = AppColors.ink,
+    Color borderColor = AppColors.ink,
   }) {
     return SizedBox(
       width: double.infinity,
@@ -195,7 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
             vertical: AppSpacing.stackSm,
           ),
           textStyle: AppTextStyles.labelLg,
-          side: BorderSide(color: borderColor, width: 2),
+          side: BorderSide(color: borderColor, width: AppBorder.standard),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.full),
           ),
@@ -235,7 +225,7 @@ class _LoginScreenState extends State<LoginScreen> {
           },
           icon: Icon(
             _obscurePassword ? Icons.visibility_off : Icons.visibility,
-            color: AppColors.onSurfaceVariant,
+            color: AppColors.inkMuted,
           ),
         ),
       ),
@@ -250,16 +240,19 @@ class _LoginScreenState extends State<LoginScreen> {
     final radius = BorderRadius.circular(AppRadius.md);
     final border = OutlineInputBorder(
       borderRadius: radius,
-      borderSide: BorderSide.none,
+      borderSide: const BorderSide(
+        color: AppColors.ink,
+        width: AppBorder.standard,
+      ),
     );
 
     return InputDecoration(
       hintText: hint,
-      hintStyle: AppTextStyles.bodyMd.copyWith(color: AppColors.outline),
-      prefixIcon: Icon(icon, color: AppColors.onSurfaceVariant),
+      hintStyle: AppTextStyles.bodyMd.copyWith(color: AppColors.inkFaint),
+      prefixIcon: Icon(icon, color: AppColors.ink),
       suffixIcon: suffixIcon,
       filled: true,
-      fillColor: AppColors.surfaceContainerHigh,
+      fillColor: AppColors.linenAlt,
       contentPadding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.gutter,
         vertical: AppSpacing.gutter,
@@ -268,7 +261,10 @@ class _LoginScreenState extends State<LoginScreen> {
       enabledBorder: border,
       focusedBorder: OutlineInputBorder(
         borderRadius: radius,
-        borderSide: const BorderSide(color: AppColors.primary, width: 2),
+        borderSide: const BorderSide(
+          color: AppColors.ink,
+          width: AppBorder.thick,
+        ),
       ),
     );
   }
@@ -284,13 +280,14 @@ class _LoginHeader extends StatelessWidget {
         Container(
           width: 64,
           height: 64,
-          decoration: const BoxDecoration(
-            color: AppColors.primaryContainer,
+          decoration: BoxDecoration(
+            color: AppColors.mossLight,
             shape: BoxShape.circle,
+            border: Border.all(color: AppColors.ink, width: AppBorder.thick),
           ),
           child: const Icon(
             Icons.pets,
-            color: AppColors.onPrimaryContainer,
+            color: AppColors.mossDark,
             size: 36,
           ),
         ),
@@ -298,14 +295,14 @@ class _LoginHeader extends StatelessWidget {
         Text(
           'Welcome Back',
           style: AppTextStyles.headlineLgMobile.copyWith(
-            color: AppColors.primary,
+            color: AppColors.mossDark,
           ),
         ),
         const SizedBox(height: AppSpacing.unit),
         Text(
           'Sign in to continue your habit journey',
           style: AppTextStyles.bodyMd.copyWith(
-            color: AppColors.onSurfaceVariant,
+            color: AppColors.inkMuted,
           ),
           textAlign: TextAlign.center,
         ),
@@ -323,19 +320,21 @@ class _Divider extends StatelessWidget {
       children: [
         Expanded(
           child: Divider(
-            color: AppColors.outlineVariant.withValues(alpha: 0.5),
+            color: AppColors.ink.withValues(alpha: 0.35),
+            thickness: AppBorder.thin,
           ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.gutter),
           child: Text(
             'Or',
-            style: AppTextStyles.labelSm.copyWith(color: AppColors.outline),
+            style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted),
           ),
         ),
         Expanded(
           child: Divider(
-            color: AppColors.outlineVariant.withValues(alpha: 0.5),
+            color: AppColors.ink.withValues(alpha: 0.35),
+            thickness: AppBorder.thin,
           ),
         ),
       ],
@@ -350,7 +349,7 @@ class _LoadingOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     return Positioned.fill(
       child: ColoredBox(
-        color: AppColors.surface.withValues(alpha: 0.72),
+        color: AppColors.linen.withValues(alpha: 0.72),
         child: const Center(child: CircularProgressIndicator()),
       ),
     );

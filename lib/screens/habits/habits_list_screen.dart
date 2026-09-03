@@ -94,9 +94,7 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
                                 Expanded(
                                   child: Text(
                                     'Nori',
-                                    style: AppTextStyles.headlineMd.copyWith(
-                                      color: AppColors.primary,
-                                    ),
+                                    style: AppTextStyles.headlineMd,
                                   ),
                                 ),
                                 XpPill(xp: user.totalXp),
@@ -111,7 +109,7 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
                             Text(
                               'Keep up the good work! Your pet is happy.',
                               style: AppTextStyles.bodyMd.copyWith(
-                                color: AppColors.onSurfaceVariant,
+                                color: AppColors.inkFaint,
                               ),
                             ),
                             const SizedBox(height: AppSpacing.stackMd),
@@ -120,14 +118,14 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
                               child: Text(
                                 '$completedCount / ${habits.length} Completed',
                                 style: AppTextStyles.labelLg.copyWith(
-                                  color: AppColors.primary,
+                                  color: AppColors.terracottaDark,
                                 ),
                               ),
                             ),
                             const SizedBox(height: AppSpacing.unit),
                             ProgressBarPill(
                               progress: completion,
-                              color: AppColors.secondary,
+                              color: AppColors.terracotta,
                             ),
                             const SizedBox(height: AppSpacing.stackMd),
                             if (habits.isEmpty)
@@ -139,7 +137,7 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
                                   'No habits scheduled for today.',
                                   textAlign: TextAlign.center,
                                   style: AppTextStyles.bodyMd.copyWith(
-                                    color: AppColors.onSurfaceVariant,
+                                    color: AppColors.inkFaint,
                                   ),
                                 ),
                               )

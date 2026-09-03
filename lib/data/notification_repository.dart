@@ -16,7 +16,7 @@ class MockNotificationRepository implements NotificationRepository {
       message: 'Pip is hungry! Complete your "Drink Water" habit to feed him.',
       timeAgo: 'Just now',
       icon: Icons.pets,
-      color: AppColors.tertiary,
+      color: AppColors.mustardDark,
       ctaLabel: 'Do it now',
     ),
     const AppNotification(
@@ -26,7 +26,7 @@ class MockNotificationRepository implements NotificationRepository {
       message: 'You hit a 5-day streak! Keep going!',
       timeAgo: '2h ago',
       icon: Icons.local_fire_department,
-      color: AppColors.secondary,
+      color: AppColors.terracotta,
       isRead: true,
     ),
     const AppNotification(
@@ -36,7 +36,7 @@ class MockNotificationRepository implements NotificationRepository {
       message: 'You unlocked the "Week Warrior" badge for a 7-day streak!',
       timeAgo: 'Yesterday',
       icon: Icons.emoji_events,
-      color: AppColors.primary,
+      color: AppColors.moss,
       isRead: true,
     ),
     const AppNotification(
@@ -46,7 +46,7 @@ class MockNotificationRepository implements NotificationRepository {
       message: 'Nori grew! You reached Level 18.',
       timeAgo: '2d ago',
       icon: Icons.auto_awesome,
-      color: AppColors.onSurfaceVariant,
+      color: AppColors.inkMuted,
       isRead: true,
     ),
   ];

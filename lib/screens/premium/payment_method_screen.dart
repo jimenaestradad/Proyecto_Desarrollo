@@ -24,7 +24,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.linen,
       appBar: AppBar(
         centerTitle: true,
         leading: IconButton(
@@ -82,19 +82,11 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                       child: _selectedMethod == _PaymentMethod.paypal
                           ? Align(
                               alignment: Alignment.centerRight,
-                              child: OutlinedButton(
+                              child: TactileButton(
+                                label: 'Connect',
                                 onPressed: _showUnavailable,
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: AppColors.onSurface,
-                                  side: const BorderSide(
-                                    color: AppColors.outlineVariant,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: AppSpacing.stackMd,
-                                    vertical: AppSpacing.stackSm,
-                                  ),
-                                ),
-                                child: const Text('Connect'),
+                                backgroundColor: AppColors.white,
+                                expand: false,
                               ),
                             )
                           : null,
@@ -111,33 +103,18 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                           ? Row(
                               children: [
                                 Expanded(
-                                  child: FilledButton(
+                                  child: TactileButton(
+                                    label: 'Pay',
                                     onPressed: _showUnavailable,
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: AppColors.inverseSurface,
-                                      foregroundColor:
-                                          AppColors.inverseOnSurface,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: AppSpacing.stackSm,
-                                      ),
-                                    ),
-                                    child: const Text('Pay'),
+                                    backgroundColor: AppColors.terracotta,
                                   ),
                                 ),
                                 const SizedBox(width: AppSpacing.stackSm),
                                 Expanded(
-                                  child: OutlinedButton(
+                                  child: TactileButton(
+                                    label: 'G Pay',
                                     onPressed: _showUnavailable,
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: AppColors.onSurface,
-                                      side: const BorderSide(
-                                        color: AppColors.outline,
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: AppSpacing.stackSm,
-                                      ),
-                                    ),
-                                    child: const Text('G Pay'),
+                                    backgroundColor: AppColors.white,
                                   ),
                                 ),
                               ],
@@ -151,13 +128,13 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                         const Icon(
                           Icons.lock,
                           size: 20,
-                          color: AppColors.secondary,
+                          color: AppColors.terracottaDark,
                         ),
                         const SizedBox(width: AppSpacing.unit),
                         Text(
                           'Secure & Encrypted',
                           style: AppTextStyles.labelSm.copyWith(
-                            color: AppColors.secondary,
+                            color: AppColors.terracottaDark,
                             letterSpacing: 0.7,
                           ),
                         ),
@@ -184,18 +161,9 @@ class _PlanSummaryCard extends StatelessWidget {
       padding: const EdgeInsets.all(AppSpacing.containerPaddingMobile),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
+        color: AppColors.white,
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(
-          color: AppColors.outlineVariant.withValues(alpha: 0.55),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.07),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
       ),
       child: Row(
         children: [
@@ -206,7 +174,7 @@ class _PlanSummaryCard extends StatelessWidget {
                 Text(
                   'SELECTED PLAN',
                   style: AppTextStyles.labelSm.copyWith(
-                    color: AppColors.onSurfaceVariant,
+                    color: AppColors.inkMuted,
                     letterSpacing: 1,
                   ),
                 ),
@@ -222,14 +190,12 @@ class _PlanSummaryCard extends StatelessWidget {
               Text(
                 r'$39.99',
                 style: AppTextStyles.headlineLgMobile.copyWith(
-                  color: AppColors.primary,
+                  color: AppColors.terracottaDark,
                 ),
               ),
               Text(
                 '/year',
-                style: AppTextStyles.bodyMd.copyWith(
-                  color: AppColors.onSurfaceVariant,
-                ),
+                style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
               ),
             ],
           ),
@@ -262,21 +228,9 @@ class _PaymentOptionCard extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         decoration: BoxDecoration(
-          color: selected
-              ? AppColors.surfaceContainerLow
-              : AppColors.surfaceContainerLowest,
+          color: selected ? AppColors.mossLight : AppColors.white,
           borderRadius: BorderRadius.circular(AppRadius.sm),
-          border: Border.all(
-            color: selected ? AppColors.primary : Colors.transparent,
-            width: 2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.onSurface.withValues(alpha: 0.05),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          border: Border.all(color: AppColors.ink, width: AppBorder.standard),
         ),
         child: Material(
           color: Colors.transparent,
@@ -295,8 +249,8 @@ class _PaymentOptionCard extends StatelessWidget {
                       Icon(
                         icon,
                         color: selected
-                            ? AppColors.primary
-                            : AppColors.onSurfaceVariant,
+                            ? AppColors.mossDark
+                            : AppColors.inkMuted,
                       ),
                       const SizedBox(width: AppSpacing.stackSm),
                       Expanded(
@@ -337,16 +291,13 @@ class _SelectionDot extends StatelessWidget {
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: AppColors.surfaceContainerLowest,
-        border: Border.all(
-          color: selected ? AppColors.primary : AppColors.outlineVariant,
-          width: 2,
-        ),
+        color: AppColors.white,
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: selected ? AppColors.primary : Colors.transparent,
+          color: selected ? AppColors.moss : Colors.transparent,
         ),
       ),
     );
@@ -403,29 +354,36 @@ class _PreviewTextField extends StatelessWidget {
         hintText: hint,
         floatingLabelBehavior: FloatingLabelBehavior.always,
         filled: true,
-        fillColor: AppColors.surfaceContainer,
-        labelStyle: AppTextStyles.labelSm.copyWith(
-          color: AppColors.onSurfaceVariant,
-        ),
-        hintStyle: AppTextStyles.bodyMd.copyWith(color: AppColors.outline),
+        fillColor: AppColors.linenAlt,
+        labelStyle: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted),
+        hintStyle: AppTextStyles.bodyMd.copyWith(color: AppColors.inkFaint),
         suffixIcon: suffixIcon == null
             ? null
-            : Icon(suffixIcon, color: AppColors.outline),
+            : Icon(suffixIcon, color: AppColors.ink),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.gutter,
           vertical: AppSpacing.stackSm,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.sm),
-          borderSide: BorderSide.none,
+          borderSide: const BorderSide(
+            color: AppColors.ink,
+            width: AppBorder.standard,
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.sm),
-          borderSide: BorderSide.none,
+          borderSide: const BorderSide(
+            color: AppColors.ink,
+            width: AppBorder.standard,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.sm),
-          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+          borderSide: const BorderSide(
+            color: AppColors.mossDark,
+            width: AppBorder.standard,
+          ),
         ),
       ),
     );
@@ -441,15 +399,10 @@ class _CheckoutBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
-        border: const Border(top: BorderSide(color: AppColors.outlineVariant)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, -8),
-          ),
-        ],
+        color: AppColors.white,
+        border: const Border(
+          top: BorderSide(color: AppColors.ink, width: AppBorder.standard),
+        ),
       ),
       child: SafeArea(
         top: false,
@@ -467,7 +420,7 @@ class _CheckoutBar extends StatelessWidget {
                       Text(
                         'Total Due Today',
                         style: AppTextStyles.bodyMd.copyWith(
-                          color: AppColors.onSurfaceVariant,
+                          color: AppColors.inkMuted,
                         ),
                       ),
                       Text(r'$39.99', style: AppTextStyles.headlineLgMobile),

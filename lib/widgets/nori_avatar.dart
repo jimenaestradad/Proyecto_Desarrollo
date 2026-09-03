@@ -9,7 +9,7 @@ class NoriAvatar extends StatelessWidget {
     super.key,
     this.imageUrl,
     this.size = 40,
-    this.borderWidth = 2,
+    this.borderWidth = AppBorder.thick,
   });
 
   final String? imageUrl;
@@ -23,13 +23,13 @@ class NoriAvatar extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: AppColors.primaryFixed,
-        border: Border.all(color: AppColors.primaryFixed, width: borderWidth),
+        color: AppColors.blush,
+        border: Border.all(color: AppColors.ink, width: borderWidth),
       ),
       clipBehavior: Clip.antiAlias,
       child: imageUrl != null
           ? Image.network(imageUrl!, fit: BoxFit.cover)
-          : Icon(Icons.person, size: size * 0.55, color: AppColors.primary),
+          : Icon(Icons.person, size: size * 0.55, color: AppColors.terracottaDark),
     );
   }
 }

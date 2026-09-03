@@ -23,13 +23,13 @@ class _ShopScreenState extends State<ShopScreen> {
       name: 'Wizard Hat',
       price: '350',
       icon: Icons.auto_awesome,
-      color: AppColors.primaryFixed,
+      color: AppColors.mossLight,
     ),
     _ShopItem(
       name: 'Royal Crown',
       price: '800',
       icon: Icons.emoji_events,
-      color: AppColors.tertiaryFixed,
+      color: AppColors.mustardLight,
       badge: 'New',
       badgeColor: AppColors.errorContainer,
       badgeTextColor: AppColors.onErrorContainer,
@@ -38,19 +38,19 @@ class _ShopScreenState extends State<ShopScreen> {
       name: 'Dino Onesie',
       price: '550',
       icon: Icons.checkroom,
-      color: AppColors.secondaryContainer,
+      color: AppColors.blush,
     ),
     _ShopItem(
       name: 'Propeller Beanie',
       price: '200',
       icon: Icons.toys,
-      color: AppColors.tertiaryFixed,
+      color: AppColors.mustardLight,
     ),
     _ShopItem(
       name: 'Smart Glasses',
       price: 'Owned',
       icon: Icons.visibility,
-      color: AppColors.surfaceContainerHigh,
+      color: AppColors.linen,
       owned: true,
     ),
     _ShopItem(
@@ -58,10 +58,10 @@ class _ShopScreenState extends State<ShopScreen> {
       price: '100',
       previousPrice: '150',
       icon: Icons.restaurant,
-      color: AppColors.secondaryContainer,
+      color: AppColors.blush,
       badge: 'Sale',
-      badgeColor: AppColors.secondaryContainer,
-      badgeTextColor: AppColors.onSecondaryContainer,
+      badgeColor: AppColors.blush,
+      badgeTextColor: AppColors.terracottaDark,
     ),
   ];
 
@@ -76,7 +76,7 @@ class _ShopScreenState extends State<ShopScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.linen,
       appBar: AppBar(title: const Text('Pet Boutique')),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -106,7 +106,7 @@ class _ShopScreenState extends State<ShopScreen> {
                     Text(
                       'Spoil your companion with new looks and treats!',
                       style: AppTextStyles.bodyMd.copyWith(
-                        color: AppColors.onSurfaceVariant,
+                        color: AppColors.inkMuted,
                       ),
                     ),
                     const SizedBox(height: AppSpacing.stackSm),
@@ -124,7 +124,13 @@ class _ShopScreenState extends State<ShopScreen> {
                         itemBuilder: (context, index) {
                           final category = _categories[index];
                           return ChoiceChip(
-                            avatar: Icon(category.icon, size: 18),
+                            avatar: Icon(
+                              category.icon,
+                              size: 18,
+                              color: _selectedCategory == index
+                                  ? AppColors.white
+                                  : AppColors.ink,
+                            ),
                             label: Text(category.label),
                             selected: _selectedCategory == index,
                             onSelected: (_) {
@@ -132,17 +138,18 @@ class _ShopScreenState extends State<ShopScreen> {
                             },
                             labelStyle: AppTextStyles.labelLg.copyWith(
                               color: _selectedCategory == index
-                                  ? AppColors.onPrimary
-                                  : AppColors.onSurface,
+                                  ? AppColors.white
+                                  : AppColors.ink,
                             ),
-                            selectedColor: AppColors.primary,
-                            backgroundColor: AppColors.surfaceContainerLowest,
-                            side: BorderSide(
-                              color: _selectedCategory == index
-                                  ? AppColors.primary
-                                  : AppColors.outlineVariant,
+                            selectedColor: AppColors.moss,
+                            backgroundColor: AppColors.white,
+                            side: const BorderSide(
+                              color: AppColors.ink,
+                              width: AppBorder.thin,
                             ),
                             shape: const StadiumBorder(),
+                            elevation: 0,
+                            pressElevation: 0,
                             showCheckmark: false,
                           );
                         },
@@ -183,22 +190,23 @@ class _BalanceCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.gutter),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerHighest,
+        color: AppColors.mustardLight,
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.outlineVariant),
+        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
       ),
       child: Row(
         children: [
           Container(
             width: 44,
             height: 44,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.surfaceContainerLowest,
+              color: AppColors.white,
+              border: Border.all(color: AppColors.ink, width: AppBorder.thin),
             ),
             child: const Icon(
               Icons.monetization_on,
-              color: AppColors.tertiary,
+              color: AppColors.mustardDark,
               size: 28,
             ),
           ),
@@ -210,7 +218,7 @@ class _BalanceCard extends StatelessWidget {
                 Text(
                   'AVAILABLE BALANCE',
                   style: AppTextStyles.labelSm.copyWith(
-                    color: AppColors.onSurfaceVariant,
+                    color: AppColors.inkMuted,
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -237,16 +245,9 @@ class _ShopItemCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(AppSpacing.stackSm),
         decoration: BoxDecoration(
-          color: AppColors.surfaceContainerLowest,
+          color: AppColors.white,
           borderRadius: BorderRadius.circular(AppRadius.sm),
-          border: Border.all(color: AppColors.outlineVariant),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.onSurface.withValues(alpha: 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          border: Border.all(color: AppColors.ink, width: AppBorder.standard),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -259,12 +260,12 @@ class _ShopItemCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: item.color,
                         borderRadius: BorderRadius.circular(AppRadius.sm),
+                        border: Border.all(
+                          color: AppColors.ink,
+                          width: AppBorder.thin,
+                        ),
                       ),
-                      child: Icon(
-                        item.icon,
-                        size: 54,
-                        color: AppColors.primary,
-                      ),
+                      child: Icon(item.icon, size: 54, color: AppColors.ink),
                     ),
                   ),
                   if (item.badge != null)
@@ -279,6 +280,10 @@ class _ShopItemCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: item.badgeColor,
                           borderRadius: BorderRadius.circular(AppRadius.full),
+                          border: Border.all(
+                            color: AppColors.ink,
+                            width: AppBorder.thin,
+                          ),
                         ),
                         child: Text(
                           item.badge!,
@@ -305,7 +310,7 @@ class _ShopItemCard extends StatelessWidget {
                   ? Text(
                       item.price,
                       style: AppTextStyles.labelLg.copyWith(
-                        color: AppColors.onSurfaceVariant,
+                        color: AppColors.inkMuted,
                       ),
                     )
                   : Row(
@@ -322,14 +327,14 @@ class _ShopItemCard extends StatelessWidget {
                         ],
                         const Icon(
                           Icons.monetization_on,
-                          color: AppColors.tertiary,
+                          color: AppColors.mustardDark,
                           size: 16,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           item.price,
                           style: AppTextStyles.labelLg.copyWith(
-                            color: AppColors.tertiary,
+                            color: AppColors.mustardDark,
                           ),
                         ),
                       ],
@@ -341,12 +346,17 @@ class _ShopItemCard extends StatelessWidget {
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(40),
                 backgroundColor: item.owned
-                    ? AppColors.surfaceContainer
-                    : AppColors.primary,
+                    ? AppColors.linenAlt
+                    : AppColors.moss,
                 foregroundColor: item.owned
-                    ? AppColors.onSurfaceVariant
-                    : AppColors.onPrimary,
+                    ? AppColors.inkMuted
+                    : AppColors.white,
                 textStyle: AppTextStyles.labelLg,
+                elevation: 0,
+                side: const BorderSide(
+                  color: AppColors.ink,
+                  width: AppBorder.standard,
+                ),
               ),
               child: Text(item.owned ? 'Equip' : 'Buy'),
             ),
@@ -366,8 +376,8 @@ class _ShopItem {
     this.previousPrice,
     this.owned = false,
     this.badge,
-    this.badgeColor = AppColors.surfaceContainer,
-    this.badgeTextColor = AppColors.onSurfaceVariant,
+    this.badgeColor = AppColors.linenAlt,
+    this.badgeTextColor = AppColors.inkMuted,
   });
 
   final String name;

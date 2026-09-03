@@ -29,7 +29,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.linen,
       appBar: AppBar(title: const Text('Leagues')),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -54,7 +54,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       'Compete with friends and habit builders worldwide.',
                       textAlign: TextAlign.center,
                       style: AppTextStyles.bodyMd.copyWith(
-                        color: AppColors.onSurfaceVariant,
+                        color: AppColors.inkMuted,
                       ),
                     ),
                     const SizedBox(height: AppSpacing.stackSm),
@@ -64,8 +64,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceContainerHigh,
+                          color: AppColors.linenAlt,
                           borderRadius: BorderRadius.circular(AppRadius.full),
+                          border: Border.all(
+                            color: AppColors.ink,
+                            width: AppBorder.thin,
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -90,18 +94,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     Container(
                       padding: const EdgeInsets.all(AppSpacing.gutter),
                       decoration: BoxDecoration(
-                        color: AppColors.surfaceContainerLowest,
+                        color: AppColors.white,
                         borderRadius: BorderRadius.circular(AppRadius.md),
                         border: Border.all(
-                          color: AppColors.surfaceContainerHighest,
+                          color: AppColors.ink,
+                          width: AppBorder.standard,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.onSurface.withValues(alpha: 0.06),
-                            blurRadius: 18,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -161,7 +159,7 @@ class _ViewChoice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? AppColors.surface : Colors.transparent,
+      color: selected ? AppColors.mossLight : Colors.transparent,
       borderRadius: BorderRadius.circular(AppRadius.full),
       child: InkWell(
         onTap: onTap,
@@ -171,7 +169,7 @@ class _ViewChoice extends StatelessWidget {
           child: Text(
             label,
             style: AppTextStyles.labelLg.copyWith(
-              color: selected ? AppColors.primary : AppColors.onSurfaceVariant,
+              color: selected ? AppColors.mossDark : AppColors.inkMuted,
             ),
           ),
         ),
@@ -197,7 +195,7 @@ class _Podium extends StatelessWidget {
               level: 24,
               avatarSize: 64,
               podiumHeight: 98,
-              podiumColor: AppColors.surfaceVariant,
+              podiumColor: AppColors.linenAlt,
             ),
           ),
           SizedBox(width: AppSpacing.unit),
@@ -208,7 +206,7 @@ class _Podium extends StatelessWidget {
               level: 28,
               avatarSize: 78,
               podiumHeight: 134,
-              podiumColor: AppColors.tertiaryFixedDim,
+              podiumColor: AppColors.mustard,
               xp: '15.4k XP',
             ),
           ),
@@ -263,9 +261,9 @@ class _PodiumEntry extends StatelessWidget {
               child: Icon(
                 Icons.military_tech,
                 color: rank == 1
-                    ? AppColors.tertiaryFixedDim
+                    ? AppColors.mustardDark
                     : rank == 2
-                    ? AppColors.outline
+                    ? AppColors.ink
                     : const Color(0xFF9A5B32),
                 size: rank == 1 ? 28 : 22,
               ),
@@ -277,10 +275,10 @@ class _PodiumEntry extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
           decoration: BoxDecoration(
             color: rank == 1
-                ? AppColors.tertiaryFixed
-                : AppColors.surfaceContainerLowest,
+                ? AppColors.mustardLight
+                : AppColors.white,
             borderRadius: BorderRadius.circular(AppRadius.full),
-            border: Border.all(color: AppColors.outlineVariant),
+            border: Border.all(color: AppColors.ink, width: AppBorder.thin),
           ),
           child: Text('Lvl $level', style: AppTextStyles.labelSm),
         ),
@@ -294,13 +292,14 @@ class _PodiumEntry extends StatelessWidget {
             borderRadius: const BorderRadius.vertical(
               top: Radius.circular(AppRadius.sm),
             ),
+            border: Border.all(color: AppColors.ink, width: AppBorder.standard),
           ),
           child: Column(
             children: [
               Text(
                 '$rank',
                 style: AppTextStyles.headlineMd.copyWith(
-                  color: AppColors.onTertiaryFixed,
+                  color: AppColors.ink,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -309,14 +308,14 @@ class _PodiumEntry extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppTextStyles.labelLg.copyWith(
-                  color: AppColors.onTertiaryFixed,
+                  color: AppColors.ink,
                 ),
               ),
               if (xp != null)
                 Text(
                   xp!,
                   style: AppTextStyles.labelSm.copyWith(
-                    color: AppColors.onTertiaryFixedVariant,
+                    color: AppColors.inkMuted,
                   ),
                 ),
             ],
@@ -335,18 +334,17 @@ class _RankingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final foreground = highlighted
-        ? AppColors.onPrimaryContainer
-        : AppColors.onSurface;
+    const foreground = AppColors.ink;
     final secondaryForeground = highlighted
-        ? AppColors.onPrimaryContainer.withValues(alpha: 0.82)
-        : AppColors.onSurfaceVariant;
+        ? AppColors.mossDark
+        : AppColors.inkMuted;
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.stackSm),
       decoration: BoxDecoration(
-        color: highlighted ? AppColors.primaryContainer : Colors.transparent,
+        color: highlighted ? AppColors.mossLight : AppColors.linenAlt,
         borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
       ),
       child: Row(
         children: [

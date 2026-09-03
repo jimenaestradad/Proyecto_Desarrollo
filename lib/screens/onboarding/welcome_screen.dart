@@ -21,7 +21,7 @@ class WelcomeScreen extends StatelessWidget {
                 width: 280,
                 height: 280,
                 decoration: BoxDecoration(
-                  color: AppColors.primaryFixed.withValues(alpha: 0.65),
+                  color: AppColors.mossLight.withValues(alpha: 0.65),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -36,7 +36,7 @@ class WelcomeScreen extends StatelessWidget {
                 width: 300,
                 height: 300,
                 decoration: BoxDecoration(
-                  color: AppColors.secondaryContainer.withValues(alpha: 0.3),
+                  color: AppColors.blush.withValues(alpha: 0.5),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -71,7 +71,7 @@ class WelcomeScreen extends StatelessWidget {
                                   TextSpan(
                                     text: 'Nori',
                                     style: AppTextStyles.display.copyWith(
-                                      color: AppColors.primary,
+                                      color: AppColors.terracottaDark,
                                     ),
                                   ),
                                 ],
@@ -85,7 +85,7 @@ class WelcomeScreen extends StatelessWidget {
                                 'Every good habit you build helps your new '
                                 'friend grow. Ready to start the journey?',
                                 style: AppTextStyles.bodyLg.copyWith(
-                                  color: AppColors.onSurfaceVariant,
+                                  color: AppColors.inkFaint,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
@@ -136,7 +136,7 @@ class _MascotPlaceholder extends StatelessWidget {
               child: Container(
                 height: AppSpacing.stackMd,
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceDim.withValues(alpha: 0.65),
+                  color: AppColors.ink.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(AppRadius.full),
                 ),
               ),
@@ -149,26 +149,14 @@ class _MascotPlaceholder extends StatelessWidget {
             bottom: AppSpacing.stackMd,
             child: Container(
               decoration: BoxDecoration(
-                color: AppColors.primaryFixed,
+                color: AppColors.mossLight,
                 borderRadius: BorderRadius.circular(AppRadius.lg),
                 border: Border.all(
-                  color: AppColors.surfaceContainerLowest.withValues(
-                    alpha: 0.7,
-                  ),
+                  color: AppColors.ink,
+                  width: AppBorder.standard,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.onPrimaryFixed.withValues(alpha: 0.12),
-                    blurRadius: AppSpacing.stackMd,
-                    offset: const Offset(0, AppSpacing.stackSm),
-                  ),
-                ],
               ),
-              child: const Icon(
-                Icons.pets,
-                size: 104,
-                color: AppColors.primary,
-              ),
+              child: const Icon(Icons.pets, size: 104, color: AppColors.ink),
             ),
           ),
         ],

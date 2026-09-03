@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-/// Primary CTA button styled after the mockup's "tactile-button" /
-/// "btn-pressable" classes: a solid drop shadow that flattens and the
-/// button shifts down when pressed, like a physical key.
+/// Primary CTA button for the "Flat Storybook" design system: a flat fill
+/// with a thick ink outline and a hard (non-blurred) ink offset shadow that
+/// collapses — like a pressed sticker — when tapped.
 class TactileButton extends StatefulWidget {
   const TactileButton({
     super.key,
     required this.label,
     required this.onPressed,
     this.icon,
-    this.backgroundColor = AppColors.primary,
-    this.foregroundColor = AppColors.onPrimary,
-    this.shadowColor = AppColors.onPrimaryFixedVariant,
+    this.backgroundColor = AppColors.terracotta,
+    this.foregroundColor = AppColors.ink,
     this.expand = true,
   });
 
@@ -21,7 +20,6 @@ class TactileButton extends StatefulWidget {
   final IconData? icon;
   final Color backgroundColor;
   final Color foregroundColor;
-  final Color shadowColor;
   final bool expand;
 
   @override
@@ -46,21 +44,17 @@ class _TactileButtonState extends State<TactileButton> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 100),
         curve: Curves.easeOut,
-        transform: Matrix4.translationValues(0, _pressed ? 4 : 0, 0),
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        transform: Matrix4.translationValues(0, _pressed ? 3 : 0, 0),
+        padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
           color: widget.onPressed == null
               ? widget.backgroundColor.withValues(alpha: 0.5)
               : widget.backgroundColor,
           borderRadius: BorderRadius.circular(AppRadius.full),
+          border: Border.all(color: AppColors.ink, width: AppBorder.standard),
           boxShadow: _pressed
               ? const []
-              : [
-                  BoxShadow(
-                    color: widget.shadowColor,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+              : const [BoxShadow(color: AppColors.ink, offset: Offset(0, 3))],
         ),
         child: Row(
           mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,

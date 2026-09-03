@@ -4,14 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**Nori** — a habit/goal tracking app with gamification, built in Flutter. This is a two-person
-university project (UFM, Desarrollo de Productos de Software): **valevasqc** (Valeria) and
-**jimenaestradad** (Jimena).
+**Nori** — a habit tracker combined with a virtual-pet game, built in Flutter. This is a
+two-person university project (UFM, Desarrollo de Productos de Software): **valevasqc**
+(Valeria) and **jimenaestradad** (Jimena).
 
 Product scope, roadmap, and rationale live in `docs/`, not here — read them before making any
-product/scope decision:
+product/scope decision. The feature set is still being defined incrementally, so check these
+before assuming anything is decided:
 
-- `docs/OVERVIEW.md` — what Nori is, the core loop, MVP scope and what's explicitly out
+- `docs/OVERVIEW.md` — what Nori is, the core loop, platform target
+- `docs/FEATURES.md` — the actual feature spec (habits, XP, streaks, pets, economy, social) and MVP boundary — source of truth for scope, not OVERVIEW.md
 - `docs/ROADMAP.md` — sprint structure and current phase
 - `docs/OPEN_DECISIONS.md` — unresolved product decisions (e.g. XP formulas) — check here before inventing a rule
 

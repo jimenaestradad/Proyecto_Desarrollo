@@ -103,22 +103,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(AppSpacing.stackMd),
                           decoration: BoxDecoration(
-                            color: AppColors.surfaceContainerLowest,
+                            color: AppColors.white,
                             borderRadius: BorderRadius.circular(AppRadius.lg),
                             border: Border.all(
-                              color: AppColors.outlineVariant.withValues(
-                                alpha: 0.3,
-                              ),
+                              color: AppColors.ink,
+                              width: AppBorder.standard,
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.onPrimaryFixed.withValues(
-                                  alpha: 0.08,
-                                ),
-                                blurRadius: AppSpacing.stackMd,
-                                offset: const Offset(0, AppSpacing.unit),
-                              ),
-                            ],
                           ),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -184,7 +174,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   Text(
                                     'Already have an account?',
                                     style: AppTextStyles.bodyMd.copyWith(
-                                      color: AppColors.onSurfaceVariant,
+                                      color: AppColors.inkMuted,
                                     ),
                                   ),
                                   TextButton(
@@ -227,7 +217,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }) {
     const border = OutlineInputBorder(
       borderRadius: BorderRadius.all(Radius.circular(AppRadius.full)),
-      borderSide: BorderSide.none,
+      borderSide: BorderSide(
+        color: AppColors.ink,
+        width: AppBorder.standard,
+      ),
     );
 
     return Padding(
@@ -253,11 +246,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: AppTextStyles.bodyMd.copyWith(
-                color: AppColors.outline,
+                color: AppColors.inkFaint,
               ),
-              prefixIcon: Icon(icon, color: AppColors.outline),
+              prefixIcon: Icon(icon, color: AppColors.ink),
               filled: true,
-              fillColor: AppColors.surfaceContainer,
+              fillColor: AppColors.linenAlt,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.gutter,
                 vertical: AppSpacing.stackSm,
@@ -266,7 +259,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
               enabledBorder: border,
               focusedBorder: const OutlineInputBorder(
                 borderRadius: BorderRadius.all(Radius.circular(AppRadius.full)),
-                borderSide: BorderSide(color: AppColors.primary, width: 2),
+                borderSide: BorderSide(
+                  color: AppColors.ink,
+                  width: AppBorder.thick,
+                ),
               ),
             ),
           ),
@@ -287,11 +283,11 @@ class _SignUpHeader extends StatelessWidget {
           width: 64,
           height: 64,
           decoration: BoxDecoration(
-            color: AppColors.primaryFixed,
+            color: AppColors.mossLight,
             shape: BoxShape.circle,
-            border: Border.all(color: AppColors.primaryFixedDim, width: 2),
+            border: Border.all(color: AppColors.ink, width: AppBorder.thick),
           ),
-          child: const Icon(Icons.pets, color: AppColors.primary, size: 32),
+          child: const Icon(Icons.pets, color: AppColors.mossDark, size: 32),
         ),
         const SizedBox(height: AppSpacing.stackSm),
         Text('Join Nori', style: AppTextStyles.headlineLgMobile),
@@ -299,7 +295,7 @@ class _SignUpHeader extends StatelessWidget {
         Text(
           'Start building better habits today.',
           style: AppTextStyles.bodyMd.copyWith(
-            color: AppColors.onSurfaceVariant,
+            color: AppColors.inkMuted,
           ),
           textAlign: TextAlign.center,
         ),
@@ -315,7 +311,7 @@ class _LoadingOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     return Positioned.fill(
       child: ColoredBox(
-        color: AppColors.surface.withValues(alpha: 0.72),
+        color: AppColors.linen.withValues(alpha: 0.72),
         child: const Center(child: CircularProgressIndicator()),
       ),
     );

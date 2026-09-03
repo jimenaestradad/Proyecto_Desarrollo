@@ -21,23 +21,22 @@ class FutureFeatureBanner extends StatelessWidget {
         vertical: AppSpacing.stackSm,
       ),
       decoration: BoxDecoration(
-        color: AppColors.tertiaryFixed,
+        color: AppColors.mustardLight,
         borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
       ),
       child: Row(
         children: [
           const Icon(
             Icons.rocket_launch,
-            color: AppColors.onTertiaryFixedVariant,
+            color: AppColors.mustardDark,
             size: 20,
           ),
           const SizedBox(width: AppSpacing.stackSm),
           Expanded(
             child: Text(
               message,
-              style: AppTextStyles.labelLg.copyWith(
-                color: AppColors.onTertiaryFixedVariant,
-              ),
+              style: AppTextStyles.labelLg.copyWith(color: AppColors.ink),
             ),
           ),
         ],
@@ -56,14 +55,13 @@ class SoonBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: AppColors.tertiaryFixed,
+        color: AppColors.mustardLight,
         borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
       ),
       child: Text(
         'Soon',
-        style: AppTextStyles.labelSm.copyWith(
-          color: AppColors.onTertiaryFixedVariant,
-        ),
+        style: AppTextStyles.labelSm.copyWith(color: AppColors.mustardDark),
       ),
     );
   }

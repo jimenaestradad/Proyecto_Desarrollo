@@ -146,9 +146,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               icon: Icons.logout,
                               backgroundColor: AppColors.errorContainer,
                               foregroundColor: AppColors.onErrorContainer,
-                              shadowColor: AppColors.error.withValues(
-                                alpha: 0.25,
-                              ),
                               onPressed: () =>
                                   Navigator.pushNamedAndRemoveUntil(
                                     context,
@@ -200,16 +197,24 @@ class _ProfileHero extends StatelessWidget {
           Stack(
             clipBehavior: Clip.none,
             children: [
-              NoriAvatar(imageUrl: user.avatarUrl, size: 120, borderWidth: 4),
+              NoriAvatar(
+                imageUrl: user.avatarUrl,
+                size: 120,
+                borderWidth: AppBorder.thick,
+              ),
               Positioned(
                 right: -4,
                 bottom: 2,
                 child: IconButton.filled(
                   onPressed: onEdit,
                   style: IconButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: AppColors.onPrimary,
+                    backgroundColor: AppColors.moss,
+                    foregroundColor: AppColors.white,
                     minimumSize: const Size.square(38),
+                    side: const BorderSide(
+                      color: AppColors.ink,
+                      width: AppBorder.standard,
+                    ),
                   ),
                   icon: const Icon(Icons.edit, size: 18),
                 ),
@@ -231,17 +236,17 @@ class _ProfileHero extends StatelessWidget {
               _ProfilePill(
                 icon: Icons.military_tech,
                 label: 'Level ${user.level}',
-                color: AppColors.primary,
+                color: AppColors.mossDark,
               ),
               _ProfilePill(
                 icon: Icons.diamond,
                 label: '${user.totalXp} XP',
-                color: AppColors.secondary,
+                color: AppColors.terracottaDark,
               ),
               _ProfilePill(
                 icon: Icons.local_fire_department,
                 label: '${user.currentStreak} Day Streak',
-                color: AppColors.tertiary,
+                color: AppColors.mustardDark,
               ),
             ],
           ),
@@ -272,6 +277,7 @@ class _ProfilePill extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -307,7 +313,20 @@ class _AchievementsPreviewCard extends StatelessWidget {
               Expanded(
                 child: Text('My Achievements', style: AppTextStyles.headlineMd),
               ),
-              TextButton(onPressed: onViewAll, child: const Text('View All')),
+              TextButton(
+                onPressed: onViewAll,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.mossDark,
+                  side: const BorderSide(
+                    color: AppColors.ink,
+                    width: AppBorder.thin,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                  ),
+                ),
+                child: const Text('View All'),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.stackSm),
@@ -337,13 +356,14 @@ class _AchievementPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLocked = achievement.status == AchievementStatus.locked;
-    final color = isLocked ? AppColors.outline : achievement.color;
+    final color = isLocked ? AppColors.inkFaint : achievement.color;
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.unit),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLow,
+        color: AppColors.linenAlt,
         borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -354,6 +374,7 @@ class _AchievementPreview extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: color.withValues(alpha: 0.16),
+              border: Border.all(color: AppColors.ink, width: AppBorder.thin),
             ),
             child: Icon(
               isLocked ? Icons.lock : achievement.icon,
@@ -390,14 +411,14 @@ class _HabitStatisticsCard extends StatelessWidget {
             label: 'Weekly Completion',
             value: '85%',
             progress: 0.85,
-            color: AppColors.primary,
+            color: AppColors.moss,
           ),
           const SizedBox(height: AppSpacing.stackMd),
           const _StatisticRow(
             label: 'Daily Quests',
             value: '80%',
             progress: 0.8,
-            color: AppColors.secondary,
+            color: AppColors.terracotta,
           ),
         ],
       ),
@@ -498,9 +519,7 @@ class _ExploreCard extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             "Design previews for what's next — not built yet.",
-            style: AppTextStyles.bodyMd.copyWith(
-              color: AppColors.onSurfaceVariant,
-            ),
+            style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
           ),
           const SizedBox(height: AppSpacing.stackSm),
           _AccountRow(
@@ -545,10 +564,10 @@ class _AccountRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surfaceContainerLowest,
+      color: AppColors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        side: const BorderSide(color: AppColors.outlineVariant),
+        side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -557,17 +576,14 @@ class _AccountRow extends StatelessWidget {
           padding: const EdgeInsets.all(AppSpacing.gutter),
           child: Row(
             children: [
-              Icon(icon, color: AppColors.onSurfaceVariant),
+              Icon(icon, color: AppColors.inkMuted),
               const SizedBox(width: AppSpacing.stackSm),
               Expanded(child: Text(label, style: AppTextStyles.labelLg)),
               if (trailing != null) ...[
                 trailing!,
                 const SizedBox(width: AppSpacing.unit),
               ],
-              const Icon(
-                Icons.chevron_right,
-                color: AppColors.onSurfaceVariant,
-              ),
+              const Icon(Icons.chevron_right, color: AppColors.inkMuted),
             ],
           ),
         ),
@@ -586,16 +602,9 @@ class _ProfileCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.containerPaddingMobile),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
+        color: AppColors.white,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.surfaceContainerHighest),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.05),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
       ),
       child: child,
     );

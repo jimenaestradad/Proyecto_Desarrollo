@@ -164,21 +164,9 @@ class _NotificationCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.gutter),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(24),
-        border: Border(
-          left: BorderSide(
-            color: isUnread ? notification.color : Colors.transparent,
-            width: 4,
-          ),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.06),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,9 +176,10 @@ class _NotificationCard extends StatelessWidget {
             height: 48,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: notification.color.withValues(alpha: 0.16),
+              color: notification.color,
+              border: Border.all(color: AppColors.ink, width: AppBorder.thin),
             ),
-            child: Icon(notification.icon, size: 26, color: notification.color),
+            child: Icon(notification.icon, size: 24, color: AppColors.ink),
           ),
           const SizedBox(width: AppSpacing.stackSm),
           Expanded(
@@ -221,7 +210,11 @@ class _NotificationCard extends StatelessWidget {
                     onPressed: () => Navigator.pop(context),
                     style: FilledButton.styleFrom(
                       backgroundColor: notification.color,
-                      foregroundColor: AppColors.onPrimary,
+                      foregroundColor: AppColors.white,
+                      side: const BorderSide(
+                        color: AppColors.ink,
+                        width: AppBorder.thin,
+                      ),
                       minimumSize: Size.zero,
                       padding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.gutter,

@@ -76,7 +76,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               'Stay consistent to level up your Nori!',
                               textAlign: TextAlign.center,
                               style: AppTextStyles.bodyMd.copyWith(
-                                color: AppColors.onSurfaceVariant,
+                                color: AppColors.inkMuted,
                               ),
                             ),
                             const SizedBox(height: AppSpacing.stackMd),
@@ -90,25 +90,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               children: [
                                 _CalendarStatCard(
                                   icon: Icons.local_fire_department,
-                                  iconColor: AppColors.primary,
+                                  iconColor: AppColors.terracottaDark,
                                   value: '${stats.currentStreak}',
                                   label: 'Current Streak',
                                 ),
                                 _CalendarStatCard(
                                   icon: Icons.star,
-                                  iconColor: AppColors.tertiaryFixedDim,
+                                  iconColor: AppColors.mustardDark,
                                   value: '${stats.perfectDays}',
                                   label: 'Perfect Days',
                                 ),
                                 _CalendarStatCard(
                                   icon: Icons.check_circle,
-                                  iconColor: AppColors.secondary,
+                                  iconColor: AppColors.mossDark,
                                   value: '${stats.habitsDone}',
                                   label: 'Habits Done',
                                 ),
                                 _CalendarStatCard(
                                   icon: Icons.sentiment_dissatisfied,
-                                  iconColor: AppColors.outline,
+                                  iconColor: AppColors.inkMuted,
                                   value: '${stats.missedDays}',
                                   label: 'Missed Days',
                                 ),
@@ -142,7 +142,7 @@ class _CalendarHeader extends StatelessWidget {
         Expanded(
           child: Text(
             'Nori',
-            style: AppTextStyles.headlineMd.copyWith(color: AppColors.primary),
+            style: AppTextStyles.headlineMd,
           ),
         ),
         XpPill(xp: user.totalXp),
@@ -169,16 +169,9 @@ class _CalendarStatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.stackSm),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
+        color: AppColors.white,
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.onSurface.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -209,16 +202,9 @@ class _CalendarCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.gutter),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
+        color: AppColors.white,
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.surfaceContainerHigh),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -246,7 +232,7 @@ class _CalendarCard extends StatelessWidget {
             children: [for (final day in days) _CalendarDayCell(day: day)],
           ),
           const SizedBox(height: AppSpacing.stackMd),
-          Divider(color: AppColors.surfaceVariant, height: 1),
+          const Divider(color: AppColors.ink, height: 1),
           const SizedBox(height: AppSpacing.gutter),
           const Wrap(
             alignment: WrapAlignment.center,
@@ -254,18 +240,18 @@ class _CalendarCard extends StatelessWidget {
             runSpacing: AppSpacing.unit,
             children: [
               _LegendItem(
-                color: AppColors.tertiaryFixed,
-                borderColor: AppColors.tertiaryFixedDim,
+                color: AppColors.mustardLight,
+                borderColor: AppColors.ink,
                 label: 'Perfect',
               ),
               _LegendItem(
-                color: AppColors.secondaryContainer,
-                borderColor: AppColors.secondaryFixedDim,
+                color: AppColors.blush,
+                borderColor: AppColors.ink,
                 label: 'Done',
               ),
               _LegendItem(
-                color: AppColors.surfaceVariant,
-                borderColor: AppColors.outlineVariant,
+                color: AppColors.linenAlt,
+                borderColor: AppColors.ink,
                 label: 'Missed',
               ),
             ],
@@ -294,34 +280,34 @@ class _CalendarDayCell extends StatelessWidget {
       textColor,
     ) = switch (day.status) {
       CalendarDayStatus.perfect => (
-        AppColors.tertiaryFixed,
-        AppColors.tertiaryFixedDim,
-        2.0,
-        AppColors.onTertiaryFixed,
+        AppColors.mustardLight,
+        AppColors.ink,
+        AppBorder.thin,
+        AppColors.mustardDark,
       ),
       CalendarDayStatus.done => (
-        AppColors.secondaryContainer,
-        AppColors.secondaryFixedDim,
-        1.0,
-        AppColors.onSecondaryContainer,
+        AppColors.blush,
+        AppColors.ink,
+        AppBorder.thin,
+        AppColors.terracottaDark,
       ),
       CalendarDayStatus.missed => (
-        AppColors.surfaceVariant,
-        AppColors.outlineVariant,
-        1.0,
-        AppColors.onSurfaceVariant,
+        AppColors.linenAlt,
+        AppColors.ink,
+        AppBorder.thin,
+        AppColors.inkMuted,
       ),
       CalendarDayStatus.today => (
-        AppColors.primary,
-        AppColors.primaryFixedDim,
-        3.0,
-        AppColors.onPrimary,
+        AppColors.moss,
+        AppColors.ink,
+        AppBorder.thick,
+        AppColors.white,
       ),
       CalendarDayStatus.future => (
-        AppColors.surface,
-        AppColors.outlineVariant.withValues(alpha: 0.45),
-        1.0,
-        AppColors.outlineVariant,
+        AppColors.linen,
+        AppColors.ink,
+        AppBorder.thin,
+        AppColors.inkFaint,
       ),
       CalendarDayStatus.empty => throw StateError('Empty days return early'),
     };
@@ -334,15 +320,6 @@ class _CalendarDayCell extends StatelessWidget {
         color: backgroundColor,
         borderRadius: BorderRadius.circular(AppRadius.sm * 0.55),
         border: Border.all(color: borderColor, width: borderWidth),
-        boxShadow: isToday
-            ? [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.24),
-                  blurRadius: 12,
-                  spreadRadius: 1,
-                ),
-              ]
-            : null,
       ),
       child: Stack(
         alignment: Alignment.center,
@@ -354,7 +331,7 @@ class _CalendarDayCell extends StatelessWidget {
               child: Icon(
                 Icons.star,
                 size: 13,
-                color: AppColors.tertiaryFixedDim,
+                color: AppColors.mustardDark,
               ),
             ),
           Text(
@@ -394,7 +371,7 @@ class _LegendItem extends StatelessWidget {
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: borderColor),
+            border: Border.all(color: borderColor, width: AppBorder.thin),
           ),
         ),
         const SizedBox(width: AppSpacing.unit),

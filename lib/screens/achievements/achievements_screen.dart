@@ -81,7 +81,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                                   ? TextAlign.center
                                   : TextAlign.start,
                               style: AppTextStyles.bodyLg.copyWith(
-                                color: AppColors.onSurfaceVariant,
+                                color: AppColors.inkMuted,
                               ),
                             ),
                             const SizedBox(height: AppSpacing.stackLg),
@@ -121,7 +121,7 @@ class _AchievementsHeader extends StatelessWidget {
         Expanded(
           child: Text(
             'Nori',
-            style: AppTextStyles.headlineMd.copyWith(color: AppColors.primary),
+            style: AppTextStyles.headlineMd,
           ),
         ),
         XpPill(xp: user.totalXp),
@@ -148,8 +148,8 @@ class _AchievementCategory extends StatelessWidget {
   };
 
   Color get _categoryColor => switch (category) {
-    'Health' => AppColors.secondary,
-    _ => AppColors.primary,
+    'Health' => AppColors.terracotta,
+    _ => AppColors.moss,
   };
 
   @override
@@ -196,7 +196,7 @@ class _AchievementCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLocked = achievement.status == AchievementStatus.locked;
-    final accentColor = isLocked ? AppColors.outline : achievement.color;
+    final accentColor = isLocked ? AppColors.ink : achievement.color;
 
     return Opacity(
       opacity: isLocked ? 0.68 : 1,
@@ -204,21 +204,10 @@ class _AchievementCard extends StatelessWidget {
         padding: const EdgeInsets.all(AppSpacing.stackSm),
         decoration: BoxDecoration(
           color: isLocked
-              ? AppColors.surfaceContainerLow
-              : AppColors.surfaceContainerLowest,
+              ? AppColors.linenAlt
+              : AppColors.white,
           borderRadius: BorderRadius.circular(AppRadius.sm),
-          border: Border.all(
-            color: isLocked
-                ? AppColors.outlineVariant
-                : AppColors.surfaceContainerHigh,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.05),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          border: Border.all(color: AppColors.ink, width: AppBorder.standard),
         ),
         child: Column(
           children: [
@@ -231,6 +220,10 @@ class _AchievementCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: accentColor.withValues(alpha: 0.16),
+                    border: Border.all(
+                      color: AppColors.ink,
+                      width: AppBorder.thin,
+                    ),
                   ),
                   child: Icon(achievement.icon, size: 34, color: accentColor),
                 ),
@@ -240,14 +233,18 @@ class _AchievementCard extends StatelessWidget {
                     bottom: -2,
                     child: Container(
                       padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: AppColors.surface,
+                      decoration: BoxDecoration(
+                        color: AppColors.linen,
                         shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.ink,
+                          width: AppBorder.thin,
+                        ),
                       ),
                       child: const Icon(
                         Icons.lock,
                         size: 16,
-                        color: AppColors.outline,
+                        color: AppColors.ink,
                       ),
                     ),
                   ),
@@ -269,8 +266,8 @@ class _AchievementCard extends StatelessWidget {
               textAlign: TextAlign.center,
               style: AppTextStyles.labelSm.copyWith(
                 color: isLocked
-                    ? AppColors.outline
-                    : AppColors.onSurfaceVariant,
+                    ? AppColors.ink
+                    : AppColors.inkMuted,
               ),
             ),
             const Spacer(),

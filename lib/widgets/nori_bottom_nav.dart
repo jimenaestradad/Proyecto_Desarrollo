@@ -22,19 +22,9 @@ class NoriBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(AppRadius.sm),
-          topRight: Radius.circular(AppRadius.sm),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.08),
-            blurRadius: 32,
-            offset: const Offset(0, -8),
-          ),
-        ],
+      decoration: const BoxDecoration(
+        color: AppColors.white,
+        border: Border(top: BorderSide(color: AppColors.ink, width: AppBorder.standard)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: SafeArea(
@@ -78,27 +68,26 @@ class _NavItem extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? AppColors.primaryContainer : Colors.transparent,
+          color: selected ? AppColors.mossLight : Colors.transparent,
           borderRadius: BorderRadius.circular(AppRadius.sm),
+          border: selected
+              ? Border.all(color: AppColors.ink, width: AppBorder.thin)
+              : null,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              size: 24,
-              color: selected
-                  ? AppColors.onPrimaryContainer
-                  : AppColors.onSurfaceVariant.withValues(alpha: 0.7),
+              size: 22,
+              color: selected ? AppColors.mossDark : AppColors.inkFaint,
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: AppTextStyles.labelSm.copyWith(
-                color: selected
-                    ? AppColors.onPrimaryContainer
-                    : AppColors.onSurfaceVariant.withValues(alpha: 0.7),
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                color: selected ? AppColors.ink : AppColors.inkFaint,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],

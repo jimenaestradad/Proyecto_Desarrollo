@@ -25,7 +25,7 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.linen,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -101,25 +101,16 @@ class _CustomizationHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.onSurface.withValues(alpha: 0.08),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
+        Material(
+          color: AppColors.white,
+          shape: const CircleBorder(
+            side: BorderSide(color: AppColors.ink, width: AppBorder.standard),
           ),
-          child: Material(
-            color: AppColors.surfaceContainerHighest,
-            shape: const CircleBorder(),
-            child: IconButton(
-              tooltip: 'Back',
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back),
-            ),
+          clipBehavior: Clip.antiAlias,
+          child: IconButton(
+            tooltip: 'Back',
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.arrow_back),
           ),
         ),
         Expanded(
@@ -145,15 +136,9 @@ class _PetPreview extends StatelessWidget {
     return Container(
       height: height,
       decoration: BoxDecoration(
-        color: AppColors.primaryFixed,
+        color: AppColors.mossLight,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.14),
-            blurRadius: 30,
-            offset: const Offset(0, 12),
-          ),
-        ],
+        border: Border.all(color: AppColors.ink, width: AppBorder.thick),
       ),
       child: Stack(
         alignment: Alignment.center,
@@ -164,12 +149,12 @@ class _PetPreview extends StatelessWidget {
               width: 170,
               height: 24,
               decoration: BoxDecoration(
-                color: AppColors.onSurface.withValues(alpha: 0.09),
+                color: AppColors.ink.withValues(alpha: 0.09),
                 borderRadius: BorderRadius.circular(AppRadius.full),
               ),
             ),
           ),
-          const Icon(Icons.pets, size: 118, color: AppColors.primary),
+          const Icon(Icons.pets, size: 118, color: AppColors.ink),
         ],
       ),
     );
@@ -198,15 +183,9 @@ class _InventoryPanel extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
+        color: AppColors.white,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.09),
-            blurRadius: 28,
-            offset: const Offset(0, -6),
-          ),
-        ],
+        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
       ),
       child: Column(
         children: [
@@ -215,7 +194,7 @@ class _InventoryPanel extends StatelessWidget {
             width: 48,
             height: 5,
             decoration: BoxDecoration(
-              color: AppColors.outlineVariant.withValues(alpha: 0.65),
+              color: AppColors.ink.withValues(alpha: 0.65),
               borderRadius: BorderRadius.circular(AppRadius.full),
             ),
           ),
@@ -232,7 +211,11 @@ class _InventoryPanel extends StatelessWidget {
                 ),
             ],
           ),
-          const Divider(height: 1, color: AppColors.surfaceContainerHigh),
+          const Divider(
+            height: AppBorder.thin,
+            thickness: AppBorder.thin,
+            color: AppColors.ink,
+          ),
           Padding(
             padding: const EdgeInsets.all(AppSpacing.containerPaddingMobile),
             child: LayoutBuilder(
@@ -258,15 +241,15 @@ class _InventoryPanel extends StatelessWidget {
                     _AccessorySlot(
                       icon: Icons.emoji_events,
                       selected: equippedItem == 1,
-                      color: AppColors.tertiaryFixed,
-                      iconColor: AppColors.tertiary,
+                      color: AppColors.mustardLight,
+                      iconColor: AppColors.mustardDark,
                       onTap: () => onItemSelected(1),
                     ),
                     _AccessorySlot(
                       icon: Icons.auto_awesome,
                       selected: equippedItem == 2,
-                      color: AppColors.secondaryContainer,
-                      iconColor: AppColors.secondary,
+                      color: AppColors.blush,
+                      iconColor: AppColors.terracottaDark,
                       onTap: () => onItemSelected(2),
                     ),
                     const _LockedAccessorySlot(),
@@ -276,7 +259,11 @@ class _InventoryPanel extends StatelessWidget {
               },
             ),
           ),
-          const Divider(height: 1, color: AppColors.surfaceContainerHigh),
+          const Divider(
+            height: AppBorder.thin,
+            thickness: AppBorder.thin,
+            color: AppColors.ink,
+          ),
           Padding(
             padding: const EdgeInsets.all(AppSpacing.containerPaddingMobile),
             child: TactileButton(label: 'Save Look', onPressed: onSave),
@@ -310,8 +297,8 @@ class _InventoryTab extends StatelessWidget {
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
-                color: selected ? AppColors.primary : Colors.transparent,
-                width: 2,
+                color: selected ? AppColors.mossDark : Colors.transparent,
+                width: AppBorder.thin,
               ),
             ),
           ),
@@ -319,7 +306,7 @@ class _InventoryTab extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: AppTextStyles.labelLg.copyWith(
-              color: selected ? AppColors.primary : AppColors.onSurfaceVariant,
+              color: selected ? AppColors.mossDark : AppColors.inkMuted,
             ),
           ),
         ),
@@ -333,8 +320,8 @@ class _AccessorySlot extends StatelessWidget {
     required this.icon,
     required this.selected,
     required this.onTap,
-    this.color = AppColors.surfaceContainerHighest,
-    this.iconColor = AppColors.primary,
+    this.color = AppColors.linen,
+    this.iconColor = AppColors.mossDark,
   });
 
   final IconData icon;
@@ -356,19 +343,9 @@ class _AccessorySlot extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             decoration: BoxDecoration(
-              color: selected ? AppColors.primaryFixed : color,
+              color: selected ? AppColors.mossLight : color,
               borderRadius: BorderRadius.circular(AppRadius.sm),
-              border: Border.all(
-                color: selected ? AppColors.primary : Colors.transparent,
-                width: 2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.06),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              border: Border.all(color: AppColors.ink, width: AppBorder.thin),
             ),
             child: Stack(
               children: [
@@ -382,16 +359,16 @@ class _AccessorySlot extends StatelessWidget {
                       height: 24,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: AppColors.primary,
+                        color: AppColors.moss,
                         border: Border.all(
-                          color: AppColors.surfaceContainerLowest,
-                          width: 2,
+                          color: AppColors.ink,
+                          width: AppBorder.thin,
                         ),
                       ),
                       child: const Icon(
                         Icons.check,
                         size: 14,
-                        color: AppColors.onPrimary,
+                        color: AppColors.white,
                       ),
                     ),
                   ),
@@ -419,22 +396,23 @@ class _LockedAccessorySlot extends StatelessWidget {
             opacity: 0.5,
             child: Container(
               decoration: BoxDecoration(
-                color: AppColors.surfaceContainerHigh,
+                color: AppColors.linen,
                 borderRadius: BorderRadius.circular(AppRadius.sm),
+                border: Border.all(color: AppColors.ink, width: AppBorder.thin),
               ),
               child: const Icon(
                 Icons.school,
                 size: 44,
-                color: AppColors.onSurfaceVariant,
+                color: AppColors.inkMuted,
               ),
             ),
           ),
           Container(
             decoration: BoxDecoration(
-              color: AppColors.surface.withValues(alpha: 0.42),
+              color: AppColors.linen.withValues(alpha: 0.42),
               borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
-            child: const Icon(Icons.lock, color: AppColors.outline),
+            child: const Icon(Icons.lock, color: AppColors.ink),
           ),
         ],
       ),
@@ -449,53 +427,14 @@ class _EmptyAccessorySlot extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       label: 'Empty accessory slot',
-      child: CustomPaint(
-        painter: const _DashedBorderPainter(color: AppColors.outlineVariant),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-          ),
-          child: const Icon(Icons.close, color: AppColors.outlineVariant),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.linenAlt,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          border: Border.all(color: AppColors.ink, width: AppBorder.thin),
         ),
+        child: const Icon(Icons.close, color: AppColors.ink),
       ),
     );
-  }
-}
-
-class _DashedBorderPainter extends CustomPainter {
-  const _DashedBorderPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(1, 1, size.width - 2, size.height - 2),
-          const Radius.circular(AppRadius.sm),
-        ),
-      );
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    for (final metric in path.computeMetrics()) {
-      var distance = 0.0;
-      while (distance < metric.length) {
-        final dashEnd = distance + 7 < metric.length
-            ? distance + 7
-            : metric.length;
-        canvas.drawPath(metric.extractPath(distance, dashEnd), paint);
-        distance += 12;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DashedBorderPainter oldDelegate) {
-    return oldDelegate.color != color;
   }
 }
