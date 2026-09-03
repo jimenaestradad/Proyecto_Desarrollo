@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
 import 'package:nori/theme/app_theme.dart';
-import 'package:nori/widgets/habit_tile.dart';
+import 'package:nori/widgets/habit_progress_card.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
 import 'package:nori/widgets/tactile_button.dart';
 import 'package:nori/widgets/xp_pill.dart';
@@ -42,9 +43,43 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
     setState(() => _habits = habits);
   }
 
-  Future<void> _toggleHabit(Habit habit, bool completed) async {
-    await AppData.habits.setHabitCompleted(habit.id, completed);
+  Future<void> _reloadUser() async {
+    final user = await AppData.user.getCurrentUser();
+    if (!mounted) return;
+    setState(() => _user = user);
+  }
+
+  Future<void> _applyReward(HabitRewardResult reward) async {
+    if (reward.xpDelta == 0 && reward.coinsDelta == 0) return;
+    if (reward.xpDelta != 0) await AppData.user.addXp(reward.xpDelta);
+    if (reward.coinsDelta != 0) await AppData.user.addCoins(reward.coinsDelta);
+    final user = await AppData.user.getCurrentUser();
+    await AppData.pet.syncEvolution(user.level);
+    await _reloadUser();
+  }
+
+  Future<void> _toggleBinary(Habit habit, bool completed) async {
+    final reward = await AppData.habits.setHabitCompleted(habit.id, completed);
+    await _applyReward(reward);
     await _reloadHabits();
+  }
+
+  Future<void> _logProgress(Habit habit, double amount) async {
+    await AppData.habits.logProgress(habit.id, amount);
+    await _reloadHabits();
+  }
+
+  Future<void> _claim(Habit habit) async {
+    final reward = await AppData.habits.claimHabit(habit.id);
+    await _applyReward(reward);
+    await _reloadHabits();
+  }
+
+  Future<void> _toggleVacationMode() async {
+    final user = _user;
+    if (user == null) return;
+    await AppData.user.setVacationMode(!user.vacationModeEnabled);
+    await _reloadUser();
   }
 
   Future<void> _openAddHabit() async {
@@ -128,6 +163,11 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
                               color: AppColors.terracotta,
                             ),
                             const SizedBox(height: AppSpacing.stackMd),
+                            _VacationModeBanner(
+                              enabled: user.vacationModeEnabled,
+                              onToggle: _toggleVacationMode,
+                            ),
+                            const SizedBox(height: AppSpacing.stackMd),
                             if (habits.isEmpty)
                               Padding(
                                 padding: const EdgeInsets.symmetric(
@@ -147,11 +187,13 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
                                 index < habits.length;
                                 index++
                               ) ...[
-                                HabitTile(
+                                HabitProgressCard(
                                   habit: habits[index],
-                                  onToggle: (completed) {
-                                    _toggleHabit(habits[index], completed);
-                                  },
+                                  onToggleBinary: (completed) =>
+                                      _toggleBinary(habits[index], completed),
+                                  onLogProgress: (amount) =>
+                                      _logProgress(habits[index], amount),
+                                  onClaim: () => _claim(habits[index]),
                                 ),
                                 if (index != habits.length - 1)
                                   const SizedBox(height: AppSpacing.stackSm),
@@ -169,6 +211,101 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
                   );
                 },
               ),
+      ),
+    );
+  }
+}
+
+/// Live, functional toggle — unlike the app's [FutureFeatureBanner]
+/// previews. Its effect is currently limited to persisting the flag on
+/// [NoriUser]: there's no real day-rollover/streak-freeze engine yet, since
+/// streaks are still just a static int (see docs/OPEN_DECISIONS.md
+/// "Technical rules / edge cases" — timezone/day-rollover handling is
+/// undecided).
+class _VacationModeBanner extends StatelessWidget {
+  const _VacationModeBanner({required this.enabled, required this.onToggle});
+
+  final bool enabled;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.stackSm),
+      decoration: BoxDecoration(
+        color: AppColors.linenAlt,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.mustardLight,
+              borderRadius: BorderRadius.circular(AppRadius.sm * 0.6),
+              border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+            ),
+            child: const Icon(
+              Icons.beach_access,
+              color: AppColors.mustardDark,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.stackSm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text('Vacation Mode', style: AppTextStyles.labelLg),
+                    const SizedBox(width: AppSpacing.unit),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: enabled ? AppColors.mossLight : AppColors.linen,
+                        borderRadius: BorderRadius.circular(AppRadius.full),
+                        border: Border.all(
+                          color: AppColors.ink,
+                          width: AppBorder.thin,
+                        ),
+                      ),
+                      child: Text(
+                        enabled ? 'Active' : 'Inactive',
+                        style: AppTextStyles.labelSm.copyWith(
+                          color: enabled
+                              ? AppColors.mossDark
+                              : AppColors.inkMuted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Freezes streaks safely when you take a break.',
+                  style: AppTextStyles.labelSm.copyWith(
+                    color: AppColors.inkFaint,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.unit),
+          OutlinedButton(
+            onPressed: onToggle,
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+              foregroundColor: AppColors.ink,
+            ),
+            child: Text(enabled ? 'Disable' : 'Enable'),
+          ),
+        ],
       ),
     );
   }

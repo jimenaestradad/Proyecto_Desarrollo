@@ -9,6 +9,8 @@ class NoriUser {
     required this.xpIntoLevel,
     required this.xpForNextLevel,
     required this.currentStreak,
+    this.coins = 0,
+    this.vacationModeEnabled = false,
     this.avatarUrl,
   });
 
@@ -21,22 +23,32 @@ class NoriUser {
   final int xpIntoLevel;
   final int xpForNextLevel;
   final int currentStreak;
+  final int coins;
+  final bool vacationModeEnabled;
   final String? avatarUrl;
 
   double get levelProgress =>
       xpForNextLevel == 0 ? 0 : xpIntoLevel / xpForNextLevel;
 
-  NoriUser copyWith({int? totalXp, int? xpIntoLevel}) {
+  NoriUser copyWith({
+    int? level,
+    int? totalXp,
+    int? xpIntoLevel,
+    int? coins,
+    bool? vacationModeEnabled,
+  }) {
     return NoriUser(
       id: id,
       name: name,
       username: username,
       email: email,
-      level: level,
+      level: level ?? this.level,
       totalXp: totalXp ?? this.totalXp,
       xpIntoLevel: xpIntoLevel ?? this.xpIntoLevel,
       xpForNextLevel: xpForNextLevel,
       currentStreak: currentStreak,
+      coins: coins ?? this.coins,
+      vacationModeEnabled: vacationModeEnabled ?? this.vacationModeEnabled,
       avatarUrl: avatarUrl,
     );
   }

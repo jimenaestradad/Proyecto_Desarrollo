@@ -21,33 +21,122 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     Icons.bedtime,
   ];
   static const _categories = ['Health', 'Fitness', 'Learning', 'Mindfulness'];
+  static const _weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
   final _nameController = TextEditingController();
+  final _targetController = TextEditingController();
+  final _unitController = TextEditingController();
+  final _minThresholdController = TextEditingController();
+
   IconData _selectedIcon = _icons.first;
   String _selectedCategory = _categories.first;
-  int _xpReward = 50;
+  HabitType _selectedType = HabitType.quantity;
+  HabitDifficulty _difficulty = HabitDifficulty.medium;
   HabitRepeat _repeat = HabitRepeat.daily;
+  final Set<int> _customDays = {};
+
+  bool _minThresholdEnabled = false;
+  bool _endDateEnabled = false;
+  bool _allowVacationFreeze = true;
+  DateTime? _startDate;
+  DateTime? _endDate;
+
   bool _isSaving = false;
+
+  bool get _needsTarget => _selectedType != HabitType.binary;
+  bool get _supportsThreshold =>
+      _selectedType != HabitType.binary && _selectedType != HabitType.limit;
 
   @override
   void dispose() {
     _nameController.dispose();
+    _targetController.dispose();
+    _unitController.dispose();
+    _minThresholdController.dispose();
     super.dispose();
+  }
+
+  void _selectType(HabitType type) {
+    setState(() {
+      _selectedType = type;
+      if (type == HabitType.multipleCompletion) {
+        _unitController.text = 'times';
+      }
+      if (!_supportsThreshold) _minThresholdEnabled = false;
+    });
+  }
+
+  Future<void> _pickDateRange() async {
+    final now = DateTime.now();
+    final start = await showDatePicker(
+      context: context,
+      initialDate: _startDate ?? now,
+      firstDate: now.subtract(const Duration(days: 1)),
+      lastDate: DateTime(now.year + 2),
+    );
+    if (start == null || !mounted) return;
+    final end = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? start.add(const Duration(days: 30)),
+      firstDate: start,
+      lastDate: DateTime(now.year + 2),
+    );
+    if (end == null || !mounted) return;
+    setState(() {
+      _startDate = start;
+      _endDate = end;
+    });
+  }
+
+  String _dateRangeLabel() {
+    if (_startDate == null || _endDate == null) {
+      return 'Tap to choose a start & end date';
+    }
+    String format(DateTime d) => '${d.month}/${d.day}/${d.year}';
+    return '${format(_startDate!)} – ${format(_endDate!)}';
   }
 
   Future<void> _saveHabit() async {
     if (_isSaving) return;
+
+    if (_needsTarget && double.tryParse(_targetController.text.trim()) == null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Enter a valid ideal target.')),
+        );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     final enteredName = _nameController.text.trim();
+    final target = _needsTarget
+        ? double.tryParse(_targetController.text.trim())
+        : null;
+    final unit = _needsTarget ? _unitController.text.trim() : null;
+    final minThreshold = (_minThresholdEnabled && _supportsThreshold)
+        ? double.tryParse(_minThresholdController.text.trim())
+        : null;
+
     final habit = Habit(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: enteredName.isEmpty ? 'New Habit' : enteredName,
       subtitle: _selectedCategory,
       icon: _selectedIcon,
       color: AppColors.terracotta,
-      xpReward: _xpReward,
+      xpReward: _difficulty.baseXp,
+      coinReward: _difficulty.baseXp ~/ 2,
       repeat: _repeat,
+      type: _selectedType,
+      difficulty: _difficulty,
+      targetValue: target,
+      unit: unit == null || unit.isEmpty ? null : unit,
+      minThreshold: minThreshold,
+      customDays: _repeat == HabitRepeat.custom ? {..._customDays} : null,
+      allowVacationFreeze: _allowVacationFreeze,
+      startDate: _endDateEnabled ? _startDate : null,
+      endDate: _endDateEnabled ? _endDate : null,
     );
 
     await AppData.habits.addHabit(habit);
@@ -166,51 +255,124 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                         },
                       ),
                       const SizedBox(height: AppSpacing.stackMd),
+                      _FieldLabel(label: 'Tracking Type'),
+                      const SizedBox(height: AppSpacing.unit),
+                      GridView.count(
+                        crossAxisCount: 2,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisSpacing: AppSpacing.stackSm,
+                        mainAxisSpacing: AppSpacing.stackSm,
+                        childAspectRatio: 2.4,
+                        children: [
+                          for (final type in HabitType.values)
+                            _TypeCard(
+                              type: type,
+                              selected: _selectedType == type,
+                              onTap: () => _selectType(type),
+                            ),
+                        ],
+                      ),
+                      if (_needsTarget) ...[
+                        const SizedBox(height: AppSpacing.stackMd),
+                        _FieldLabel(label: 'Ideal Target'),
+                        const SizedBox(height: AppSpacing.unit),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: TextField(
+                                controller: _targetController,
+                                keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                style: AppTextStyles.bodyLg,
+                                decoration: _fieldDecoration(hintText: '1000'),
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.stackSm),
+                            Expanded(
+                              child: TextField(
+                                controller: _unitController,
+                                enabled: _selectedType != HabitType.multipleCompletion,
+                                textAlign: TextAlign.center,
+                                style: AppTextStyles.bodyLg,
+                                decoration: _fieldDecoration(hintText: 'unit'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (_supportsThreshold) ...[
+                        const SizedBox(height: AppSpacing.stackMd),
+                        _ToggleRow(
+                          title: 'Minimum Threshold',
+                          subtitle: 'Partial credit protection',
+                          value: _minThresholdEnabled,
+                          onChanged: (value) =>
+                              setState(() => _minThresholdEnabled = value),
+                        ),
+                        if (_minThresholdEnabled) ...[
+                          const SizedBox(height: AppSpacing.stackSm),
+                          TextField(
+                            controller: _minThresholdController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            style: AppTextStyles.bodyLg,
+                            decoration: _fieldDecoration(hintText: '750'),
+                          ),
+                          const SizedBox(height: AppSpacing.stackSm),
+                          const _InfoBanner(
+                            icon: Icons.eco,
+                            message:
+                                "Preserves streak & awards 75% XP if the ideal target isn't reached.",
+                          ),
+                        ],
+                      ],
+                      const SizedBox(height: AppSpacing.stackMd),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           const Expanded(
-                            child: _FieldLabel(label: 'XP Reward'),
-                          ),
-                          Text(
-                            '$_xpReward XP',
-                            style: AppTextStyles.headlineMd.copyWith(
-                              color: AppColors.terracottaDark,
-                            ),
+                            child: _FieldLabel(label: 'Difficulty'),
                           ),
                         ],
                       ),
                       const SizedBox(height: AppSpacing.unit),
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: AppColors.moss,
-                          inactiveTrackColor: AppColors.mossLight,
-                          thumbColor: AppColors.moss,
-                          overlayColor: AppColors.moss.withValues(alpha: 0.12),
-                          trackHeight: 12,
-                        ),
-                        child: Slider(
-                          min: 10,
-                          max: 100,
-                          divisions: 9,
-                          value: _xpReward.toDouble(),
-                          label: '$_xpReward XP',
-                          onChanged: (value) =>
-                              setState(() => _xpReward = value.round()),
-                        ),
+                      Wrap(
+                        spacing: AppSpacing.stackSm,
+                        runSpacing: AppSpacing.stackSm,
+                        children: [
+                          for (final difficulty in HabitDifficulty.values)
+                            ChoiceChip(
+                              label: Text(
+                                '${difficulty.label} · ${difficulty.baseXp} XP',
+                              ),
+                              selected: _difficulty == difficulty,
+                              showCheckmark: false,
+                              selectedColor: AppColors.mossLight,
+                              backgroundColor: AppColors.white,
+                              side: const BorderSide(
+                                color: AppColors.ink,
+                                width: AppBorder.thin,
+                              ),
+                              labelStyle: AppTextStyles.labelLg.copyWith(
+                                color: AppColors.ink,
+                              ),
+                              onSelected: (_) =>
+                                  setState(() => _difficulty = difficulty),
+                            ),
+                        ],
                       ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.gutter,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Easy (10)', style: AppTextStyles.labelSm),
-                            Text('Epic (100)', style: AppTextStyles.labelSm),
-                          ],
-                        ),
+                      const SizedBox(height: AppSpacing.stackSm),
+                      const _InfoBanner(
+                        icon: Icons.bolt,
+                        message:
+                            'Adaptive XP scales between 0.5x–1.5x depending on your consistency over time.',
                       ),
+                      const SizedBox(height: AppSpacing.stackSm),
+                      _RewardPreview(difficulty: _difficulty),
                       const SizedBox(height: AppSpacing.stackMd),
                       _FieldLabel(label: 'Repeat'),
                       const SizedBox(height: AppSpacing.unit),
@@ -236,6 +398,75 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                                   setState(() => _repeat = repeat),
                             ),
                         ],
+                      ),
+                      if (_repeat == HabitRepeat.custom) ...[
+                        const SizedBox(height: AppSpacing.stackSm),
+                        Wrap(
+                          spacing: AppSpacing.unit,
+                          runSpacing: AppSpacing.unit,
+                          children: [
+                            for (var day = 1; day <= 7; day++)
+                              _DayCircle(
+                                label: _weekdayLabels[day - 1],
+                                selected: _customDays.contains(day),
+                                onTap: () => setState(() {
+                                  if (!_customDays.remove(day)) {
+                                    _customDays.add(day);
+                                  }
+                                }),
+                              ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.stackMd),
+                      _ToggleRow(
+                        title: 'Set End Date',
+                        subtitle:
+                            'Auto-archives history without deleting statistics or streak records.',
+                        value: _endDateEnabled,
+                        onChanged: (value) =>
+                            setState(() => _endDateEnabled = value),
+                      ),
+                      if (_endDateEnabled) ...[
+                        const SizedBox(height: AppSpacing.stackSm),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
+                          onTap: _pickDateRange,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.containerPaddingMobile,
+                              vertical: AppSpacing.gutter,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.white,
+                              borderRadius: BorderRadius.circular(AppRadius.sm),
+                              border: Border.all(
+                                color: AppColors.ink,
+                                width: AppBorder.thin,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.date_range, color: AppColors.inkMuted),
+                                const SizedBox(width: AppSpacing.stackSm),
+                                Expanded(
+                                  child: Text(
+                                    _dateRangeLabel(),
+                                    style: AppTextStyles.bodyMd,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.stackMd),
+                      _ToggleRow(
+                        title: 'Allow Vacation Mode Freeze',
+                        subtitle: 'Pet health protected while paused.',
+                        value: _allowVacationFreeze,
+                        onChanged: (value) =>
+                            setState(() => _allowVacationFreeze = value),
                       ),
                     ],
                   ),
@@ -317,6 +548,249 @@ class _IconChoice extends StatelessWidget {
             color: selected ? AppColors.white : AppColors.ink,
           ),
         ),
+      ),
+    );
+  }
+}
+
+IconData _typeIcon(HabitType type) => switch (type) {
+  HabitType.binary => Icons.check_circle,
+  HabitType.quantity => Icons.show_chart,
+  HabitType.duration => Icons.timer,
+  HabitType.multipleCompletion => Icons.checklist,
+  HabitType.limit => Icons.shield,
+  HabitType.cumulative => Icons.stacked_line_chart,
+};
+
+class _TypeCard extends StatelessWidget {
+  const _TypeCard({
+    required this.type,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final HabitType type;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? AppColors.moss : AppColors.white,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.stackSm),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                _typeIcon(type),
+                color: selected ? AppColors.white : AppColors.ink,
+                size: 22,
+              ),
+              const SizedBox(width: AppSpacing.stackSm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      type.label,
+                      style: AppTextStyles.labelLg.copyWith(
+                        color: selected ? AppColors.white : AppColors.ink,
+                      ),
+                    ),
+                    Text(
+                      type.description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.labelSm.copyWith(
+                        color: selected
+                            ? AppColors.white.withValues(alpha: 0.85)
+                            : AppColors.inkFaint,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DayCircle extends StatelessWidget {
+  const _DayCircle({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? AppColors.moss : AppColors.white,
+      shape: CircleBorder(
+        side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox.square(
+          dimension: 36,
+          child: Center(
+            child: Text(
+              label,
+              style: AppTextStyles.labelLg.copyWith(
+                color: selected ? AppColors.white : AppColors.ink,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ToggleRow extends StatelessWidget {
+  const _ToggleRow({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: AppTextStyles.labelLg),
+              Text(
+                subtitle,
+                style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
+              ),
+            ],
+          ),
+        ),
+        Switch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: AppColors.white,
+          activeTrackColor: AppColors.moss,
+          inactiveThumbColor: AppColors.white,
+          inactiveTrackColor: AppColors.linenAlt,
+        ),
+      ],
+    );
+  }
+}
+
+class _InfoBanner extends StatelessWidget {
+  const _InfoBanner({required this.message, required this.icon});
+
+  final String message;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.gutter,
+        vertical: AppSpacing.stackSm,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.sky,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.ink, size: 20),
+          const SizedBox(width: AppSpacing.stackSm),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.labelLg.copyWith(color: AppColors.ink),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RewardPreview extends StatelessWidget {
+  const _RewardPreview({required this.difficulty});
+
+  final HabitDifficulty difficulty;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.gutter),
+      decoration: BoxDecoration(
+        color: AppColors.mustardLight,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.white,
+              border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+            ),
+            child: const Icon(
+              Icons.card_giftcard,
+              color: AppColors.mustardDark,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.stackSm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '+${difficulty.baseXp} XP',
+                  style: AppTextStyles.labelLg.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  '+${difficulty.baseXp ~/ 2} Coins · Pet care & shop',
+                  style: AppTextStyles.labelSm.copyWith(
+                    color: AppColors.inkMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

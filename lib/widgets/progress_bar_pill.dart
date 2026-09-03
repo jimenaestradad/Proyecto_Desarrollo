@@ -11,6 +11,7 @@ class ProgressBarPill extends StatelessWidget {
     this.color = AppColors.moss,
     this.trackColor = AppColors.linen,
     this.bordered = true,
+    this.thresholdFraction,
   });
 
   final double progress;
@@ -18,6 +19,10 @@ class ProgressBarPill extends StatelessWidget {
   final Color color;
   final Color trackColor;
   final bool bordered;
+
+  /// Optional minimum-threshold tick mark (0–1), drawn as a thin ink line
+  /// inside the track — used by quantity/duration/cumulative habit cards.
+  final double? thresholdFraction;
 
   @override
   Widget build(BuildContext context) {
@@ -30,11 +35,30 @@ class ProgressBarPill extends StatelessWidget {
             ? Border.all(color: AppColors.ink, width: AppBorder.thin)
             : null,
       ),
-      alignment: Alignment.centerLeft,
       clipBehavior: Clip.antiAlias,
-      child: FractionallySizedBox(
-        widthFactor: progress.clamp(0, 1),
-        child: Container(color: color),
+      child: Stack(
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: progress.clamp(0, 1),
+              child: Container(height: height, color: color),
+            ),
+          ),
+          if (thresholdFraction != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: thresholdFraction!.clamp(0, 1),
+                alignment: Alignment.centerRight,
+                child: Container(
+                  width: AppBorder.standard,
+                  height: height,
+                  color: AppColors.ink.withValues(alpha: 0.5),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
