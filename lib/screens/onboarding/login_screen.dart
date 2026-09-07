@@ -96,15 +96,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                 icon: Icons.g_mobiledata,
                                 onPressed: () => _showMessage('Coming soon'),
                               ),
-                              const SizedBox(height: AppSpacing.stackSm),
-                              _socialButton(
-                                label: 'Continue with Apple',
-                                icon: Icons.apple,
-                                backgroundColor: AppColors.ink,
-                                foregroundColor: AppColors.white,
-                                borderColor: AppColors.ink,
-                                onPressed: () => _showMessage('Coming soon'),
-                              ),
                               const SizedBox(height: AppSpacing.stackMd),
                               const _Divider(),
                               const SizedBox(height: AppSpacing.stackMd),
@@ -166,9 +157,6 @@ class _LoginScreenState extends State<LoginScreen> {
     required String label,
     required IconData icon,
     required VoidCallback onPressed,
-    Color backgroundColor = AppColors.linenAlt,
-    Color foregroundColor = AppColors.ink,
-    Color borderColor = AppColors.ink,
   }) {
     return SizedBox(
       width: double.infinity,
@@ -177,15 +165,15 @@ class _LoginScreenState extends State<LoginScreen> {
         icon: Icon(icon, size: 24),
         label: Text(label),
         style: OutlinedButton.styleFrom(
-          backgroundColor: backgroundColor,
-          foregroundColor: foregroundColor,
+          backgroundColor: AppColors.linenAlt,
+          foregroundColor: AppColors.ink,
           minimumSize: const Size.fromHeight(48),
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.stackMd,
             vertical: AppSpacing.stackSm,
           ),
           textStyle: AppTextStyles.labelLg,
-          side: BorderSide(color: borderColor, width: AppBorder.standard),
+          side: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.full),
           ),

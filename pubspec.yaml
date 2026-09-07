@@ -19,6 +19,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/images/nori_breathing/
 
 # firebase_core_web 3.11.0 requires Dart >=3.12.0 (isA<T>() on Object) but this
 # project is on Dart 3.10.7 — see https://github.com/firebase/flutterfire/issues/18611

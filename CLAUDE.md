@@ -43,6 +43,10 @@ HTML mockup — a design reference, not part of the Flutter build.
 - When proposing non-trivial work, label claims **CONFIRMED** (backed by code/docs/requirements),
   **INFERRED** (implied but not stated), or **UNRESOLVED** (needs a decision — see
   `docs/OPEN_DECISIONS.md`).
+- **Icons, never emoji**, anywhere in the UI — use `Icons.*` (Material Symbols) for every glyph
+  (habit type badges, care actions, nav, empty states, etc.). Target platform is Android only for
+  now (this ships as an APK, not iOS — see `docs/OVERVIEW.md`), and emoji glyphs render
+  inconsistently across Android OEM keyboards/fonts in a way a bundled icon font doesn't.
 
 ## Working with valevasqc
 
@@ -50,3 +54,9 @@ When valevasqc is driving, spawn a Codex subagent (`mcp__codex__codex`) for pure
 work whenever it would save Claude tokens — boilerplate, repetitive edits, formatting-level
 refactors. All reasoning, design, and product/scope decisions stay with Claude; never delegate
 judgment calls to Codex.
+
+Don't run exhaustive Playwright verification passes (multiple viewports, every interaction
+screenshotted, etc.) for small/incremental UI changes — it wastes tokens. Reserve Playwright for
+big changes where something may plausibly have gone wrong (a new screen, a structural layout
+change, a bug fix you can't otherwise confirm); for small tweaks, a quick `flutter analyze` plus
+reasoning about the change is enough.

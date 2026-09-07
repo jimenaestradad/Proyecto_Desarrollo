@@ -19,12 +19,14 @@ class NoriShell extends StatefulWidget {
 class _NoriShellState extends State<NoriShell> {
   int _index = 0;
 
-  static const _tabs = [
-    HomeScreen(),
-    HabitsListScreen(),
-    CalendarScreen(),
-    AchievementsScreen(),
-    ProfileScreen(),
+  void _openHabitsTab() => setState(() => _index = 1);
+
+  List<Widget> get _tabs => [
+    HomeScreen(onOpenHabits: _openHabitsTab),
+    const HabitsListScreen(),
+    const CalendarScreen(),
+    const AchievementsScreen(),
+    const ProfileScreen(),
   ];
 
   @override

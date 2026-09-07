@@ -38,6 +38,10 @@ class AppColors {
   // Sky — "water" habit icon bg.
   static const sky = Color(0xFFD9E7EA);
 
+  // Sky blue — hygiene/"clean" vital ring fill. Distinct from [sky] (a pale
+  // background tint) — this needs to read clearly as a ring fill.
+  static const skyBlue = Color(0xFF7AB8D9);
+
   // Status — kept from Material defaults, no equivalent in the 2a mockup.
   static const error = Color(0xFFBA1A1A);
   static const onError = Color(0xFFFFFFFF);

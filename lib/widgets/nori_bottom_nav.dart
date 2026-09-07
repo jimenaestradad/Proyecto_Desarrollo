@@ -26,18 +26,19 @@ class NoriBottomNav extends StatelessWidget {
         color: AppColors.white,
         border: Border(top: BorderSide(color: AppColors.ink, width: AppBorder.standard)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       child: SafeArea(
         top: false,
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             for (var i = 0; i < _items.length; i++)
-              _NavItem(
-                icon: _items[i].icon,
-                label: _items[i].label,
-                selected: i == currentIndex,
-                onTap: () => onTap(i),
+              Expanded(
+                child: _NavItem(
+                  icon: _items[i].icon,
+                  label: _items[i].label,
+                  selected: i == currentIndex,
+                  onTap: () => onTap(i),
+                ),
               ),
           ],
         ),
@@ -66,7 +67,7 @@ class _NavItem extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppRadius.sm),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         decoration: BoxDecoration(
           color: selected ? AppColors.mossLight : Colors.transparent,
           borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -83,11 +84,24 @@ class _NavItem extends StatelessWidget {
               color: selected ? AppColors.mossDark : AppColors.inkFaint,
             ),
             const SizedBox(height: 4),
-            Text(
-              label,
-              style: AppTextStyles.labelSm.copyWith(
-                color: selected ? AppColors.ink : AppColors.inkFaint,
-                fontWeight: FontWeight.w700,
+            // FittedBox instead of a fixed font size + ellipsis: on narrow
+            // screens five labels (one as long as "Achievements") in equal
+            // Expanded slices don't all fit at full size, and truncating to
+            // "Achiev…" reads as broken. Scaling down keeps the whole word.
+            SizedBox(
+              width: double.infinity,
+              height: 14,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: AppTextStyles.labelSm.copyWith(
+                    letterSpacing: 0,
+                    color: selected ? AppColors.ink : AppColors.inkFaint,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ),
           ],

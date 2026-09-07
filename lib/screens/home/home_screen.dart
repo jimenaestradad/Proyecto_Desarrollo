@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/habit_repository.dart';
@@ -6,16 +8,24 @@ import 'package:nori/models/inventory.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/models/pet.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
-import 'package:nori/screens/habits/add_habit_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/habit_tile.dart';
 import 'package:nori/widgets/nori_avatar.dart';
-import 'package:nori/widgets/pet_stat_bar.dart';
+import 'package:nori/widgets/nori_room_stage.dart';
+import 'package:nori/widgets/pet_vital_ring.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
-import 'package:nori/widgets/xp_pill.dart';
+import 'package:nori/widgets/tactile_button.dart';
 
+/// Home: Nori's room. The room is a true full-bleed background (edge to
+/// edge, not a padded/rounded card) with the HUD and the habit panel
+/// floating over it — habits get a single-line summary plus one actionable
+/// item, not the full list (that lives on the Habits tab, reached via
+/// [onOpenHabits] or by dragging the panel's handle up).
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, required this.onOpenHabits});
+
+  /// Switches the shell to the Habits tab.
+  final VoidCallback onOpenHabits;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -88,7 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await _reloadHabits();
   }
 
-  /// The compact Today's Goal list uses [HabitTile], whose checkbox only
+  /// The compact Today's Goal row uses [HabitTile], whose checkbox only
   /// really means "toggle" for binary habits. For every other type, a tap
   /// attempts a claim instead — there's no un-claiming from this condensed
   /// view (full per-type editing lives on the Habits tab).
@@ -126,12 +136,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _openAddHabit() async {
-    final added = await Navigator.of(
+  void _openCustomization() {
+    Navigator.of(
       context,
-    ).push<bool>(MaterialPageRoute(builder: (_) => const AddHabitScreen()));
-    if (!mounted) return;
-    if (added == true) await _reloadHabits();
+    ).push(MaterialPageRoute(builder: (_) => const CustomizationScreen()));
   }
 
   @override
@@ -141,171 +149,301 @@ class _HomeScreenState extends State<HomeScreen> {
     final pet = _pet;
     final inventory = _inventory;
 
-    return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openAddHabit,
-        shape: const CircleBorder(
-          side: BorderSide(color: AppColors.ink, width: AppBorder.standard),
-        ),
-        backgroundColor: AppColors.terracotta,
-        foregroundColor: AppColors.white,
-        elevation: 0,
-        child: const Icon(Icons.add),
-      ),
-      body: SafeArea(
-        child: user == null || habits == null || pet == null || inventory == null
-            ? const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 800;
-                  final horizontalPadding = isWide
-                      ? AppSpacing.containerPaddingDesktop
-                      : AppSpacing.containerPaddingMobile;
-                  final completedCount = habits
-                      .where((habit) => habit.isCompletedToday)
-                      .length;
-                  final completion = habits.isEmpty
-                      ? 0.0
-                      : completedCount / habits.length;
+    if (user == null || habits == null || pet == null || inventory == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      AppSpacing.gutter,
-                      horizontalPadding,
-                      AppSpacing.stackLg * 2,
-                    ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1200),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _HomeHeader(user: user),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            _EvolutionBanner(pet: pet, userLevel: user.level),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            _PetVitalsCard(pet: pet),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            InkWell(
-                              borderRadius: BorderRadius.circular(AppRadius.lg),
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const CustomizationScreen(),
-                                ),
-                              ),
-                              child: Container(
-                                height: isWide ? 300 : 220,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: AppColors.mossLight,
-                                  borderRadius: BorderRadius.circular(
-                                    AppRadius.lg,
-                                  ),
-                                  border: Border.all(
-                                    color: AppColors.ink,
-                                    width: AppBorder.standard,
-                                  ),
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.pets,
-                                      size: isWide ? 128 : 96,
-                                      color: AppColors.ink,
-                                    ),
-                                    const SizedBox(height: AppSpacing.unit),
-                                    Text(
-                                      'tap to dress up Nori',
-                                      style: AppTextStyles.headlineMd.copyWith(
-                                        fontSize: 13,
-                                        color: AppColors.mossDark,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            _PetCareRow(
-                              inventory: inventory,
-                              onFeed: () => _careAction(
-                                consume: AppData.inventory.consumeSnack,
-                                act: AppData.pet.feed,
-                              ),
-                              onGroom: () => _careAction(
-                                consume: AppData.inventory.consumeSoap,
-                                act: AppData.pet.groom,
-                              ),
-                              onPlay: () => _careAction(
-                                consume: AppData.inventory.consumeToy,
-                                act: AppData.pet.play,
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            _TodayGoalCard(
-                              habits: habits,
-                              completedCount: completedCount,
-                              completion: completion,
-                              streak: user.currentStreak,
-                              onToggle: _onHabitTileToggle,
-                            ),
-                          ],
+    final completedCount = habits.where((habit) => habit.isCompletedToday).length;
+    final completion = habits.isEmpty ? 0.0 : completedCount / habits.length;
+
+    return Scaffold(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth >= 800;
+          final horizontalPadding = isWide
+              ? AppSpacing.containerPaddingDesktop
+              : AppSpacing.containerPaddingMobile;
+
+          // Align+SizedBox, not Center+ConstrainedBox: Center hands its
+          // child loose constraints, so the Stack below would size itself
+          // to its one non-positioned child (the HUD) instead of filling
+          // the screen — collapsing the whole layout to HUD-height and
+          // leaving the room background and the bottom-pinned habit panel
+          // with nothing to actually fill or pin against.
+          return Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: constraints.maxWidth.clamp(0.0, 560.0),
+              height: constraints.maxHeight,
+              child: Stack(
+                children: [
+                  // Full-bleed: fills the whole body edge to edge, not a
+                  // padded/rounded card — the HUD and habit panel float
+                  // over it instead of sitting in a separate section.
+                  Positioned.fill(
+                    child: NoriRoomStage(onTapNori: _openCustomization),
+                  ),
+                  SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        horizontalPadding,
+                        AppSpacing.stackSm,
+                        horizontalPadding,
+                        0,
+                      ),
+                      child: _RoomHud(
+                        user: user,
+                        pet: pet,
+                        inventory: inventory,
+                        onFeed: () => _careAction(
+                          consume: AppData.inventory.consumeSnack,
+                          act: AppData.pet.feed,
+                        ),
+                        onGroom: () => _careAction(
+                          consume: AppData.inventory.consumeSoap,
+                          act: AppData.pet.groom,
+                        ),
+                        onPlay: () => _careAction(
+                          consume: AppData.inventory.consumeToy,
+                          act: AppData.pet.play,
                         ),
                       ),
                     ),
-                  );
-                },
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _HabitPanel(
+                      habits: habits,
+                      completedCount: completedCount,
+                      completion: completion,
+                      streak: user.currentStreak,
+                      onToggle: _onHabitTileToggle,
+                      onOpenHabits: widget.onOpenHabits,
+                    ),
+                  ),
+                ],
               ),
+            ),
+          );
+        },
       ),
     );
   }
 }
 
-class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({required this.user});
+/// Floats over the top of the room: avatar, a card with name/level (tap the
+/// level bar to reveal the evolution + XP readout), the three vital rings,
+/// and a coins chip.
+class _RoomHud extends StatefulWidget {
+  const _RoomHud({
+    required this.user,
+    required this.pet,
+    required this.inventory,
+    required this.onFeed,
+    required this.onGroom,
+    required this.onPlay,
+  });
 
   final NoriUser user;
+  final Pet pet;
+  final Inventory inventory;
+  final VoidCallback onFeed;
+  final VoidCallback onGroom;
+  final VoidCallback onPlay;
+
+  @override
+  State<_RoomHud> createState() => _RoomHudState();
+}
+
+class _RoomHudState extends State<_RoomHud> {
+  bool _showEvolution = false;
+
+  static String _formattedXp(int xp) => xp.toString().replaceAllMapped(
+    RegExp(r'\B(?=(\d{3})+(?!\d))'),
+    (match) => ',',
+  );
+
+  void _showCare({
+    required IconData icon,
+    required Color iconBg,
+    required String vitalLabel,
+    required double vitalValue,
+    required Color vitalColor,
+    required String actionLabel,
+    required int usesLeft,
+    required VoidCallback onConfirm,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _CareActionSheet(
+        icon: icon,
+        iconBg: iconBg,
+        vitalLabel: vitalLabel,
+        vitalValue: vitalValue,
+        vitalColor: vitalColor,
+        actionLabel: actionLabel,
+        usesLeft: usesLeft,
+        onConfirm: () {
+          Navigator.of(sheetContext).pop();
+          onConfirm();
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final user = widget.user;
+    final pet = widget.pet;
+    final inventory = widget.inventory;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        NoriAvatar(imageUrl: user.avatarUrl, size: 48),
-        const SizedBox(width: AppSpacing.stackSm),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Nori', style: AppTextStyles.headlineMd),
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  Text('LEVEL ${user.level}', style: AppTextStyles.labelSm),
-                  const SizedBox(width: AppSpacing.unit),
-                  Flexible(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 104),
-                      child: ProgressBarPill(
-                        progress: user.levelProgress,
-                        height: 8,
-                        color: AppColors.moss,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            NoriAvatar(imageUrl: user.avatarUrl, size: 46),
+            const SizedBox(width: AppSpacing.stackSm),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.white.withValues(alpha: 0.88),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  border: Border.all(color: AppColors.ink, width: AppBorder.standard),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Nori',
+                      style: AppTextStyles.headlineMd.copyWith(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    InkWell(
+                      onTap: () => setState(() => _showEvolution = !_showEvolution),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('LEVEL ${user.level}', style: AppTextStyles.labelSm),
+                          const SizedBox(width: AppSpacing.unit),
+                          SizedBox(
+                            width: 44,
+                            child: ProgressBarPill(
+                              progress: user.levelProgress,
+                              height: 6,
+                              color: AppColors.moss,
+                              trackColor: AppColors.linen,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const Icon(Icons.star, size: 11, color: AppColors.mustardDark),
+                          const SizedBox(width: 2),
+                          Text(
+                            _formattedXp(user.totalXp),
+                            style: AppTextStyles.labelSm.copyWith(color: AppColors.ink),
+                          ),
+                          const SizedBox(width: 3),
+                          Icon(
+                            _showEvolution
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                            size: 14,
+                            color: AppColors.inkFaint,
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Expands the card itself (not a separate chip below
+                    // it) to show the evolution stage — XP now lives
+                    // inline next to the level bar above, always visible.
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
+                      alignment: Alignment.topLeft,
+                      child: _showEvolution
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: _EvolutionDetails(
+                                pet: pet,
+                                userLevel: user.level,
+                              ),
+                            )
+                          : const SizedBox(width: double.infinity),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-        ),
-        const SizedBox(width: AppSpacing.unit),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            XpPill(xp: user.totalXp),
-            const SizedBox(height: 4),
+            ),
+            const SizedBox(width: AppSpacing.unit),
             _CoinPill(coins: user.coins),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.gutter),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PetVitalRing(
+              icon: const Icon(Icons.favorite, size: 16, color: AppColors.ink),
+              label: 'Happy',
+              value: pet.happiness,
+              color: AppColors.moss,
+              onTap: () => _showCare(
+                icon: Icons.favorite,
+                iconBg: AppColors.mossLight,
+                vitalLabel: 'Happiness',
+                vitalValue: pet.happiness,
+                vitalColor: AppColors.moss,
+                actionLabel: 'Play',
+                usesLeft: inventory.toys,
+                onConfirm: widget.onPlay,
+              ),
+            ),
+            const SizedBox(width: 14),
+            PetVitalRing(
+              icon: const Icon(Icons.restaurant, size: 16, color: AppColors.ink),
+              label: 'Fed',
+              value: pet.hunger,
+              color: AppColors.terracotta,
+              onTap: () => _showCare(
+                icon: Icons.restaurant,
+                iconBg: AppColors.sky,
+                vitalLabel: 'Hunger',
+                vitalValue: pet.hunger,
+                vitalColor: AppColors.terracotta,
+                actionLabel: 'Feed',
+                usesLeft: inventory.snacks,
+                onConfirm: widget.onFeed,
+              ),
+            ),
+            const SizedBox(width: 14),
+            PetVitalRing(
+              icon: const Icon(Icons.wash, size: 16, color: AppColors.ink),
+              label: 'Clean',
+              value: pet.hygiene,
+              color: AppColors.skyBlue,
+              onTap: () => _showCare(
+                icon: Icons.soap,
+                iconBg: AppColors.mossLight,
+                vitalLabel: 'Hygiene',
+                vitalValue: pet.hygiene,
+                vitalColor: AppColors.skyBlue,
+                actionLabel: 'Groom',
+                usesLeft: inventory.soap,
+                onConfirm: widget.onGroom,
+              ),
+            ),
           ],
         ),
       ],
@@ -321,26 +459,33 @@ class _CoinPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.full),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+        color: AppColors.mustard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.monetization_on, size: 14, color: AppColors.mustardDark),
+          const Icon(Icons.monetization_on, size: 14, color: AppColors.ink),
           const SizedBox(width: 4),
-          Text('$coins', style: AppTextStyles.labelSm.copyWith(color: AppColors.ink)),
+          Text(
+            '$coins',
+            style: AppTextStyles.labelSm.copyWith(color: AppColors.ink, fontSize: 11),
+          ),
         ],
       ),
     );
   }
 }
 
-class _EvolutionBanner extends StatelessWidget {
-  const _EvolutionBanner({required this.pet, required this.userLevel});
+/// Revealed by tapping the level row: just the evolution stage/distance —
+/// XP moved out to sit inline next to the level bar instead. Expands the
+/// name/level card itself (no border/background of its own) rather than
+/// spawning a separate chip underneath it.
+class _EvolutionDetails extends StatelessWidget {
+  const _EvolutionDetails({required this.pet, required this.userLevel});
 
   final Pet pet;
   final int userLevel;
@@ -350,186 +495,101 @@ class _EvolutionBanner extends StatelessWidget {
     final evolved = pet.stage != PetEvolutionStage.baby;
     final levelsLeft = pet.levelsUntilNextEvolution(userLevel);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.gutter,
-        vertical: AppSpacing.stackSm,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.mossLight,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.auto_awesome, color: AppColors.mossDark, size: 20),
-          const SizedBox(width: AppSpacing.stackSm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${pet.stage.label} · Evolution 1 at Lvl ${pet.evolutionLevelThreshold}',
-                  style: AppTextStyles.labelLg.copyWith(color: AppColors.mossDark),
-                ),
-                Text(
-                  evolved
-                      ? 'Nori has evolved!'
-                      : '$levelsLeft ${levelsLeft == 1 ? 'level' : 'levels'} until Evolution 1',
-                  style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.stackSm),
-          SizedBox(
-            width: 64,
-            child: ProgressBarPill(
-              progress: pet.progressToNextEvolution(userLevel),
-              height: 8,
-              color: AppColors.moss,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PetVitalsCard extends StatelessWidget {
-  const _PetVitalsCard({required this.pet});
-
-  final Pet pet;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.gutter),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
-      ),
-      child: Column(
-        children: [
-          PetStatBar(icon: Icons.set_meal, label: 'Hunger', value: pet.hunger),
-          const SizedBox(height: AppSpacing.stackSm),
-          PetStatBar(icon: Icons.water_drop, label: 'Hygiene', value: pet.hygiene),
-          const SizedBox(height: AppSpacing.stackSm),
-          PetStatBar(icon: Icons.favorite, label: 'Happiness', value: pet.happiness),
-        ],
-      ),
-    );
-  }
-}
-
-class _PetCareRow extends StatelessWidget {
-  const _PetCareRow({
-    required this.inventory,
-    required this.onFeed,
-    required this.onGroom,
-    required this.onPlay,
-  });
-
-  final Inventory inventory;
-  final VoidCallback onFeed;
-  final VoidCallback onGroom;
-  final VoidCallback onPlay;
-
-  @override
-  Widget build(BuildContext context) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        _PetActionButton(
-          icon: Icons.restaurant,
-          iconBg: AppColors.sky,
-          label: 'Feed',
-          usesLeft: inventory.snacks,
-          onPressed: onFeed,
-        ),
-        const SizedBox(width: AppSpacing.stackSm),
-        _PetActionButton(
-          icon: Icons.soap,
-          iconBg: AppColors.mossLight,
-          label: 'Groom',
-          usesLeft: inventory.soap,
-          onPressed: onGroom,
-        ),
-        const SizedBox(width: AppSpacing.stackSm),
-        _PetActionButton(
-          icon: Icons.sports_baseball,
-          iconBg: AppColors.mustardLight,
-          label: 'Play',
-          usesLeft: inventory.toys,
-          onPressed: onPlay,
+        const Icon(Icons.auto_awesome, size: 13, color: AppColors.mossDark),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            evolved
+                ? '${pet.stage.label} · Evolved!'
+                : '${pet.stage.label} · $levelsLeft ${levelsLeft == 1 ? 'level' : 'levels'} to Evo 1',
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.labelSm.copyWith(color: AppColors.mossDark),
+          ),
         ),
       ],
     );
   }
 }
 
-class _PetActionButton extends StatelessWidget {
-  const _PetActionButton({
+/// Bottom sheet opened by tapping a vital ring: shows that stat and the one
+/// action that cares for it.
+class _CareActionSheet extends StatelessWidget {
+  const _CareActionSheet({
     required this.icon,
     required this.iconBg,
-    required this.label,
+    required this.vitalLabel,
+    required this.vitalValue,
+    required this.vitalColor,
+    required this.actionLabel,
     required this.usesLeft,
-    required this.onPressed,
+    required this.onConfirm,
   });
 
   final IconData icon;
   final Color iconBg;
-  final String label;
+  final String vitalLabel;
+  final double vitalValue;
+  final Color vitalColor;
+  final String actionLabel;
   final int usesLeft;
-  final VoidCallback onPressed;
+  final VoidCallback onConfirm;
 
   @override
   Widget build(BuildContext context) {
     final available = usesLeft > 0;
-    return Expanded(
-      child: Material(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-          onTap: available ? onPressed : null,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.stackSm),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-              border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: available ? iconBg : AppColors.linenAlt,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.gutter),
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.gutter),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.ink, width: AppBorder.standard),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: iconBg,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+                    ),
+                    child: Icon(icon, color: AppColors.ink),
                   ),
-                  child: Icon(
-                    icon,
-                    size: 18,
-                    color: available ? AppColors.ink : AppColors.inkFaint,
+                  const SizedBox(width: AppSpacing.stackSm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(vitalLabel, style: AppTextStyles.headlineMd.copyWith(fontSize: 18)),
+                        Text(
+                          '${vitalValue.round()}%',
+                          style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  label,
-                  style: AppTextStyles.labelLg.copyWith(
-                    color: available ? AppColors.ink : AppColors.inkFaint,
-                  ),
-                ),
-                Text(
-                  available ? 'x$usesLeft' : 'Buy more',
-                  style: AppTextStyles.labelSm.copyWith(
-                    color: available ? AppColors.inkMuted : AppColors.terracottaDark,
-                  ),
-                ),
-              ],
-            ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.stackSm),
+              ProgressBarPill(progress: vitalValue / 100, color: vitalColor),
+              const SizedBox(height: AppSpacing.stackMd),
+              TactileButton(
+                label: available ? '$actionLabel (x$usesLeft left)' : 'Out of stock — visit the Shop',
+                icon: icon,
+                onPressed: available ? onConfirm : null,
+              ),
+            ],
           ),
         ),
       ),
@@ -537,13 +597,19 @@ class _PetActionButton extends StatelessWidget {
   }
 }
 
-class _TodayGoalCard extends StatelessWidget {
-  const _TodayGoalCard({
+/// Floats over the bottom of the room as frosted glass — not a section
+/// below it. Shows a single-line summary plus the one habit still open;
+/// dragging the handle/header up (past a small threshold) expands the panel
+/// in place to show every habit due today. Tapping the chevron still jumps
+/// to the full Habits tab.
+class _HabitPanel extends StatefulWidget {
+  const _HabitPanel({
     required this.habits,
     required this.completedCount,
     required this.completion,
     required this.streak,
     required this.onToggle,
+    required this.onOpenHabits,
   });
 
   final List<Habit> habits;
@@ -551,102 +617,234 @@ class _TodayGoalCard extends StatelessWidget {
   final double completion;
   final int streak;
   final Future<void> Function(Habit habit, bool completed) onToggle;
+  final VoidCallback onOpenHabits;
+
+  @override
+  State<_HabitPanel> createState() => _HabitPanelState();
+}
+
+class _HabitPanelState extends State<_HabitPanel> {
+  // Distance the drag has to travel past its start before it flips the
+  // expanded state — not a live 1:1 follow, so a longer list doesn't need
+  // proportional-height math mid-gesture, just a toggle at each end.
+  static const _dragToggleDistance = 32.0;
+
+  bool _expanded = false;
+  double _dragAccum = 0;
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    _dragAccum += details.delta.dy;
+    if (!_expanded && _dragAccum <= -_dragToggleDistance) {
+      setState(() => _expanded = true);
+      _dragAccum = 0;
+    } else if (_expanded && _dragAccum >= _dragToggleDistance) {
+      setState(() => _expanded = false);
+      _dragAccum = 0;
+    }
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    _dragAccum = 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final habits = widget.habits;
+    Habit? nextHabit;
+    for (final habit in habits) {
+      if (!habit.isCompletedToday) {
+        nextHabit = habit;
+        break;
+      }
+    }
+    final maxExpandedListHeight = MediaQuery.sizeOf(context).height * 0.4;
+
+    return ClipRRect(
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(26),
+          topRight: Radius.circular(26),
+        ),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, AppSpacing.stackMd),
+            decoration: BoxDecoration(
+              // Matches the design spec's rgba(255,255,255,.5) exactly —
+              // earlier "more transparent" tweaks had pushed this down to
+              // 0.18, which let too much of the warm blurred room floor
+              // show through and read as a flat tan card instead of
+              // frosted glass.
+              color: AppColors.white.withValues(alpha: 0.5),
+              // Top + sides only, no bottom: the panel sits flush against
+              // the bottom nav bar, which has its own top border right
+              // there — a bottom border on the panel doubled up with it
+              // and read as one extra-thick line. Top+left+right still
+              // share matching sides at both rounded top corners (the
+              // only rounded ones — bottom stays sharp), which is what
+              // avoids the tapering a mismatched single-side border
+              // caused before; the border here needs a borderRadius of
+              // its own to match the outer ClipRRect, since a
+              // BoxDecoration border with none draws as a sharp rectangle
+              // that gets clipped clean off at the curve otherwise.
+              border: Border(
+                top: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
+                left: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
+                right: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
+              ),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(26),
+                topRight: Radius.circular(26),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onVerticalDragUpdate: _onDragUpdate,
+                  onVerticalDragEnd: _onDragEnd,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 38,
+                          height: 5,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: AppColors.ink.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Text(
+                            "Today's Goal",
+                            style: AppTextStyles.headlineMd.copyWith(fontSize: 19),
+                          ),
+                          if (widget.streak > 0) ...[
+                            const SizedBox(width: AppSpacing.unit),
+                            _StreakChip(streak: widget.streak),
+                          ],
+                          const Spacer(),
+                          Text(
+                            '${widget.completedCount} / ${habits.length}',
+                            style: AppTextStyles.labelLg.copyWith(
+                              color: AppColors.terracottaDark,
+                            ),
+                          ),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(AppRadius.full),
+                            onTap: widget.onOpenHabits,
+                            child: const Padding(
+                              padding: EdgeInsets.only(left: 2),
+                              child: Icon(Icons.chevron_right, color: AppColors.inkFaint),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ProgressBarPill(
+                        progress: widget.completion,
+                        height: 8,
+                        color: AppColors.terracotta,
+                      ),
+                      const SizedBox(height: AppSpacing.stackSm),
+                    ],
+                  ),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOut,
+                  alignment: Alignment.topCenter,
+                  child: habits.isEmpty
+                      ? Text(
+                          'No habits scheduled for today.',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.bodyMd.copyWith(
+                            color: AppColors.inkFaint,
+                          ),
+                        )
+                      : _expanded
+                      ? ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: maxExpandedListHeight,
+                          ),
+                          child: SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (var i = 0; i < habits.length; i++) ...[
+                                  HabitTile(
+                                    habit: habits[i],
+                                    onToggle: (completed) =>
+                                        widget.onToggle(habits[i], completed),
+                                  ),
+                                  if (i != habits.length - 1)
+                                    const SizedBox(height: AppSpacing.stackSm),
+                                ],
+                              ],
+                            ),
+                          ),
+                        )
+                      : nextHabit == null
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.celebration,
+                              size: 18,
+                              color: AppColors.mossDark,
+                            ),
+                            const SizedBox(width: AppSpacing.unit),
+                            Text(
+                              'All done for today!',
+                              style: AppTextStyles.bodyMd.copyWith(
+                                color: AppColors.mossDark,
+                              ),
+                            ),
+                          ],
+                        )
+                      : HabitTile(
+                          habit: nextHabit,
+                          onToggle: (completed) =>
+                              widget.onToggle(nextHabit!, completed),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+  }
+}
+
+class _StreakChip extends StatelessWidget {
+  const _StreakChip({required this.streak});
+
+  final int streak;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.containerPaddingMobile),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
+        color: AppColors.mustardLight,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text("Today's Goal", style: AppTextStyles.headlineMd),
-                        const SizedBox(width: AppSpacing.unit),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.mustardLight,
-                            borderRadius: BorderRadius.circular(AppRadius.full),
-                            border: Border.all(
-                              color: AppColors.ink,
-                              width: AppBorder.thin,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.local_fire_department,
-                                size: 14,
-                                color: AppColors.mustardDark,
-                              ),
-                              const SizedBox(width: 2),
-                              Text(
-                                '${streak}d',
-                                style: AppTextStyles.labelSm.copyWith(
-                                  color: AppColors.mustardDark,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Keep the streak alive!',
-                      style: AppTextStyles.bodyMd.copyWith(
-                        color: AppColors.inkFaint,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: AppSpacing.unit),
-              Text(
-                '$completedCount / ${habits.length}',
-                style: AppTextStyles.labelLg.copyWith(
-                  color: AppColors.terracottaDark,
-                ),
-              ),
-            ],
+          const Icon(Icons.local_fire_department, size: 14, color: AppColors.mustardDark),
+          const SizedBox(width: 2),
+          Text(
+            '${streak}d',
+            style: AppTextStyles.labelSm.copyWith(color: AppColors.mustardDark),
           ),
-          const SizedBox(height: AppSpacing.stackSm),
-          ProgressBarPill(progress: completion, color: AppColors.terracotta),
-          const SizedBox(height: AppSpacing.stackMd),
-          if (habits.isEmpty)
-            Text(
-              'No habits scheduled for today.',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkFaint),
-            )
-          else
-            for (var index = 0; index < habits.length; index++) ...[
-              HabitTile(
-                habit: habits[index],
-                onToggle: (completed) {
-                  onToggle(habits[index], completed);
-                },
-              ),
-              if (index != habits.length - 1)
-                const SizedBox(height: AppSpacing.stackSm),
-            ],
         ],
       ),
     );

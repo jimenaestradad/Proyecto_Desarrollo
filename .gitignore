@@ -23,6 +23,10 @@ migrate_working_dir/
 # is commented out by default.
 #.vscode/
 
+# Raw asset exports (character sheets, source video/gifs) kept locally for
+# reprocessing but not shipped — only assets/images/ is bundled via pubspec.yaml.
+/assets/source/
+
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id
