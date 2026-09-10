@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/achievement.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/nori_avatar.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
@@ -14,7 +15,8 @@ class AchievementsScreen extends StatefulWidget {
   State<AchievementsScreen> createState() => _AchievementsScreenState();
 }
 
-class _AchievementsScreenState extends State<AchievementsScreen> {
+class _AchievementsScreenState extends State<AchievementsScreen>
+    implements Reloadable {
   NoriUser? _user;
   Map<String, List<Achievement>>? _achievementsByCategory;
 
@@ -23,6 +25,9 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
     super.initState();
     _loadData();
   }
+
+  @override
+  Future<void> reload() => _loadData();
 
   Future<void> _loadData() async {
     final user = await AppData.user.getCurrentUser();

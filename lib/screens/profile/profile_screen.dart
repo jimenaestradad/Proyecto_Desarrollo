@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/achievement.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/screens/achievements/achievements_screen.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
 import 'package:nori/screens/leaderboard/leaderboard_screen.dart';
@@ -23,7 +24,8 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen>
+    implements Reloadable {
   NoriUser? _user;
   List<Achievement>? _achievementPreview;
   double? _weeklyCompletion;
@@ -34,6 +36,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _loadData();
   }
+
+  @override
+  Future<void> reload() => _loadData();
 
   Future<void> _loadData() async {
     final user = await AppData.user.getCurrentUser();

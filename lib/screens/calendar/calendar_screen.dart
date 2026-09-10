@@ -4,6 +4,7 @@ import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/calendar_day.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/habit_progress_card.dart';
@@ -17,7 +18,8 @@ class CalendarScreen extends StatefulWidget {
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class _CalendarScreenState extends State<CalendarScreen>
+    implements Reloadable {
   NoriUser? _user;
   CalendarMonthStats? _stats;
   late int _year;
@@ -31,6 +33,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _month = now.month;
     _loadData();
   }
+
+  @override
+  Future<void> reload() => _loadData();
 
   Future<void> _loadData() async {
     final user = await AppData.user.getCurrentUser();

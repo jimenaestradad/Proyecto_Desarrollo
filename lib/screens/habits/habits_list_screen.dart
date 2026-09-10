@@ -4,6 +4,7 @@ import 'package:nori/data/habit_history_store.dart' show dateOnly;
 import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/habit_progress_card.dart';
@@ -18,7 +19,8 @@ class HabitsListScreen extends StatefulWidget {
   State<HabitsListScreen> createState() => _HabitsListScreenState();
 }
 
-class _HabitsListScreenState extends State<HabitsListScreen> {
+class _HabitsListScreenState extends State<HabitsListScreen>
+    implements Reloadable {
   NoriUser? _user;
   List<Habit>? _habits;
   bool _completedToBottom = false;
@@ -36,6 +38,9 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
     super.initState();
     _loadData();
   }
+
+  @override
+  Future<void> reload() => _loadData();
 
   Future<void> _loadData() async {
     final user = await AppData.user.getCurrentUser();

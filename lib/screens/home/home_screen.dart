@@ -7,6 +7,7 @@ import 'package:nori/models/habit.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/models/pet.dart';
+import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
 import 'package:nori/screens/pet/evolution_screen.dart';
 import 'package:nori/theme/app_theme.dart';
@@ -32,7 +33,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    implements Reloadable {
   NoriUser? _user;
   List<Habit>? _habits;
   Pet? _pet;
@@ -43,6 +45,9 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadData();
   }
+
+  @override
+  Future<void> reload() => _loadData();
 
   Future<void> _loadData() async {
     final user = await AppData.user.getCurrentUser();
