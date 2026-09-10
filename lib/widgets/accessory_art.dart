@@ -65,7 +65,7 @@ class _AccessoryPlacement {
 
 const Map<String, _AccessoryPlacement> _kPlacements = {
   'cozy-headphones': _AccessoryPlacement(scale: 0.3, topFraction: 0.04),
-  'smart-glasses': _AccessoryPlacement(scale: 0.2, topFraction: 0.22),
+  'smart-glasses': _AccessoryPlacement(scale: 0.27, topFraction: 0.2),
   'wizard-hat': _AccessoryPlacement(scale: 0.26, topFraction: -0.16),
   'propeller-beanie': _AccessoryPlacement(scale: 0.26, topFraction: -0.08),
   'flower-crown': _AccessoryPlacement(scale: 0.32, topFraction: -0.02),
