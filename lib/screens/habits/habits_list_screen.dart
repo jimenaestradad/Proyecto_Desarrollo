@@ -4,26 +4,37 @@ import 'package:nori/data/habit_history_store.dart' show dateOnly;
 import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/nori_user.dart';
-import 'package:nori/navigation/reloadable.dart';
+import 'package:nori/screens/bucket_list/bucket_list_screen.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
+import 'package:nori/screens/notifications/notifications_screen.dart';
+import 'package:nori/screens/shop/shop_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/habit_progress_card.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
+import 'package:nori/widgets/streak_chip.dart';
 import 'package:nori/widgets/tactile_button.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
 class HabitsListScreen extends StatefulWidget {
-  const HabitsListScreen({super.key});
+  const HabitsListScreen({super.key, required this.active});
+
+  /// See [HomeScreen.active] — same [IndexedStack] staleness problem, same
+  /// fix: reload on the false→true transition.
+  final bool active;
 
   @override
   State<HabitsListScreen> createState() => _HabitsListScreenState();
 }
 
-class _HabitsListScreenState extends State<HabitsListScreen>
-    implements Reloadable {
+class _HabitsListScreenState extends State<HabitsListScreen> {
   NoriUser? _user;
   List<Habit>? _habits;
   bool _completedToBottom = false;
+
+  /// True while a long-press has put the list into drag-reorder mode —
+  /// handles only render then, instead of always being present.
+  bool _reordering = false;
 
   /// The day being viewed. Defaults to today; the back/forward arrows step
   /// this one day at a time so the same screen doubles as a history browser
@@ -40,7 +51,10 @@ class _HabitsListScreenState extends State<HabitsListScreen>
   }
 
   @override
-  Future<void> reload() => _loadData();
+  void didUpdateWidget(covariant HabitsListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.active && widget.active) _loadData();
+  }
 
   Future<void> _loadData() async {
     final user = await AppData.user.getCurrentUser();
@@ -158,6 +172,22 @@ class _HabitsListScreenState extends State<HabitsListScreen>
     await AppData.habits.reorderHabits([for (final h in habits) h.id]);
   }
 
+  void _openNotifications() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+  }
+
+  void _openShop() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ShopScreen()));
+  }
+
+  void _openBucketList() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const BucketListScreen()));
+  }
+
   /// Display-only re-sort (completed habits last) used while
   /// [_completedToBottom] is on — the stored order (used for drag-reorder)
   /// is untouched.
@@ -217,6 +247,28 @@ class _HabitsListScreenState extends State<HabitsListScreen>
                                     style: AppTextStyles.headlineMd,
                                   ),
                                 ),
+                                CircularIconButton(
+                                  icon: Icons.flag,
+                                  tooltip: 'Bucket List',
+                                  onPressed: _openBucketList,
+                                ),
+                                const SizedBox(width: 6),
+                                CircularIconButton(
+                                  icon: Icons.notifications,
+                                  tooltip: 'Notifications',
+                                  onPressed: _openNotifications,
+                                ),
+                                const SizedBox(width: 6),
+                                CircularIconButton(
+                                  icon: Icons.shopping_bag,
+                                  tooltip: 'Shop',
+                                  onPressed: _openShop,
+                                ),
+                                const SizedBox(width: 8),
+                                if (user.currentStreak > 0) ...[
+                                  StreakChip(streak: user.currentStreak),
+                                  const SizedBox(width: 4),
+                                ],
                                 XpPill(xp: user.totalXp),
                               ],
                             ),
@@ -245,12 +297,6 @@ class _HabitsListScreenState extends State<HabitsListScreen>
                             const SizedBox(height: AppSpacing.stackMd),
                             Row(
                               children: [
-                                Icon(
-                                  Icons.vertical_align_bottom,
-                                  size: 16,
-                                  color: AppColors.inkFaint,
-                                ),
-                                const SizedBox(width: 4),
                                 Text(
                                   'Completed to bottom',
                                   style: AppTextStyles.labelSm.copyWith(
@@ -298,24 +344,51 @@ class _HabitsListScreenState extends State<HabitsListScreen>
                                   ),
                                 ),
                               )
-                            else if (_completedToBottom || !canReorder)
+                            else if (!(_reordering && canReorder && !_completedToBottom))
                               for (final habit in displayHabits) ...[
-                                HabitProgressCard(
-                                  habit: habit,
-                                  onToggleBinary: (completed) =>
-                                      _toggleBinary(habit, completed),
-                                  onLogProgress: (amount) =>
-                                      _logProgress(habit, amount),
-                                  onClaim: () => _claim(habit),
-                                  onUnclaim: () => _unclaim(habit),
-                                  onEditHabit: () => _openEditHabit(habit),
-                                  onEditProgress: (value) =>
-                                      _editProgress(habit, value),
+                                GestureDetector(
+                                  onLongPress: (canReorder && !_completedToBottom)
+                                      ? () => setState(() => _reordering = true)
+                                      : null,
+                                  child: HabitProgressCard(
+                                    habit: habit,
+                                    onToggleBinary: (completed) =>
+                                        _toggleBinary(habit, completed),
+                                    onLogProgress: (amount) =>
+                                        _logProgress(habit, amount),
+                                    onClaim: () => _claim(habit),
+                                    onUnclaim: () => _unclaim(habit),
+                                    onEditHabit: () => _openEditHabit(habit),
+                                    onEditProgress: (value) =>
+                                        _editProgress(habit, value),
+                                  ),
                                 ),
                                 if (habit != displayHabits.last)
                                   const SizedBox(height: AppSpacing.stackSm),
                               ]
-                            else
+                            else ...[
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.drag_indicator,
+                                    size: 16,
+                                    color: AppColors.inkFaint,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Drag to reorder',
+                                    style: AppTextStyles.labelSm.copyWith(
+                                      color: AppColors.inkFaint,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  TextButton(
+                                    onPressed: () =>
+                                        setState(() => _reordering = false),
+                                    child: const Text('Done'),
+                                  ),
+                                ],
+                              ),
                               ReorderableListView(
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
@@ -376,6 +449,7 @@ class _HabitsListScreenState extends State<HabitsListScreen>
                                     ),
                                 ],
                               ),
+                            ],
                             const SizedBox(height: AppSpacing.stackMd),
                             TactileButton(
                               label: 'Add New Habit',
@@ -488,3 +562,4 @@ class _DateArrowButton extends StatelessWidget {
     );
   }
 }
+

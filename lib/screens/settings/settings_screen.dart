@@ -12,17 +12,25 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   NoriUser? _user;
+  List<String>? _categories;
 
   @override
   void initState() {
     super.initState();
     _loadUser();
+    _loadCategories();
   }
 
   Future<void> _loadUser() async {
     final user = await AppData.user.getCurrentUser();
     if (!mounted) return;
     setState(() => _user = user);
+  }
+
+  Future<void> _loadCategories() async {
+    final categories = await AppData.habitCategories.getCategories();
+    if (!mounted) return;
+    setState(() => _categories = categories);
   }
 
   Future<void> _toggleVacationMode() async {
@@ -32,13 +40,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _loadUser();
   }
 
+  Future<void> _addCategory() async {
+    final name = await _promptForText(title: 'New Category', hint: 'e.g. Finance');
+    if (name == null || name.trim().isEmpty) return;
+    await AppData.habitCategories.addCategory(name.trim());
+    await _loadCategories();
+  }
+
+  Future<void> _renameCategory(String category) async {
+    final name = await _promptForText(
+      title: 'Rename Category',
+      hint: category,
+      initialValue: category,
+    );
+    if (name == null || name.trim().isEmpty || name.trim() == category) return;
+    await AppData.habitCategories.renameCategory(category, name.trim());
+    await _loadCategories();
+  }
+
+  Future<void> _deleteCategory(String category) async {
+    await AppData.habitCategories.deleteCategory(category);
+    await _loadCategories();
+  }
+
+  Future<String?> _promptForText({
+    required String title,
+    String? hint,
+    String? initialValue,
+  }) async {
+    final controller = TextEditingController(text: initialValue);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+        ),
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: InputDecoration(hintText: hint),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.moss,
+              foregroundColor: AppColors.ink,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _user;
+    final categories = _categories;
 
     return Scaffold(
       body: SafeArea(
-        child: user == null
+        child: user == null || categories == null
             ? const Center(child: CircularProgressIndicator())
             : LayoutBuilder(
                 builder: (context, constraints) {
@@ -84,6 +157,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             VacationModeCard(
                               enabled: user.vacationModeEnabled,
                               onToggle: _toggleVacationMode,
+                            ),
+                            const SizedBox(height: AppSpacing.stackMd),
+                            Text(
+                              'Habit Categories',
+                              style: AppTextStyles.labelLg.copyWith(
+                                color: AppColors.inkMuted,
+                              ),
+                            ),
+                            const SizedBox(height: AppSpacing.unit),
+                            _CategoriesCard(
+                              categories: categories,
+                              onAdd: _addCategory,
+                              onRename: _renameCategory,
+                              onDelete: _deleteCategory,
                             ),
                           ],
                         ),
@@ -141,7 +228,13 @@ class VacationModeCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text('Vacation Mode', style: AppTextStyles.labelLg),
+                    Flexible(
+                      child: Text(
+                        'Vacation Mode',
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.labelLg,
+                      ),
+                    ),
                     const SizedBox(width: AppSpacing.unit),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -185,6 +278,69 @@ class VacationModeCard extends StatelessWidget {
               foregroundColor: AppColors.ink,
             ),
             child: Text(enabled ? 'Disable' : 'Enable'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The category list the Add/Edit Habit screen's "Category" dropdown pulls
+/// from — see [HabitCategoryRepository]. Add/rename/delete only affects the
+/// picker; habits already using a deleted category keep their subtitle text.
+class _CategoriesCard extends StatelessWidget {
+  const _CategoriesCard({
+    required this.categories,
+    required this.onAdd,
+    required this.onRename,
+    required this.onDelete,
+  });
+
+  final List<String> categories;
+  final VoidCallback onAdd;
+  final ValueChanged<String> onRename;
+  final ValueChanged<String> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.stackSm),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final category in categories) ...[
+            Row(
+              children: [
+                Expanded(child: Text(category, style: AppTextStyles.labelLg)),
+                IconButton(
+                  tooltip: 'Rename',
+                  onPressed: () => onRename(category),
+                  icon: const Icon(Icons.edit, size: 18, color: AppColors.inkMuted),
+                ),
+                IconButton(
+                  tooltip: 'Delete',
+                  onPressed: categories.length > 1 ? () => onDelete(category) : null,
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                ),
+              ],
+            ),
+            if (category != categories.last)
+              const Divider(height: 1, color: AppColors.linenAlt),
+          ],
+          const SizedBox(height: AppSpacing.unit),
+          OutlinedButton.icon(
+            onPressed: onAdd,
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+              foregroundColor: AppColors.ink,
+            ),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add Category'),
           ),
         ],
       ),

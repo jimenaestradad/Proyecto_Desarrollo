@@ -150,7 +150,7 @@ class MockHabitRepository implements HabitRepository {
       xpReward: 20,
       coinReward: 10,
       repeat: HabitRepeat.weekdays,
-      type: HabitType.cumulative,
+      type: HabitType.quantity,
       difficulty: HabitDifficulty.medium,
       targetValue: 60,
       unit: 'mins',
@@ -234,6 +234,19 @@ class MockHabitRepository implements HabitRepository {
     _habits[index] = habit.copyWith(currentValue: nextValue.toDouble());
   }
 
+  /// The value a claim actually completes at. Pressing "Complete" is a
+  /// shortcut that finishes the habit outright — like a binary habit's
+  /// checkbox — so a progress-tracked habit snaps up to its target instead
+  /// of claiming whatever partial number happens to be logged. Limit habits
+  /// are excluded: their target is a ceiling to stay under, not a floor to
+  /// jump to, so "Mark Day Safe" claims the value as actually logged.
+  double _claimValue(Habit habit) {
+    if (habit.isInverted) return habit.currentValue;
+    final target = habit.targetValue;
+    if (target == null || habit.currentValue >= target) return habit.currentValue;
+    return target;
+  }
+
   @override
   Future<HabitRewardResult> claimHabit(String habitId) async {
     final index = _habits.indexWhere((h) => h.id == habitId);
@@ -241,8 +254,9 @@ class MockHabitRepository implements HabitRepository {
     final habit = _habits[index];
     if (habit.isCompletedToday) return HabitRewardResult.none;
 
-    final reward = habit.computeReward();
-    _habits[index] = habit.copyWith(
+    final snapshot = habit.copyWith(currentValue: _claimValue(habit));
+    final reward = snapshot.computeReward();
+    _habits[index] = snapshot.copyWith(
       isCompletedToday: true,
       lastAwardedXp: reward.xp,
       lastAwardedCoins: reward.coins,
@@ -403,13 +417,17 @@ class MockHabitRepository implements HabitRepository {
     final previous = history.stateFor(habitId, day);
     if (previous.claimed) return HabitRewardResult.none;
 
+    final completedValue = _claimValue(
+      definition.copyWith(currentValue: previous.value),
+    );
     final reward = definition
-        .copyWith(currentValue: previous.value, isCompletedToday: true)
+        .copyWith(currentValue: completedValue, isCompletedToday: true)
         .computeReward();
     history.write(
       habitId,
       day,
       previous.copyWith(
+        value: completedValue,
         claimed: true,
         awardedXp: reward.xp,
         awardedCoins: reward.coins,

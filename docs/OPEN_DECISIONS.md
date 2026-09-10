@@ -26,7 +26,13 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Exact behavior for flexible/any-day-in-period schedules ("5x any day this week")
 
 ## Pet mechanics
-- Evolution XP requirements / level thresholds per stage
+- Evolution XP requirements / level thresholds per stage — still undecided overall, but one
+  anchor point is set (2026-09-10): the existing breathing-sprite art (see
+  `nori_breathing_sprite.dart`) reads visually as a toddler, not a newborn or an
+  already-evolved pet, so the mock user (`kDemoUser` in `lib/data/user_repository.dart`)
+  starts at **level 5** rather than level 1 or 18+ to match. `evolutionLevelThreshold`
+  (currently 20, `lib/data/pet_repository.dart`) is unchanged — still needs a real decision,
+  along with thresholds for any stage beyond evolution1.
 - How additional pets are unlocked
 - Whether XP belongs to the user or to the currently active pet
 - Whether only one pet can progress at a time
@@ -48,8 +54,15 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Privacy rules for feed/proof posts
 
 ## Bucket list
-- Whether it ships at all — MVP, future product, or cut (current lean: future product)
-- What rewards/mementos it grants if built
+- Resolved 2026-09-10: it ships (see FEATURES.md §11). Still open: themed mementos per item
+  instead of a flat XP/coin reward.
+
+## Calendar
+- Yearly stats view (beyond the current month grid) — requested, deliberately not built yet
+  (2026-09-10 decision: document the idea rather than take on a possibly-large screen addition
+  without knowing its scope first). Needs design/scope pass: what stats (completion rate,
+  longest streak, per-habit breakdown?), a year-at-a-glance layout, and a decision on whether it
+  reuses `CalendarRepository.getMonth` aggregated across 12 months or needs a new query shape.
 
 ## Notifications
 - Whether any exist at all: habit reminders, streak warnings, pet-needs alerts, competition

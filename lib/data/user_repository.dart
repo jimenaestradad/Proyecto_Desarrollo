@@ -5,9 +5,14 @@ const kDemoUser = NoriUser(
   name: 'Alex Walker',
   username: 'alex_habits',
   email: 'alex@example.com',
-  level: 18,
-  totalXp: 15400,
-  xpIntoLevel: 1250,
+  // Level 5, not 1 or 18+: the breathing sprite (see nori_breathing_sprite.dart)
+  // reads visually as a toddler, not a newborn baby or an already-evolved
+  // pet — level 5 is the mock's best current guess at where that art
+  // actually belongs on the level curve. See docs/OPEN_DECISIONS.md "Pet
+  // mechanics" — evolution level thresholds are still otherwise undecided.
+  level: 5,
+  totalXp: 7220,
+  xpIntoLevel: 620,
   xpForNextLevel: 1650,
   currentStreak: 12,
   coins: 340,

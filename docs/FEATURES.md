@@ -25,13 +25,15 @@ level / evolve / collect / customize pets → stay motivated
 ## 2. Habits
 
 - User-defined, no fixed catalog.
-- Six habit types by how progress is measured:
+- Five habit types by how progress is measured:
   - **Binary** — yes/no (e.g. "update finances this week").
-  - **Quantity** — incremental amount (e.g. 250→1000ml water).
+  - **Quantity** — incremental amount, either a single running total (e.g.
+    250→1000ml water) or a sum of entries across a period (e.g. 45 min
+    creative work/week, logged in pieces). Was two separate types
+    (Quantity/Cumulative) — merged since they behaved identically.
   - **Duration** — time-based (e.g. 45 min workout).
   - **Multiple-completion** — count out of N (e.g. 2/3 healthy meals).
   - **Limit/negative** — stay under a max, not reach a min (e.g. <2h social media).
-  - **Cumulative** — sum of entries across a period (e.g. 45 min creative work/week, logged in pieces).
 - Recurring schedules: daily, weekly, selected-day. (Specific-days-of-week vs. X-times-per-period
   is still open — see OPEN_DECISIONS.)
 - Optional start/end date. When the period ends, the habit is **archived, not deleted** —
@@ -123,14 +125,20 @@ shared inventory. See OPEN_DECISIONS.
   proof** to count, but proof needs no friend approval (accountability, not moderation).
 - Everything else here (scoring, leaderboard period, streak rules, privacy) is undecided and
   out of MVP scope regardless.
+- A design-only mock (`SocialScreen`) ships in the bottom nav (2026-09-10), replacing the old
+  Achievements tab slot — activity feed, leaderboard, competitions, circles, all static/unwired
+  behind a "Preview only" banner. This is a visual placeholder, not a scope change: none of the
+  above is built or decided by its existence. Achievements itself moved under Profile.
 
-## 11. Bucket list / achievements (undecided whether it's even in scope)
+## 11. Bucket list
 
-Direction, not a commitment: habits reward consistency (XP/progression); bucket-list goals would
-reward a one-time major accomplishment with a themed memento (e.g. "visit Japan" → a Japan-themed
-pet item), without needing external APIs. Example items: travel, a concert, finishing a course,
-a marathon, graduating. Current lean: **future product**, not MVP, unless it turns out trivial
-to build.
+Built (2026-09-10, on explicit direction — moved up from the prior "future product" lean since it
+turned out cheap to build on top of the existing habit reward plumbing). Habits reward consistency
+(XP/progression); bucket-list goals reward a one-time major accomplishment with a bigger flat
+XP/coin payout instead — no schedule, no streak, no adaptive multiplier, just add → mark achieved.
+Reached from the Habits screen topbar (flag icon), not the bottom nav. Example items shipped as
+seed data: visit Japan, run a marathon, graduate. Still open: themed mementos per item (e.g. a
+Japan-themed pet accessory) instead of a flat XP/coin reward — not built, plain rewards for now.
 
 ## 12. Integrations — vision only, not MVP
 
@@ -145,8 +153,9 @@ logging; minimum/full completion; XP; adaptive XP (some working form); levels; s
 at least one evolution; basic pet stats/care; basic coins/resources; basic care interactions;
 possibly a few accessories/rewards.
 
-**If time permits:** more evolution stages; multiple pets; a fuller shop/economy; bucket list;
-more cosmetics.
+**If time permits:** more evolution stages; multiple pets; a fuller shop/economy; more cosmetics.
+
+(Bucket list moved out of this list — see §11, built 2026-09-10.)
 
 **Vision/planning only — not this semester:** friend system, activity feed, proof uploads,
 reactions/comments, friend leaderboard, competitions, friend streaks, visiting pets, Apple

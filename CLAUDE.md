@@ -24,6 +24,12 @@ before assuming anything is decided:
 - `flutter test` — run tests (none exist yet)
 - `flutter analyze` — lint (`flutter_lints`, configured in `analysis_options.yaml`)
 
+There's no macOS desktop support configured and no Android emulator set up locally, so local
+testing is via `flutter run -d chrome`, with Chrome DevTools' device toolbar (Inspect → toggle
+device toolbar) set to a Pixel or iPhone preset — not the raw desktop viewport. The UI has
+mobile/desktop breakpoints (`isWide` checks around 700-800px), and only the mobile layout matches
+the actual Android target.
+
 ## Structure
 
 Bare `flutter create` scaffold — `lib/main.dart` is the only app code so far, no `test/`

@@ -78,29 +78,14 @@ String _formatValue(Habit habit) {
   return '${habit.currentValue.round()} / ${target.round()} $unit'.trim();
 }
 
-double _quickLogAmount(Habit habit) {
-  switch (habit.type) {
-    case HabitType.duration:
-      return 5;
-    case HabitType.multipleCompletion:
-      return 1;
-    default:
-      final target = habit.targetValue ?? 0;
-      return (target * 0.25).clamp(1, double.infinity).roundToDouble();
-  }
-}
-
-String _quickLogLabel(Habit habit) {
-  final amount = _quickLogAmount(habit);
-  switch (habit.type) {
-    case HabitType.duration:
-      return '+${amount.round()}m';
-    case HabitType.multipleCompletion:
-      return '+${amount.round()}';
-    default:
-      final unit = habit.unit ?? '';
-      return '+${amount.round()} $unit'.trim();
-  }
+/// What Complete will actually pay right now. Claiming snaps a
+/// progress-tracked habit up to its target and completes outright (see
+/// [MockHabitRepository._claimValue]), so the preview is always the full
+/// tier — not whatever the current partial value would earn on its own.
+({int xp, int coins}) _previewReward(Habit habit) {
+  final target = habit.targetValue;
+  if (target == null || habit.currentValue >= target) return habit.computeReward();
+  return habit.copyWith(currentValue: target).computeReward();
 }
 
 class _CardShell extends StatelessWidget {
@@ -346,12 +331,15 @@ class _ProgressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final claimed = habit.isCompletedToday;
-    final reward = habit.computeReward();
+    // What Complete will actually pay — it snaps a progress-tracked habit
+    // up to its target and completes outright (see
+    // [MockHabitRepository._claimValue]), so this previews the full-tier
+    // reward rather than whatever the current partial value would earn.
+    final reward = _previewReward(habit);
 
     final (String chipLabel, Color chipColor, Color chipTextColor) = switch (true) {
       _ when claimed => ('Claimed', AppColors.mossLight, AppColors.mossDark),
       _ when habit.isTargetMet => ('Target Reached!', AppColors.mossLight, AppColors.mossDark),
-      _ when habit.isMinMet => ('Min. Reached (75% XP)', AppColors.mustardLight, AppColors.mustardDark),
       _ => ('In Progress', AppColors.linen, AppColors.inkFaint),
     };
 
@@ -378,18 +366,18 @@ class _ProgressCard extends StatelessWidget {
         thresholdFraction: habit.minThresholdFraction,
         color: AppColors.moss,
       ),
-      quickLogLabel: _quickLogLabel(habit),
+      quickLogLabel: habit.quickLogLabel,
       // Once the target's met there's nothing left to quick-log toward —
       // hide it so "Complete" is the one obvious next action.
       onLogProgress: (claimed || habit.isTargetMet)
           ? null
-          : () => onLogProgress(_quickLogAmount(habit)),
+          : () => onLogProgress(habit.quickLogStep),
       claimLabel: claimed ? 'Claimed' : 'Complete',
       claimEnabled: !claimed,
       onClaim: onClaim,
       onUnclaim: onUnclaim,
       claimBackground: AppColors.moss,
-      claimForeground: AppColors.white,
+      claimForeground: AppColors.ink,
       onEditHabit: onEditHabit,
     );
   }
@@ -440,8 +428,8 @@ class _LimitCard extends StatelessWidget {
       subtitle: '${habit.type.label} · ${habit.subtitle}',
       trailing: _EditableValue(habit: habit, onEditProgress: onEditProgress),
       progress: ProgressBarPill(progress: ratio, color: barColor),
-      quickLogLabel: _quickLogLabel(habit),
-      onLogProgress: claimed ? null : () => onLogProgress(_quickLogAmount(habit)),
+      quickLogLabel: habit.quickLogLabel,
+      onLogProgress: claimed ? null : () => onLogProgress(habit.quickLogStep),
       claimLabel: claimed
           ? 'Marked Safe'
           : (exceeded ? 'Limit Exceeded' : 'Mark Day Safe'),
@@ -449,7 +437,7 @@ class _LimitCard extends StatelessWidget {
       onClaim: onClaim,
       onUnclaim: onUnclaim,
       claimBackground: AppColors.moss,
-      claimForeground: AppColors.white,
+      claimForeground: AppColors.ink,
       onEditHabit: onEditHabit,
     );
   }
@@ -575,7 +563,10 @@ class _EditProgressDialogState extends State<_EditProgressDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: AppColors.moss),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.moss,
+            foregroundColor: AppColors.ink,
+          ),
           onPressed: () {
             final value = double.tryParse(_controller.text.trim());
             Navigator.pop(context, value ?? 0.0);

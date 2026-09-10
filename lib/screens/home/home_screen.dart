@@ -8,16 +8,17 @@ import 'package:nori/models/habit.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/models/pet.dart';
-import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
 import 'package:nori/screens/pet/evolution_screen.dart';
 import 'package:nori/screens/shop/shop_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/habit_tile.dart';
 import 'package:nori/widgets/nori_avatar.dart';
 import 'package:nori/widgets/nori_room_stage.dart';
 import 'package:nori/widgets/pet_vital_ring.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
+import 'package:nori/widgets/streak_chip.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 /// Home: Nori's room. The room is a true full-bleed background (edge to
@@ -26,7 +27,15 @@ import 'package:nori/widgets/tactile_button.dart';
 /// item, not the full list (that lives on the Habits tab, reached via
 /// [onOpenHabits] or by dragging the panel's handle up).
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.onOpenHabits});
+  const HomeScreen({super.key, required this.active, required this.onOpenHabits});
+
+  /// Whether this is the currently-shown tab in [NoriShell]'s [IndexedStack].
+  /// [IndexedStack] keeps every tab's state alive even while offstage, so
+  /// without this a habit claimed/logged on another tab (e.g. the Habits
+  /// tab) would leave this screen showing stale habits/XP until some
+  /// unrelated action here happened to reload it. Reload on the
+  /// false→true transition instead — see [_HomeScreenState.didUpdateWidget].
+  final bool active;
 
   /// Switches the shell to the Habits tab.
   final VoidCallback onOpenHabits;
@@ -35,8 +44,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    implements Reloadable {
+class _HomeScreenState extends State<HomeScreen> {
   NoriUser? _user;
   List<Habit>? _habits;
   Pet? _pet;
@@ -49,7 +57,10 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   @override
-  Future<void> reload() => _loadData();
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.active && widget.active) _loadData();
+  }
 
   Future<void> _loadData() async {
     final user = await AppData.user.getCurrentUser();
@@ -70,6 +81,12 @@ class _HomeScreenState extends State<HomeScreen>
     final habits = await AppData.habits.getTodayHabits();
     if (!mounted) return;
     setState(() => _habits = habits);
+  }
+
+  Future<void> _reloadInventory() async {
+    final inventory = await AppData.inventory.getInventory();
+    if (!mounted) return;
+    setState(() => _inventory = inventory);
   }
 
   Future<void> _reloadUserAndPet() async {
@@ -109,7 +126,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _claimHabit(Habit habit) async {
     if (!habit.isMinMet && !habit.isTargetMet) {
-      _showSnack('Log some progress on the Habits tab first.');
+      // Not "on the Habits tab" — the quick-log button right here on this
+      // tile does the same logging now, so don't send them away for it.
+      _showSnack('Log more progress before completing this habit.');
       return;
     }
     final reward = await AppData.habits.claimHabit(habit.id);
@@ -117,17 +136,31 @@ class _HomeScreenState extends State<HomeScreen>
     await _reloadHabits();
   }
 
-  /// The compact Today's Goal row uses [HabitTile], whose checkbox only
-  /// really means "toggle" for binary habits. For every other type, a tap
-  /// attempts a claim instead — there's no un-claiming from this condensed
-  /// view (full per-type editing lives on the Habits tab).
+  Future<void> _unclaimHabit(Habit habit) async {
+    final reward = await AppData.habits.unclaimHabit(habit.id);
+    await _applyReward(reward);
+    await _reloadHabits();
+  }
+
+  Future<void> _quickLog(Habit habit, double amount) async {
+    await AppData.habits.logProgress(habit.id, amount);
+    await _reloadHabits();
+  }
+
+  /// The compact Today's Goal row uses [HabitTile], whose checkbox means
+  /// "toggle" for binary habits and "claim / un-claim" for every other
+  /// type — partial progress itself is logged via the tile's separate
+  /// quick-log button ([_quickLog]), not this checkbox.
   Future<void> _onHabitTileToggle(Habit habit, bool completed) async {
     if (habit.type == HabitType.binary) {
       await _toggleHabit(habit, completed);
       return;
     }
-    if (!completed) return;
-    await _claimHabit(habit);
+    if (completed) {
+      await _claimHabit(habit);
+    } else {
+      await _unclaimHabit(habit);
+    }
   }
 
   Future<void> _careAction({
@@ -135,6 +168,7 @@ class _HomeScreenState extends State<HomeScreen>
     required Future<void> Function() act,
   }) async {
     final ok = await consume();
+    if (!mounted) return;
     if (!ok) {
       _showSnack('Out of stock — buy more in the Shop.');
       return;
@@ -155,16 +189,23 @@ class _HomeScreenState extends State<HomeScreen>
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _openCustomization() {
-    Navigator.of(
+  // Both pushed as a route on top of Home, not a tab switch, so the
+  // active/didUpdateWidget reload (for switching *between* tabs) never
+  // fires for these — reload explicitly once the pushed screen is popped.
+  Future<void> _openCustomization() async {
+    await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const CustomizationScreen()));
+    await _reloadInventory();
   }
 
-  void _openShop() {
-    Navigator.of(
+  Future<void> _openShop() async {
+    await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const ShopScreen()));
+    // Purchases spend coins as well as changing inventory.
+    await _reloadUserAndPet();
+    await _reloadInventory();
   }
 
   @override
@@ -254,6 +295,7 @@ class _HomeScreenState extends State<HomeScreen>
                       completion: completion,
                       streak: user.currentStreak,
                       onToggle: _onHabitTileToggle,
+                      onQuickLog: _quickLog,
                       onOpenHabits: widget.onOpenHabits,
                     ),
                   ),
@@ -425,7 +467,11 @@ class _RoomHudState extends State<_RoomHud> {
             const SizedBox(width: AppSpacing.unit),
             _CoinPill(coins: user.coins),
             const SizedBox(width: AppSpacing.unit),
-            _ShopButton(onTap: widget.onShop),
+            CircularIconButton(
+              icon: Icons.storefront,
+              tooltip: 'Shop',
+              onPressed: widget.onShop,
+            ),
           ],
         ),
         const SizedBox(height: AppSpacing.gutter),
@@ -489,32 +535,6 @@ class _RoomHudState extends State<_RoomHud> {
   }
 }
 
-/// Small circular Shop shortcut, styled to match [_CoinPill]/the back
-/// button on Customization — a quick way into the Shop from Home without
-/// detouring through Profile.
-class _ShopButton extends StatelessWidget {
-  const _ShopButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.white.withValues(alpha: 0.88),
-      shape: const CircleBorder(
-        side: BorderSide(color: AppColors.ink, width: AppBorder.standard),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: IconButton(
-        tooltip: 'Shop',
-        onPressed: onTap,
-        icon: const Icon(Icons.storefront, size: 20, color: AppColors.ink),
-        padding: const EdgeInsets.all(8),
-        constraints: const BoxConstraints(),
-      ),
-    );
-  }
-}
 
 class _CoinPill extends StatelessWidget {
   const _CoinPill({required this.coins});
@@ -674,6 +694,7 @@ class _HabitPanel extends StatefulWidget {
     required this.completion,
     required this.streak,
     required this.onToggle,
+    required this.onQuickLog,
     required this.onOpenHabits,
   });
 
@@ -682,6 +703,7 @@ class _HabitPanel extends StatefulWidget {
   final double completion;
   final int streak;
   final Future<void> Function(Habit habit, bool completed) onToggle;
+  final Future<void> Function(Habit habit, double amount) onQuickLog;
   final VoidCallback onOpenHabits;
 
   @override
@@ -792,7 +814,7 @@ class _HabitPanelState extends State<_HabitPanel> {
                           ),
                           if (widget.streak > 0) ...[
                             const SizedBox(width: AppSpacing.unit),
-                            _StreakChip(streak: widget.streak),
+                            StreakChip(streak: widget.streak),
                           ],
                           const Spacer(),
                           Text(
@@ -847,6 +869,8 @@ class _HabitPanelState extends State<_HabitPanel> {
                                     habit: habits[i],
                                     onToggle: (completed) =>
                                         widget.onToggle(habits[i], completed),
+                                    onQuickLog: (amount) =>
+                                        widget.onQuickLog(habits[i], amount),
                                     onEdit: widget.onOpenHabits,
                                   ),
                                   const SizedBox(height: AppSpacing.stackSm),
@@ -877,6 +901,8 @@ class _HabitPanelState extends State<_HabitPanel> {
                           habit: nextHabit,
                           onToggle: (completed) =>
                               widget.onToggle(nextHabit!, completed),
+                          onQuickLog: (amount) =>
+                              widget.onQuickLog(nextHabit!, amount),
                           onEdit: widget.onOpenHabits,
                         ),
                 ),
@@ -888,31 +914,3 @@ class _HabitPanelState extends State<_HabitPanel> {
   }
 }
 
-class _StreakChip extends StatelessWidget {
-  const _StreakChip({required this.streak});
-
-  final int streak;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: AppColors.mustardLight,
-        borderRadius: BorderRadius.circular(AppRadius.full),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.local_fire_department, size: 14, color: AppColors.mustardDark),
-          const SizedBox(width: 2),
-          Text(
-            '${streak}d',
-            style: AppTextStyles.labelSm.copyWith(color: AppColors.mustardDark),
-          ),
-        ],
-      ),
-    );
-  }
-}

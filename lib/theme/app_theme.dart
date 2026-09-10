@@ -1,6 +1,6 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
-import 'app_spacing.dart';
 import 'app_text_styles.dart';
 
 export 'app_colors.dart';
@@ -71,7 +71,20 @@ class AppTheme {
   }
 }
 
-/// Shared padding for screen content.
-const kScreenHorizontalPadding = EdgeInsets.symmetric(
-  horizontal: AppSpacing.containerPaddingMobile,
-);
+/// Wires mouse into every [Scrollable]'s drag-to-scroll devices — Flutter's
+/// default [ScrollBehavior] only allows touch/stylus/trackpad, so a real
+/// mouse instead scrolls via the wheel (invisible, works fine normally).
+/// That default falls apart specifically under Chrome DevTools' device
+/// toolbar (the documented way to preview the mobile layout on web, per
+/// CLAUDE.md): once a device preset like Pixel is active, input arrives as
+/// simulated touch but can still surface to Flutter as [PointerDeviceKind.
+/// mouse] depending on Chrome/Flutter version, and the wheel stops firing
+/// too — leaving no way to scroll at all. Add mouse explicitly so drag-to-
+/// scroll works the same regardless of which of those two paths fires.
+class AppScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    ...super.dragDevices,
+    PointerDeviceKind.mouse,
+  };
+}

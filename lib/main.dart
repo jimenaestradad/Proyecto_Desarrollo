@@ -22,6 +22,7 @@ class NoriApp extends StatelessWidget {
       title: 'Nori',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
+      scrollBehavior: AppScrollBehavior(),
       initialRoute: '/welcome',
       routes: {
         '/welcome': (context) => const WelcomeScreen(),

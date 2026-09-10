@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/achievement.dart';
 import 'package:nori/models/nori_user.dart';
-import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/screens/achievements/achievements_screen.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
-import 'package:nori/screens/leaderboard/leaderboard_screen.dart';
-import 'package:nori/screens/notifications/notifications_screen.dart';
 import 'package:nori/screens/premium/nori_plus_screen.dart';
 import 'package:nori/screens/settings/settings_screen.dart';
 import 'package:nori/screens/shop/shop_screen.dart';
@@ -17,15 +14,24 @@ import 'package:nori/widgets/progress_bar_pill.dart';
 import 'package:nori/widgets/tactile_button.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
+/// Matches [XpPill]'s thousands-separator formatting, for the one XP value
+/// on this screen that renders as plain text instead of through the pill.
+String _formatXp(int xp) => xp.toString().replaceAllMapped(
+  RegExp(r'\B(?=(\d{3})+(?!\d))'),
+  (match) => ',',
+);
+
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, required this.active});
+
+  /// See [HomeScreen.active] — same [IndexedStack] staleness fix.
+  final bool active;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen>
-    implements Reloadable {
+class _ProfileScreenState extends State<ProfileScreen> {
   NoriUser? _user;
   List<Achievement>? _achievementPreview;
   double? _weeklyCompletion;
@@ -38,7 +44,10 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   @override
-  Future<void> reload() => _loadData();
+  void didUpdateWidget(covariant ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.active && widget.active) _loadData();
+  }
 
   Future<void> _loadData() async {
     final user = await AppData.user.getCurrentUser();
@@ -104,24 +113,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  void _openNotifications() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-    );
-  }
-
   void _openShop() {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const ShopScreen()),
-    );
-  }
-
-  void _openLeaderboard() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
     );
   }
 
@@ -184,13 +179,11 @@ class _ProfileScreenState extends State<ProfileScreen>
                             const SizedBox(height: AppSpacing.stackMd),
                             _AccountCard(
                               onSettings: _openSettings,
-                              onNotifications: _openNotifications,
                               onAppearance: _openCustomization,
                             ),
                             const SizedBox(height: AppSpacing.stackMd),
                             _ExploreCard(
                               onShop: _openShop,
-                              onLeaderboard: _openLeaderboard,
                               onNoriPlus: _openNoriPlus,
                             ),
                             const SizedBox(height: AppSpacing.stackMd),
@@ -262,7 +255,7 @@ class _ProfileHero extends StatelessWidget {
                   onPressed: onEdit,
                   style: IconButton.styleFrom(
                     backgroundColor: AppColors.moss,
-                    foregroundColor: AppColors.white,
+                    foregroundColor: AppColors.ink,
                     minimumSize: const Size.square(38),
                     side: const BorderSide(
                       color: AppColors.ink,
@@ -293,7 +286,7 @@ class _ProfileHero extends StatelessWidget {
               ),
               _ProfilePill(
                 icon: Icons.diamond,
-                label: '${user.totalXp} XP',
+                label: '${_formatXp(user.totalXp)} XP',
                 color: AppColors.terracottaDark,
               ),
               _ProfilePill(
@@ -528,12 +521,10 @@ class _StatisticRow extends StatelessWidget {
 class _AccountCard extends StatelessWidget {
   const _AccountCard({
     required this.onSettings,
-    required this.onNotifications,
     required this.onAppearance,
   });
 
   final VoidCallback onSettings;
-  final VoidCallback onNotifications;
   final VoidCallback onAppearance;
 
   @override
@@ -551,12 +542,6 @@ class _AccountCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.unit),
           _AccountRow(
-            icon: Icons.notifications,
-            label: 'Notifications',
-            onTap: onNotifications,
-          ),
-          const SizedBox(height: AppSpacing.unit),
-          _AccountRow(
             icon: Icons.palette,
             label: 'Appearance',
             onTap: onAppearance,
@@ -570,12 +555,10 @@ class _AccountCard extends StatelessWidget {
 class _ExploreCard extends StatelessWidget {
   const _ExploreCard({
     required this.onShop,
-    required this.onLeaderboard,
     required this.onNoriPlus,
   });
 
   final VoidCallback onShop;
-  final VoidCallback onLeaderboard;
   final VoidCallback onNoriPlus;
 
   @override
@@ -595,13 +578,6 @@ class _ExploreCard extends StatelessWidget {
             icon: Icons.shopping_bag,
             label: 'Shop',
             onTap: onShop,
-            trailing: const SoonBadge(),
-          ),
-          const SizedBox(height: AppSpacing.unit),
-          _AccountRow(
-            icon: Icons.leaderboard,
-            label: 'Leaderboard',
-            onTap: onLeaderboard,
             trailing: const SoonBadge(),
           ),
           const SizedBox(height: AppSpacing.unit),

@@ -52,9 +52,12 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
   Future<void> _saveLook() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
-    await AppData.inventory.setEquippedAccessory(_draftEquippedId);
+    try {
+      await AppData.inventory.setEquippedAccessory(_draftEquippedId);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
     if (!mounted) return;
-    setState(() => _isSaving = false);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(content: Text('Look saved!')));
@@ -371,7 +374,7 @@ class _AccessorySlot extends StatelessWidget {
                       child: const Icon(
                         Icons.check,
                         size: 14,
-                        color: AppColors.white,
+                        color: AppColors.ink,
                       ),
                     ),
                   ),

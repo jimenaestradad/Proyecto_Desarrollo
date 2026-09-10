@@ -29,13 +29,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _markAllRead() async {
     if (_isMarkingRead) return;
     setState(() => _isMarkingRead = true);
-    await AppData.notifications.markAllRead();
-    final notifications = await AppData.notifications.getNotifications();
-    if (!mounted) return;
-    setState(() {
-      _notifications = notifications;
-      _isMarkingRead = false;
-    });
+    try {
+      await AppData.notifications.markAllRead();
+      final notifications = await AppData.notifications.getNotifications();
+      if (!mounted) return;
+      setState(() => _notifications = notifications);
+    } finally {
+      if (mounted) setState(() => _isMarkingRead = false);
+    }
   }
 
   @override
@@ -210,7 +211,7 @@ class _NotificationCard extends StatelessWidget {
                     onPressed: () => Navigator.pop(context),
                     style: FilledButton.styleFrom(
                       backgroundColor: notification.color,
-                      foregroundColor: AppColors.white,
+                      foregroundColor: AppColors.ink,
                       side: const BorderSide(
                         color: AppColors.ink,
                         width: AppBorder.thin,

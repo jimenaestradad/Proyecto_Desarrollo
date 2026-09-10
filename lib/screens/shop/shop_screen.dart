@@ -170,6 +170,7 @@ class _ShopScreenState extends State<ShopScreen> {
         await AppData.inventory.addToys(item.grants);
     }
     await _reloadData();
+    if (!mounted) return;
     _showSnack('Bought ${item.name} — head to Home to use it!');
   }
 
@@ -183,6 +184,7 @@ class _ShopScreenState extends State<ShopScreen> {
     await AppData.user.addCoins(-item.price);
     await AppData.inventory.addAccessory(item.id);
     await _reloadData();
+    if (!mounted) return;
     _showSnack('Bought ${item.name}!');
   }
 
@@ -245,9 +247,7 @@ class _ShopScreenState extends State<ShopScreen> {
                                   avatar: Icon(
                                     category.icon,
                                     size: 18,
-                                    color: _selectedCategory == index
-                                        ? AppColors.white
-                                        : AppColors.ink,
+                                    color: AppColors.ink,
                                   ),
                                   label: Text(category.label),
                                   selected: _selectedCategory == index,
@@ -255,9 +255,7 @@ class _ShopScreenState extends State<ShopScreen> {
                                     setState(() => _selectedCategory = index);
                                   },
                                   labelStyle: AppTextStyles.labelLg.copyWith(
-                                    color: _selectedCategory == index
-                                        ? AppColors.white
-                                        : AppColors.ink,
+                                    color: AppColors.ink,
                                   ),
                                   selectedColor: AppColors.moss,
                                   backgroundColor: AppColors.white,
@@ -507,7 +505,7 @@ class _ItemCardShell extends StatelessWidget {
                     : AppColors.moss,
                 foregroundColor: onPressed == null
                     ? AppColors.inkMuted
-                    : AppColors.white,
+                    : AppColors.ink,
                 textStyle: AppTextStyles.labelLg,
                 elevation: 0,
                 side: const BorderSide(

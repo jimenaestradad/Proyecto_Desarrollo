@@ -15,7 +15,7 @@ class NoriBottomNav extends StatelessWidget {
     (icon: Icons.pets, label: 'Home'),
     (icon: Icons.check_circle, label: 'Habits'),
     (icon: Icons.calendar_month, label: 'Calendar'),
-    (icon: Icons.emoji_events, label: 'Achievements'),
+    (icon: Icons.groups, label: 'Social'),
     (icon: Icons.person, label: 'Profile'),
   ];
 

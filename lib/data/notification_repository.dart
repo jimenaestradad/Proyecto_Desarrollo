@@ -13,7 +13,7 @@ class MockNotificationRepository implements NotificationRepository {
       id: 'pet-needs-you',
       type: NotificationType.petAction,
       label: 'Pet Needs You',
-      message: 'Pip is hungry! Complete your "Drink Water" habit to feed him.',
+      message: 'Nori is hungry! Complete your "Drink Water" habit to feed him.',
       timeAgo: 'Just now',
       icon: Icons.pets,
       color: AppColors.mustardDark,

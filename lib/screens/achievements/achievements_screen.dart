@@ -4,7 +4,6 @@ import 'package:nori/models/achievement.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/theme/app_theme.dart';
-import 'package:nori/widgets/nori_avatar.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
@@ -121,12 +120,14 @@ class _AchievementsHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        NoriAvatar(imageUrl: user.avatarUrl),
-        const SizedBox(width: AppSpacing.stackSm),
+        IconButton(
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back),
+        ),
         Expanded(
           child: Text(
-            'Nori',
-            style: AppTextStyles.headlineMd,
+            'Achievements',
+            style: AppTextStyles.headlineLgMobile,
           ),
         ),
         XpPill(xp: user.totalXp),

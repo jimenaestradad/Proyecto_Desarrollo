@@ -4,22 +4,24 @@ import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/calendar_day.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/nori_user.dart';
-import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/habit_progress_card.dart';
 import 'package:nori/widgets/nori_avatar.dart';
+import 'package:nori/widgets/streak_chip.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
 class CalendarScreen extends StatefulWidget {
-  const CalendarScreen({super.key});
+  const CalendarScreen({super.key, required this.active});
+
+  /// See [HomeScreen.active] — same [IndexedStack] staleness fix.
+  final bool active;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen>
-    implements Reloadable {
+class _CalendarScreenState extends State<CalendarScreen> {
   NoriUser? _user;
   CalendarMonthStats? _stats;
   late int _year;
@@ -35,7 +37,10 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   @override
-  Future<void> reload() => _loadData();
+  void didUpdateWidget(covariant CalendarScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.active && widget.active) _loadData();
+  }
 
   Future<void> _loadData() async {
     final user = await AppData.user.getCurrentUser();
@@ -222,6 +227,10 @@ class _CalendarHeader extends StatelessWidget {
             style: AppTextStyles.headlineMd,
           ),
         ),
+        if (user.currentStreak > 0) ...[
+          StreakChip(streak: user.currentStreak),
+          const SizedBox(width: 4),
+        ],
         XpPill(xp: user.totalXp),
       ],
     );
@@ -382,7 +391,7 @@ class _CalendarDayCell extends StatelessWidget {
         AppColors.moss,
         AppColors.ink,
         AppBorder.thick,
-        AppColors.white,
+        AppColors.ink,
       ),
       CalendarDayStatus.future => (
         AppColors.linen,

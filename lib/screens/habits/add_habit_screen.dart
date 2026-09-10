@@ -27,16 +27,17 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     Icons.savings,
     Icons.bedtime,
   ];
-  static const _categories = ['Health', 'Fitness', 'Learning', 'Mindfulness'];
   static const _weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
   final _nameController = TextEditingController();
   final _targetController = TextEditingController();
   final _unitController = TextEditingController();
   final _minThresholdController = TextEditingController();
+  final _quickLogController = TextEditingController();
 
+  List<String> _categories = const [];
   IconData _selectedIcon = _icons.first;
-  String _selectedCategory = _categories.first;
+  String? _selectedCategory;
   HabitType _selectedType = HabitType.quantity;
   HabitDifficulty _difficulty = HabitDifficulty.medium;
   HabitRepeat _repeat = HabitRepeat.daily;
@@ -58,14 +59,14 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
   @override
   void initState() {
     super.initState();
+    _loadCategories();
+
     final habit = widget.habit;
     if (habit == null) return;
 
     _nameController.text = habit.name;
     _selectedIcon = habit.icon;
-    _selectedCategory = _categories.contains(habit.subtitle)
-        ? habit.subtitle
-        : _categories.first;
+    _selectedCategory = habit.subtitle;
     _selectedType = habit.type;
     _difficulty = habit.difficulty;
     _repeat = habit.repeat;
@@ -78,10 +79,27 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     if (habit.minThreshold != null) {
       _minThresholdController.text = _formatNum(habit.minThreshold!);
     }
+    if (habit.quickLogAmount != null) {
+      _quickLogController.text = _formatNum(habit.quickLogAmount!);
+    }
     _allowVacationFreeze = habit.allowVacationFreeze;
     _endDateEnabled = habit.startDate != null && habit.endDate != null;
     _startDate = habit.startDate;
     _endDate = habit.endDate;
+  }
+
+  Future<void> _loadCategories() async {
+    final categories = await AppData.habitCategories.getCategories();
+    if (!mounted) return;
+    setState(() {
+      _categories = categories;
+      // Editing a habit whose subtitle isn't a known category (e.g. one of
+      // the seed habits, which store free-text subtitles) keeps that text
+      // selected rather than silently overwriting it on save.
+      _selectedCategory ??= categories.contains(widget.habit?.subtitle)
+          ? widget.habit!.subtitle
+          : categories.first;
+    });
   }
 
   @override
@@ -90,6 +108,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     _targetController.dispose();
     _unitController.dispose();
     _minThresholdController.dispose();
+    _quickLogController.dispose();
     super.dispose();
   }
 
@@ -142,6 +161,27 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     });
   }
 
+  /// Preview of [Habit.quickLogStep]'s default heuristic for the form's
+  /// current type/target — shown as the field's hint/helper text so users
+  /// understand what "leave blank" means before they've saved anything.
+  String _quickLogHint() {
+    switch (_selectedType) {
+      case HabitType.binary:
+        return '';
+      case HabitType.duration:
+        return '+5 min';
+      case HabitType.multipleCompletion:
+        return '+1';
+      case HabitType.quantity:
+      case HabitType.limit:
+        final target = double.tryParse(_targetController.text.trim());
+        final unit = _unitController.text.trim();
+        if (target == null || target <= 0) return '25% of target';
+        final step = (target * 0.25).clamp(1, double.infinity).roundToDouble();
+        return '+${_formatNum(step)}${unit.isEmpty ? '' : ' $unit'}';
+    }
+  }
+
   String _dateRangeLabel() {
     if (_startDate == null || _endDate == null) {
       return 'Tap to choose a start & end date';
@@ -172,12 +212,15 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     final minThreshold = (_minThresholdEnabled && _supportsThreshold)
         ? double.tryParse(_minThresholdController.text.trim())
         : null;
+    final quickLogAmount = _needsTarget
+        ? double.tryParse(_quickLogController.text.trim())
+        : null;
 
     final existing = widget.habit;
     final habit = Habit(
       id: existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
       name: enteredName.isEmpty ? 'New Habit' : enteredName,
-      subtitle: _selectedCategory,
+      subtitle: _selectedCategory ?? (_categories.isEmpty ? '' : _categories.first),
       icon: _selectedIcon,
       color: existing?.color ?? AppColors.terracotta,
       xpReward: _difficulty.baseXp,
@@ -188,6 +231,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       targetValue: target,
       unit: unit == null || unit.isEmpty ? null : unit,
       minThreshold: minThreshold,
+      quickLogAmount: quickLogAmount,
       currentValue: existing?.currentValue ?? 0,
       customDays: _repeat == HabitRepeat.custom ? {..._customDays} : null,
       allowVacationFreeze: _allowVacationFreeze,
@@ -198,10 +242,14 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       isCompletedToday: existing?.isCompletedToday ?? false,
     );
 
-    if (_isEditing) {
-      await AppData.habits.updateHabit(habit);
-    } else {
-      await AppData.habits.addHabit(habit);
+    try {
+      if (_isEditing) {
+        await AppData.habits.updateHabit(habit);
+      } else {
+        await AppData.habits.addHabit(habit);
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
     if (!mounted) return;
     Navigator.pop(context, true);
@@ -308,6 +356,17 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                         icon: const Icon(Icons.expand_more),
                         decoration: _fieldDecoration(),
                         items: [
+                          // A habit's existing subtitle might not be a known
+                          // category (e.g. a seeded demo habit's free-text
+                          // subtitle, or one deleted later in Settings) —
+                          // keep it selectable instead of silently
+                          // overwriting it with the first category on save.
+                          if (_selectedCategory != null &&
+                              !_categories.contains(_selectedCategory))
+                            DropdownMenuItem(
+                              value: _selectedCategory,
+                              child: Text(_selectedCategory!),
+                            ),
                           for (final category in _categories)
                             DropdownMenuItem(
                               value: category,
@@ -341,15 +400,22 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                                 ),
                               ),
                               const SizedBox(width: AppSpacing.stackSm),
+                              // An odd HabitType count (currently 5) leaves
+                              // the last row with no pair — a blank spacer
+                              // keeps that card at the grid's half-width
+                              // instead of stretching to fill the row.
                               Expanded(
-                                child: _TypeCard(
-                                  type: HabitType.values[row + 1],
-                                  selected:
-                                      _selectedType ==
+                                child: row + 1 < HabitType.values.length
+                                    ? _TypeCard(
+                                        type: HabitType.values[row + 1],
+                                        selected:
+                                            _selectedType ==
+                                                HabitType.values[row + 1],
+                                        onTap: () => _selectType(
                                           HabitType.values[row + 1],
-                                  onTap: () =>
-                                      _selectType(HabitType.values[row + 1]),
-                                ),
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(),
                               ),
                             ],
                           ),
@@ -385,6 +451,23 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                               ),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: AppSpacing.stackMd),
+                        _FieldLabel(label: 'Quick-Log Amount'),
+                        const SizedBox(height: AppSpacing.unit),
+                        TextField(
+                          controller: _quickLogController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          style: AppTextStyles.bodyLg,
+                          decoration: _fieldDecoration(hintText: _quickLogHint()),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'What the quick-log button on Home/Habits adds per tap. '
+                          'Leave blank for the default (${_quickLogHint()}).',
+                          style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
                         ),
                       ],
                       if (_supportsThreshold) ...[
@@ -456,7 +539,10 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                             'Adaptive XP scales between 0.5x–1.5x depending on your consistency over time.',
                       ),
                       const SizedBox(height: AppSpacing.stackSm),
-                      _RewardPreview(difficulty: _difficulty),
+                      _RewardPreview(
+                        difficulty: _difficulty,
+                        adaptiveMultiplier: widget.habit?.adaptiveMultiplier ?? 1.0,
+                      ),
                       const SizedBox(height: AppSpacing.stackMd),
                       _FieldLabel(label: 'Repeat'),
                       const SizedBox(height: AppSpacing.unit),
@@ -629,7 +715,7 @@ class _IconChoice extends StatelessWidget {
           child: Icon(
             icon,
             size: 30,
-            color: selected ? AppColors.white : AppColors.ink,
+            color: AppColors.ink,
           ),
         ),
       ),
@@ -643,7 +729,6 @@ IconData _typeIcon(HabitType type) => switch (type) {
   HabitType.duration => Icons.timer,
   HabitType.multipleCompletion => Icons.checklist,
   HabitType.limit => Icons.shield,
-  HabitType.cumulative => Icons.stacked_line_chart,
 };
 
 class _TypeCard extends StatelessWidget {
@@ -675,7 +760,7 @@ class _TypeCard extends StatelessWidget {
             children: [
               Icon(
                 _typeIcon(type),
-                color: selected ? AppColors.white : AppColors.ink,
+                color: AppColors.ink,
                 size: 22,
               ),
               const SizedBox(width: AppSpacing.stackSm),
@@ -687,7 +772,7 @@ class _TypeCard extends StatelessWidget {
                     Text(
                       type.label,
                       style: AppTextStyles.labelLg.copyWith(
-                        color: selected ? AppColors.white : AppColors.ink,
+                        color: AppColors.ink,
                       ),
                     ),
                     Text(
@@ -696,7 +781,7 @@ class _TypeCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.labelSm.copyWith(
                         color: selected
-                            ? AppColors.white.withValues(alpha: 0.85)
+                            ? AppColors.ink.withValues(alpha: 0.75)
                             : AppColors.inkFaint,
                       ),
                     ),
@@ -738,7 +823,7 @@ class _DayCircle extends StatelessWidget {
             child: Text(
               label,
               style: AppTextStyles.labelLg.copyWith(
-                color: selected ? AppColors.white : AppColors.ink,
+                color: AppColors.ink,
               ),
             ),
           ),
@@ -825,12 +910,22 @@ class _InfoBanner extends StatelessWidget {
 }
 
 class _RewardPreview extends StatelessWidget {
-  const _RewardPreview({required this.difficulty});
+  const _RewardPreview({required this.difficulty, this.adaptiveMultiplier = 1.0});
 
   final HabitDifficulty difficulty;
 
+  /// The habit's actual per-claim multiplier when editing an existing
+  /// habit (1.0 for a new one). Folding this into the preview — instead of
+  /// always showing the raw difficulty base — is what keeps this number in
+  /// sync with the reward pill the Habits screen shows for the same habit;
+  /// previously they could disagree once a habit's multiplier drifted from
+  /// 1.0 (e.g. the seeded Gym Session habit, at 1.2x).
+  final double adaptiveMultiplier;
+
   @override
   Widget build(BuildContext context) {
+    final xp = (difficulty.baseXp * adaptiveMultiplier).round();
+    final coins = difficulty.baseXp ~/ 2;
     return Container(
       padding: const EdgeInsets.all(AppSpacing.gutter),
       decoration: BoxDecoration(
@@ -860,13 +955,13 @@ class _RewardPreview extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '+${difficulty.baseXp} XP',
+                  '+$xp XP',
                   style: AppTextStyles.labelLg.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 Text(
-                  '+${difficulty.baseXp ~/ 2} Coins · Pet care & shop',
+                  '+$coins Coins · Pet care & shop',
                   style: AppTextStyles.labelSm.copyWith(
                     color: AppColors.inkMuted,
                   ),

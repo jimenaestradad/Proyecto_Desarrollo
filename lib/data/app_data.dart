@@ -1,6 +1,8 @@
 import 'achievement_repository.dart';
 import 'auth_repository.dart';
+import 'bucket_list_repository.dart';
 import 'calendar_repository.dart';
+import 'habit_category_repository.dart';
 import 'habit_repository.dart';
 import 'inventory_repository.dart';
 import 'notification_repository.dart';
@@ -17,6 +19,8 @@ class AppData {
   static AuthRepository auth = MockAuthRepository();
   static UserRepository user = MockUserRepository();
   static HabitRepository habits = MockHabitRepository();
+  static HabitCategoryRepository habitCategories = MockHabitCategoryRepository();
+  static BucketListRepository bucketList = MockBucketListRepository();
   static AchievementRepository achievements = MockAchievementRepository();
   static NotificationRepository notifications = MockNotificationRepository();
   static CalendarRepository calendar = MockCalendarRepository(habits);

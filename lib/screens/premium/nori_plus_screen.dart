@@ -341,7 +341,7 @@ class _PlanCard extends StatelessWidget {
                         ? const Icon(
                             Icons.check,
                             size: 17,
-                            color: AppColors.white,
+                            color: AppColors.ink,
                           )
                         : null,
                   ),

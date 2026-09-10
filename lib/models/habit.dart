@@ -12,7 +12,13 @@ extension HabitRepeatLabel on HabitRepeat {
 }
 
 /// How a habit's progress is measured. See docs/FEATURES.md §2.
-enum HabitType { binary, quantity, duration, multipleCompletion, limit, cumulative }
+///
+/// [quantity] covers both a single running amount (e.g. 250→1000ml water)
+/// and a sum of entries logged across a period (e.g. 45 min creative work/
+/// week, logged in pieces) — those two behaved identically everywhere in
+/// this codebase (same progress/claim/quick-log logic), so they were merged
+/// into one type instead of staying as `quantity` + `cumulative`.
+enum HabitType { binary, quantity, duration, multipleCompletion, limit }
 
 extension HabitTypeLabel on HabitType {
   String get label => switch (this) {
@@ -21,16 +27,14 @@ extension HabitTypeLabel on HabitType {
     HabitType.duration => 'Duration',
     HabitType.multipleCompletion => 'Multiple',
     HabitType.limit => 'Limit / Negative',
-    HabitType.cumulative => 'Cumulative',
   };
 
   String get description => switch (this) {
     HabitType.binary => 'Simple yes / no',
-    HabitType.quantity => 'Track an amount, e.g. ml, pages',
+    HabitType.quantity => 'Track an amount, e.g. ml, pages, or minutes/week',
     HabitType.duration => 'Track minutes or hours',
     HabitType.multipleCompletion => 'Count out of N, e.g. 2/3 meals',
     HabitType.limit => 'Stay under a max',
-    HabitType.cumulative => 'Sum entries across a period',
   };
 }
 
@@ -79,6 +83,7 @@ class Habit {
     this.targetValue,
     this.unit,
     this.minThreshold,
+    this.quickLogAmount,
     this.currentValue = 0,
     this.adaptiveMultiplier = 1.0,
     this.customDays,
@@ -109,6 +114,10 @@ class Habit {
   /// Partial-credit threshold. Not meaningful for binary or limit habits.
   final double? minThreshold;
 
+  /// User-set override for [quickLogStep]. Null means "use the default
+  /// heuristic" — see [quickLogStep].
+  final double? quickLogAmount;
+
   /// Today's logged progress toward [targetValue].
   final double currentValue;
 
@@ -136,6 +145,39 @@ class Habit {
   final bool isCompletedToday;
 
   bool get hasProgressTracking => type != HabitType.binary;
+
+  /// The amount a single quick-log tap adds. [quickLogAmount] if the user
+  /// set one; otherwise a heuristic default: 5 minutes for [HabitType.
+  /// duration], 1 completion for [HabitType.multipleCompletion], or 25% of
+  /// [targetValue] (minimum 1) for every other progress-tracked type. Not
+  /// meaningful for binary habits.
+  double get quickLogStep {
+    final override = quickLogAmount;
+    if (override != null) return override;
+    switch (type) {
+      case HabitType.duration:
+        return 5;
+      case HabitType.multipleCompletion:
+        return 1;
+      default:
+        final target = targetValue ?? 0;
+        return (target * 0.25).clamp(1, double.infinity).roundToDouble();
+    }
+  }
+
+  /// Display label for [quickLogStep], e.g. "+250 ml", "+5m", "+1".
+  String get quickLogLabel {
+    final amount = quickLogStep;
+    switch (type) {
+      case HabitType.duration:
+        return '+${amount.round()}m';
+      case HabitType.multipleCompletion:
+        return '+${amount.round()}';
+      default:
+        final u = unit ?? '';
+        return '+${amount.round()} $u'.trim();
+    }
+  }
 
   /// Whether this habit is due on [date], per its [repeat] schedule and
   /// optional [startDate]/[endDate] window. Drives both today's list and any
@@ -230,6 +272,7 @@ class Habit {
       targetValue: targetValue,
       unit: unit,
       minThreshold: minThreshold,
+      quickLogAmount: quickLogAmount,
       currentValue: currentValue ?? this.currentValue,
       adaptiveMultiplier: adaptiveMultiplier,
       customDays: customDays,
