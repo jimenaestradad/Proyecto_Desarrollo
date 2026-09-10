@@ -3,7 +3,7 @@ import 'package:nori/data/accessory_catalog.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/theme/app_theme.dart';
-import 'package:nori/widgets/accessory_badge.dart';
+import 'package:nori/widgets/accessory_art.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 class CustomizationScreen extends StatefulWidget {
@@ -165,8 +165,8 @@ class _CustomizationHeader extends StatelessWidget {
 }
 
 /// The pet preview panel above the accessory grid. Renders the currently
-/// selected (not-yet-saved) accessory as a badge near Nori's head — see
-/// AccessoryBadge for why it's a badge rather than a fitted illustration.
+/// selected (not-yet-saved) accessory as flat-illustration art near Nori's
+/// head — see accessory_art.dart.
 class _PetPreview extends StatelessWidget {
   const _PetPreview({required this.height, this.equippedItem});
 
@@ -209,12 +209,9 @@ class _PetPreview extends StatelessWidget {
                   fit: BoxFit.contain,
                 ),
                 if (equippedItem != null)
-                  Positioned(
-                    top: -4,
-                    child: AccessoryBadge(
-                      item: equippedItem!,
-                      size: petHeight * 0.24,
-                    ),
+                  positionedAccessoryArt(
+                    item: equippedItem!,
+                    referenceSize: petHeight,
                   ),
               ],
             ),

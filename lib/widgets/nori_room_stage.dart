@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../data/accessory_catalog.dart';
 import '../models/pet.dart';
 import '../theme/app_theme.dart';
-import 'accessory_badge.dart';
+import 'accessory_art.dart';
 import 'nori_breathing_sprite.dart';
 
 /// Nori's room: the interior background with Nori standing on the rug,
@@ -41,51 +41,64 @@ class NoriRoomStage extends StatelessWidget {
   final PetEvolutionStage stage;
 
   /// The accessory equipped in Customization (see accessory_catalog.dart),
-  /// or null when nothing is equipped. Drawn as a small [AccessoryBadge]
-  /// near Nori's head — there's no fitted art layer to composite onto the
-  /// photographed sprite, so a badge is the equip-feedback stand-in.
+  /// or null when nothing is equipped. Drawn near Nori's head via
+  /// accessory_art.dart's hand-drawn, flat-outlined illustrations, matching
+  /// his own art style rather than a generic UI icon.
   final AccessoryItem? equippedAccessory;
 
   bool get _isEvolved => stage != PetEvolutionStage.baby;
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Image.asset('assets/images/room_interior.jpg', fit: BoxFit.cover),
-        if (_isEvolved)
-          Align(
-            alignment: const Alignment(0, 0.3),
-            child: const _EvolvedAura(),
-          ),
-        // Rug sits higher up in this background than the previous one, so
-        // both are shifted up to match (see the rug band's own pixel
-        // fraction if retuning again after a future background swap).
-        Align(alignment: const Alignment(0, 0.44), child: _ContactShadow()),
-        Align(
-          alignment: const Alignment(0, 0.28),
-          child: FractionallySizedBox(
-            // Placeholder "grew" cue for evolution1 — see [stage] doc.
-            widthFactor: _isEvolved ? 0.66 : 0.56,
-            child: GestureDetector(
-              onTap: onTapNori,
-              child: Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.topCenter,
-                children: [
-                  const NoriBreathingSprite(),
-                  if (equippedAccessory != null)
-                    Positioned(
-                      top: -6,
-                      child: AccessoryBadge(item: equippedAccessory!),
-                    ),
-                ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Placeholder "grew" cue for evolution1 — see [stage] doc.
+        final widthFactor = _isEvolved ? 0.66 : 0.56;
+        // Nori's actual rendered width here, so the accessory art below
+        // can size itself relative to him instead of a guessed constant.
+        final spriteWidth = constraints.maxWidth * widthFactor;
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset('assets/images/room_interior.jpg', fit: BoxFit.cover),
+            if (_isEvolved)
+              Align(
+                alignment: const Alignment(0, 0.3),
+                child: const _EvolvedAura(),
+              ),
+            // Rug sits higher up in this background than the previous one,
+            // so both are shifted up to match (see the rug band's own
+            // pixel fraction if retuning again after a future background
+            // swap).
+            Align(
+              alignment: const Alignment(0, 0.44),
+              child: _ContactShadow(),
+            ),
+            Align(
+              alignment: const Alignment(0, 0.28),
+              child: FractionallySizedBox(
+                widthFactor: widthFactor,
+                child: GestureDetector(
+                  onTap: onTapNori,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.topCenter,
+                    children: [
+                      const NoriBreathingSprite(),
+                      if (equippedAccessory != null)
+                        positionedAccessoryArt(
+                          item: equippedAccessory!,
+                          referenceSize: spriteWidth,
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
