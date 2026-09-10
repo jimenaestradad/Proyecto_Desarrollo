@@ -8,6 +8,7 @@ import 'package:nori/models/inventory.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/models/pet.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
+import 'package:nori/screens/pet/evolution_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/habit_tile.dart';
 import 'package:nori/widgets/nori_avatar.dart';
@@ -65,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _reloadUserAndPet() async {
+    final previousStage = _pet?.stage;
     final user = await AppData.user.getCurrentUser();
     await AppData.pet.syncEvolution(user.level);
     final pet = await AppData.pet.getPet();
@@ -73,6 +75,16 @@ class _HomeScreenState extends State<HomeScreen> {
       _user = user;
       _pet = pet;
     });
+    // previousStage == null only on the very first load (no prior pet to
+    // compare against) — skip the celebration then so it only ever fires
+    // for a real, in-session evolution, not on app open.
+    if (previousStage != null && previousStage != pet.stage) {
+      await showEvolutionCelebration(
+        context,
+        petName: pet.name,
+        stage: pet.stage,
+      );
+    }
   }
 
   Future<void> _applyReward(HabitRewardResult reward) async {
