@@ -20,7 +20,7 @@ class AccessoryItem {
   final int price;
 }
 
-/// MVP set: three basic accessories. Prices are INFERRED placeholders, same
+/// MVP set: five basic accessories. Prices are INFERRED placeholders, same
 /// tier as the app's other mock economy numbers — see docs/OPEN_DECISIONS.md
 /// "Economy" (shop item prices are explicitly undecided).
 const List<AccessoryItem> kAccessoryCatalog = [
@@ -44,6 +44,20 @@ const List<AccessoryItem> kAccessoryCatalog = [
     icon: Icons.visibility,
     color: AppColors.linen,
     price: 150,
+  ),
+  AccessoryItem(
+    id: 'flower-crown',
+    name: 'Flower Crown',
+    icon: Icons.local_florist,
+    color: AppColors.blush,
+    price: 180,
+  ),
+  AccessoryItem(
+    id: 'cozy-headphones',
+    name: 'Cozy Headphones',
+    icon: Icons.headphones,
+    color: AppColors.sky,
+    price: 220,
   ),
 ];
 
