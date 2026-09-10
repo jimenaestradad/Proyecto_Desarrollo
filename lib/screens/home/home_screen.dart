@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:nori/data/accessory_catalog.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/habit.dart';
@@ -10,6 +11,7 @@ import 'package:nori/models/pet.dart';
 import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
 import 'package:nori/screens/pet/evolution_screen.dart';
+import 'package:nori/screens/shop/shop_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/habit_tile.dart';
 import 'package:nori/widgets/nori_avatar.dart';
@@ -159,6 +161,12 @@ class _HomeScreenState extends State<HomeScreen>
     ).push(MaterialPageRoute(builder: (_) => const CustomizationScreen()));
   }
 
+  void _openShop() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ShopScreen()));
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _user;
@@ -172,6 +180,9 @@ class _HomeScreenState extends State<HomeScreen>
 
     final completedCount = habits.where((habit) => habit.isCompletedToday).length;
     final completion = habits.isEmpty ? 0.0 : completedCount / habits.length;
+    final equippedAccessory = inventory.equippedAccessoryId == null
+        ? null
+        : accessoryById(inventory.equippedAccessoryId!);
 
     return Scaffold(
       body: LayoutBuilder(
@@ -201,6 +212,7 @@ class _HomeScreenState extends State<HomeScreen>
                     child: NoriRoomStage(
                       onTapNori: _openCustomization,
                       stage: pet.stage,
+                      equippedAccessory: equippedAccessory,
                     ),
                   ),
                   SafeArea(
@@ -228,6 +240,7 @@ class _HomeScreenState extends State<HomeScreen>
                           consume: AppData.inventory.consumeToy,
                           act: AppData.pet.play,
                         ),
+                        onShop: _openShop,
                       ),
                     ),
                   ),
@@ -256,7 +269,8 @@ class _HomeScreenState extends State<HomeScreen>
 
 /// Floats over the top of the room: avatar, a card with name/level (tap the
 /// level bar to reveal the evolution + XP readout), the three vital rings,
-/// and a coins chip.
+/// a coins chip, and a small Shop shortcut so buying more care items or
+/// accessories doesn't require a detour through Profile.
 class _RoomHud extends StatefulWidget {
   const _RoomHud({
     required this.user,
@@ -265,6 +279,7 @@ class _RoomHud extends StatefulWidget {
     required this.onFeed,
     required this.onGroom,
     required this.onPlay,
+    required this.onShop,
   });
 
   final NoriUser user;
@@ -273,6 +288,7 @@ class _RoomHud extends StatefulWidget {
   final VoidCallback onFeed;
   final VoidCallback onGroom;
   final VoidCallback onPlay;
+  final VoidCallback onShop;
 
   @override
   State<_RoomHud> createState() => _RoomHudState();
@@ -408,6 +424,8 @@ class _RoomHudState extends State<_RoomHud> {
             ),
             const SizedBox(width: AppSpacing.unit),
             _CoinPill(coins: user.coins),
+            const SizedBox(width: AppSpacing.unit),
+            _ShopButton(onTap: widget.onShop),
           ],
         ),
         const SizedBox(height: AppSpacing.gutter),
@@ -467,6 +485,33 @@ class _RoomHudState extends State<_RoomHud> {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Small circular Shop shortcut, styled to match [_CoinPill]/the back
+/// button on Customization — a quick way into the Shop from Home without
+/// detouring through Profile.
+class _ShopButton extends StatelessWidget {
+  const _ShopButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.white.withValues(alpha: 0.88),
+      shape: const CircleBorder(
+        side: BorderSide(color: AppColors.ink, width: AppBorder.standard),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IconButton(
+        tooltip: 'Shop',
+        onPressed: onTap,
+        icon: const Icon(Icons.storefront, size: 20, color: AppColors.ink),
+        padding: const EdgeInsets.all(8),
+        constraints: const BoxConstraints(),
+      ),
     );
   }
 }

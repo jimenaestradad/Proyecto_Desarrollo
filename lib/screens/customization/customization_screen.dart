@@ -3,6 +3,7 @@ import 'package:nori/data/accessory_catalog.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/widgets/accessory_badge.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 class CustomizationScreen extends StatefulWidget {
@@ -62,6 +63,7 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
   @override
   Widget build(BuildContext context) {
     final inventory = _inventory;
+    final draftEquippedId = _draftEquippedId;
 
     return Scaffold(
       backgroundColor: AppColors.linen,
@@ -97,7 +99,12 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
                               padding: EdgeInsets.symmetric(
                                 horizontal: horizontalPadding,
                               ),
-                              child: _PetPreview(height: isWide ? 340 : 280),
+                              child: _PetPreview(
+                                height: isWide ? 340 : 280,
+                                equippedItem: draftEquippedId == null
+                                    ? null
+                                    : accessoryById(draftEquippedId),
+                              ),
                             ),
                             const SizedBox(height: AppSpacing.stackMd),
                             Padding(
@@ -157,13 +164,18 @@ class _CustomizationHeader extends StatelessWidget {
   }
 }
 
+/// The pet preview panel above the accessory grid. Renders the currently
+/// selected (not-yet-saved) accessory as a badge near Nori's head — see
+/// AccessoryBadge for why it's a badge rather than a fitted illustration.
 class _PetPreview extends StatelessWidget {
-  const _PetPreview({required this.height});
+  const _PetPreview({required this.height, this.equippedItem});
 
   final double height;
+  final AccessoryItem? equippedItem;
 
   @override
   Widget build(BuildContext context) {
+    final petHeight = height * 0.72;
     return Container(
       height: height,
       decoration: BoxDecoration(
@@ -185,10 +197,27 @@ class _PetPreview extends StatelessWidget {
               ),
             ),
           ),
-          Image.asset(
-            'assets/images/nori_front.png',
-            height: height * 0.72,
-            fit: BoxFit.contain,
+          SizedBox(
+            height: petHeight,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.topCenter,
+              children: [
+                Image.asset(
+                  'assets/images/nori_front.png',
+                  height: petHeight,
+                  fit: BoxFit.contain,
+                ),
+                if (equippedItem != null)
+                  Positioned(
+                    top: -4,
+                    child: AccessoryBadge(
+                      item: equippedItem!,
+                      size: petHeight * 0.24,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),

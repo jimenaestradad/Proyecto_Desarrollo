@@ -1,8 +1,10 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import '../data/accessory_catalog.dart';
 import '../models/pet.dart';
 import '../theme/app_theme.dart';
+import 'accessory_badge.dart';
 import 'nori_breathing_sprite.dart';
 
 /// Nori's room: the interior background with Nori standing on the rug,
@@ -23,6 +25,7 @@ class NoriRoomStage extends StatelessWidget {
     super.key,
     required this.onTapNori,
     this.stage = PetEvolutionStage.baby,
+    this.equippedAccessory,
   });
 
   final VoidCallback onTapNori;
@@ -36,6 +39,12 @@ class NoriRoomStage extends StatelessWidget {
   /// breathing sprite scaled up with a warm aura behind it, so evolving
   /// reads as "grew, something changed" instead of silently doing nothing.
   final PetEvolutionStage stage;
+
+  /// The accessory equipped in Customization (see accessory_catalog.dart),
+  /// or null when nothing is equipped. Drawn as a small [AccessoryBadge]
+  /// near Nori's head — there's no fitted art layer to composite onto the
+  /// photographed sprite, so a badge is the equip-feedback stand-in.
+  final AccessoryItem? equippedAccessory;
 
   bool get _isEvolved => stage != PetEvolutionStage.baby;
 
@@ -61,7 +70,18 @@ class NoriRoomStage extends StatelessWidget {
             widthFactor: _isEvolved ? 0.66 : 0.56,
             child: GestureDetector(
               onTap: onTapNori,
-              child: const NoriBreathingSprite(),
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.topCenter,
+                children: [
+                  const NoriBreathingSprite(),
+                  if (equippedAccessory != null)
+                    Positioned(
+                      top: -6,
+                      child: AccessoryBadge(item: equippedAccessory!),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
