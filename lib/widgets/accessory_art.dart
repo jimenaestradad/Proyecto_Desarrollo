@@ -47,9 +47,15 @@ class AccessoryArt extends StatelessWidget {
 /// (negative = extends upward above his head, positive = sits down into
 /// the face/head).
 ///
-/// These numbers are a first pass tuned by eye against screenshots, not
-/// measured against the actual art — nudge them here if an accessory looks
-/// off in a particular spot once Jimena tests it on device.
+/// [scale] is relative to Nori's whole body span (that's the only
+/// measurement either screen actually has on hand), and his head is only
+/// roughly a quarter to a third of that — the first pass here used
+/// 0.4-0.5, sized as if it were relative to the head itself, which is why
+/// everything rendered oversized (a propeller beanie taller than Nori).
+/// These are recalibrated against the original icon-badge version (which
+/// *was* sized right, at 0.24) and are still a first pass tuned by eye
+/// against screenshots — nudge further here if something looks off once
+/// Jimena tests it on device.
 class _AccessoryPlacement {
   const _AccessoryPlacement({required this.scale, required this.topFraction});
 
@@ -58,11 +64,11 @@ class _AccessoryPlacement {
 }
 
 const Map<String, _AccessoryPlacement> _kPlacements = {
-  'cozy-headphones': _AccessoryPlacement(scale: 0.46, topFraction: 0.0),
-  'smart-glasses': _AccessoryPlacement(scale: 0.4, topFraction: 0.2),
-  'wizard-hat': _AccessoryPlacement(scale: 0.4, topFraction: -0.34),
-  'propeller-beanie': _AccessoryPlacement(scale: 0.42, topFraction: -0.2),
-  'flower-crown': _AccessoryPlacement(scale: 0.5, topFraction: -0.06),
+  'cozy-headphones': _AccessoryPlacement(scale: 0.3, topFraction: 0.04),
+  'smart-glasses': _AccessoryPlacement(scale: 0.2, topFraction: 0.22),
+  'wizard-hat': _AccessoryPlacement(scale: 0.26, topFraction: -0.16),
+  'propeller-beanie': _AccessoryPlacement(scale: 0.26, topFraction: -0.08),
+  'flower-crown': _AccessoryPlacement(scale: 0.32, topFraction: -0.02),
 };
 
 /// Wraps [AccessoryArt] in the `Positioned` it needs to sit correctly
