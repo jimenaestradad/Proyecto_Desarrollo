@@ -782,9 +782,9 @@ class _HabitPanelState extends State<_HabitPanel> {
                                     habit: habits[i],
                                     onToggle: (completed) =>
                                         widget.onToggle(habits[i], completed),
+                                    onEdit: widget.onOpenHabits,
                                   ),
-                                  if (i != habits.length - 1)
-                                    const SizedBox(height: AppSpacing.stackSm),
+                                  const SizedBox(height: AppSpacing.stackSm),
                                 ],
                               ],
                             ),
@@ -812,6 +812,7 @@ class _HabitPanelState extends State<_HabitPanel> {
                           habit: nextHabit,
                           onToggle: (completed) =>
                               widget.onToggle(nextHabit!, completed),
+                          onEdit: widget.onOpenHabits,
                         ),
                 ),
               ],

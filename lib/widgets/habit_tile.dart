@@ -5,10 +5,16 @@ import '../theme/app_theme.dart';
 /// A single habit row: checkbox, icon badge, name/subtitle, XP reward.
 /// Used by the Habits List screen and the Home dashboard's daily goal card.
 class HabitTile extends StatelessWidget {
-  const HabitTile({super.key, required this.habit, required this.onToggle});
+  const HabitTile({
+    super.key,
+    required this.habit,
+    required this.onToggle,
+    required this.onEdit,
+  });
 
   final Habit habit;
   final ValueChanged<bool> onToggle;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +71,18 @@ class HabitTile extends StatelessWidget {
                 color: completed ? AppColors.inkFaint : AppColors.terracottaDark,
                 fontWeight: FontWeight.w700,
               ),
+            ),
+            PopupMenuButton<void>(
+              tooltip: 'More',
+              padding: EdgeInsets.zero,
+              icon: const Icon(
+                Icons.more_vert,
+                size: 18,
+                color: AppColors.inkFaint,
+              ),
+              itemBuilder: (context) => [
+                PopupMenuItem(onTap: onEdit, child: const Text('Edit Habit')),
+              ],
             ),
           ],
         ),

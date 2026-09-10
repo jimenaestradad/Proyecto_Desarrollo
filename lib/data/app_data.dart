@@ -19,7 +19,7 @@ class AppData {
   static HabitRepository habits = MockHabitRepository();
   static AchievementRepository achievements = MockAchievementRepository();
   static NotificationRepository notifications = MockNotificationRepository();
-  static CalendarRepository calendar = MockCalendarRepository();
+  static CalendarRepository calendar = MockCalendarRepository(habits);
   static PetRepository pet = MockPetRepository();
   static InventoryRepository inventory = MockInventoryRepository();
 }

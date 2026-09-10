@@ -185,7 +185,11 @@ class _PetPreview extends StatelessWidget {
               ),
             ),
           ),
-          const Icon(Icons.pets, size: 118, color: AppColors.ink),
+          Image.asset(
+            'assets/images/nori_front.png',
+            height: height * 0.72,
+            fit: BoxFit.contain,
+          ),
         ],
       ),
     );

@@ -5,11 +5,18 @@ import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 class AddHabitScreen extends StatefulWidget {
-  const AddHabitScreen({super.key});
+  const AddHabitScreen({super.key, this.habit});
+
+  /// When set, the form opens pre-filled for editing this habit instead of
+  /// creating a new one — see [_AddHabitScreenState.initState].
+  final Habit? habit;
 
   @override
   State<AddHabitScreen> createState() => _AddHabitScreenState();
 }
+
+String _formatNum(double value) =>
+    value == value.roundToDouble() ? value.round().toString() : value.toString();
 
 class _AddHabitScreenState extends State<AddHabitScreen> {
   static const _icons = [
@@ -43,9 +50,39 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
 
   bool _isSaving = false;
 
+  bool get _isEditing => widget.habit != null;
   bool get _needsTarget => _selectedType != HabitType.binary;
   bool get _supportsThreshold =>
       _selectedType != HabitType.binary && _selectedType != HabitType.limit;
+
+  @override
+  void initState() {
+    super.initState();
+    final habit = widget.habit;
+    if (habit == null) return;
+
+    _nameController.text = habit.name;
+    _selectedIcon = habit.icon;
+    _selectedCategory = _categories.contains(habit.subtitle)
+        ? habit.subtitle
+        : _categories.first;
+    _selectedType = habit.type;
+    _difficulty = habit.difficulty;
+    _repeat = habit.repeat;
+    if (habit.customDays != null) _customDays.addAll(habit.customDays!);
+    if (habit.targetValue != null) {
+      _targetController.text = _formatNum(habit.targetValue!);
+    }
+    _unitController.text = habit.unit ?? '';
+    _minThresholdEnabled = habit.minThreshold != null;
+    if (habit.minThreshold != null) {
+      _minThresholdController.text = _formatNum(habit.minThreshold!);
+    }
+    _allowVacationFreeze = habit.allowVacationFreeze;
+    _endDateEnabled = habit.startDate != null && habit.endDate != null;
+    _startDate = habit.startDate;
+    _endDate = habit.endDate;
+  }
 
   @override
   void dispose() {
@@ -56,11 +93,28 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     super.dispose();
   }
 
+  /// Units auto-filled (and locked) for types with a fixed measurement —
+  /// [HabitType.duration] is always minutes, [HabitType.multipleCompletion]
+  /// is always a plain count. Quantity/cumulative stay free-text since their
+  /// unit varies per habit (ml, pages, reps, ...).
+  static const _fixedUnits = {
+    HabitType.duration: 'min',
+    HabitType.multipleCompletion: 'times',
+  };
+
   void _selectType(HabitType type) {
     setState(() {
+      final previousFixedUnit = _fixedUnits[_selectedType];
+      final currentUnit = _unitController.text.trim();
       _selectedType = type;
-      if (type == HabitType.multipleCompletion) {
-        _unitController.text = 'times';
+
+      final newFixedUnit = _fixedUnits[type];
+      if (newFixedUnit != null) {
+        _unitController.text = newFixedUnit;
+      } else if (previousFixedUnit != null && currentUnit == previousFixedUnit) {
+        // Only clear it if it still holds the auto-filled value from the
+        // previous type — don't wipe something the user typed themselves.
+        _unitController.clear();
       }
       if (!_supportsThreshold) _minThresholdEnabled = false;
     });
@@ -119,12 +173,13 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
         ? double.tryParse(_minThresholdController.text.trim())
         : null;
 
+    final existing = widget.habit;
     final habit = Habit(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
       name: enteredName.isEmpty ? 'New Habit' : enteredName,
       subtitle: _selectedCategory,
       icon: _selectedIcon,
-      color: AppColors.terracotta,
+      color: existing?.color ?? AppColors.terracotta,
       xpReward: _difficulty.baseXp,
       coinReward: _difficulty.baseXp ~/ 2,
       repeat: _repeat,
@@ -133,13 +188,21 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       targetValue: target,
       unit: unit == null || unit.isEmpty ? null : unit,
       minThreshold: minThreshold,
+      currentValue: existing?.currentValue ?? 0,
       customDays: _repeat == HabitRepeat.custom ? {..._customDays} : null,
       allowVacationFreeze: _allowVacationFreeze,
+      lastAwardedXp: existing?.lastAwardedXp ?? 0,
+      lastAwardedCoins: existing?.lastAwardedCoins ?? 0,
       startDate: _endDateEnabled ? _startDate : null,
       endDate: _endDateEnabled ? _endDate : null,
+      isCompletedToday: existing?.isCompletedToday ?? false,
     );
 
-    await AppData.habits.addHabit(habit);
+    if (_isEditing) {
+      await AppData.habits.updateHabit(habit);
+    } else {
+      await AppData.habits.addHabit(habit);
+    }
     if (!mounted) return;
     Navigator.pop(context, true);
   }
@@ -155,7 +218,9 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
           AppSpacing.containerPaddingMobile,
         ),
         child: TactileButton(
-          label: _isSaving ? 'Saving...' : 'Save Habit',
+          label: _isSaving
+              ? 'Saving...'
+              : (_isEditing ? 'Save Changes' : 'Save Habit'),
           icon: Icons.check_circle,
           onPressed: _isSaving ? null : _saveHabit,
         ),
@@ -180,7 +245,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              'New Habit',
+                              _isEditing ? 'Edit Habit' : 'New Habit',
                               style: AppTextStyles.headlineLgMobile,
                             ),
                           ),
@@ -257,22 +322,41 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                       const SizedBox(height: AppSpacing.stackMd),
                       _FieldLabel(label: 'Tracking Type'),
                       const SizedBox(height: AppSpacing.unit),
-                      GridView.count(
-                        crossAxisCount: 2,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        crossAxisSpacing: AppSpacing.stackSm,
-                        mainAxisSpacing: AppSpacing.stackSm,
-                        childAspectRatio: 2.4,
-                        children: [
-                          for (final type in HabitType.values)
-                            _TypeCard(
-                              type: type,
-                              selected: _selectedType == type,
-                              onTap: () => _selectType(type),
-                            ),
-                        ],
-                      ),
+                      for (
+                        var row = 0;
+                        row < HabitType.values.length;
+                        row += 2
+                      ) ...[
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: _TypeCard(
+                                  type: HabitType.values[row],
+                                  selected:
+                                      _selectedType == HabitType.values[row],
+                                  onTap: () =>
+                                      _selectType(HabitType.values[row]),
+                                ),
+                              ),
+                              const SizedBox(width: AppSpacing.stackSm),
+                              Expanded(
+                                child: _TypeCard(
+                                  type: HabitType.values[row + 1],
+                                  selected:
+                                      _selectedType ==
+                                          HabitType.values[row + 1],
+                                  onTap: () =>
+                                      _selectType(HabitType.values[row + 1]),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (row + 2 < HabitType.values.length)
+                          const SizedBox(height: AppSpacing.stackSm),
+                      ],
                       if (_needsTarget) ...[
                         const SizedBox(height: AppSpacing.stackMd),
                         _FieldLabel(label: 'Ideal Target'),
@@ -294,7 +378,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                             Expanded(
                               child: TextField(
                                 controller: _unitController,
-                                enabled: _selectedType != HabitType.multipleCompletion,
+                                enabled: !_fixedUnits.containsKey(_selectedType),
                                 textAlign: TextAlign.center,
                                 style: AppTextStyles.bodyLg,
                                 decoration: _fieldDecoration(hintText: 'unit'),

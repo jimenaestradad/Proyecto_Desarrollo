@@ -56,9 +56,9 @@ class WelcomeScreen extends StatelessWidget {
                           constraints.maxHeight - (AppSpacing.stackMd * 2),
                     ),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const SizedBox(height: AppSpacing.stackMd),
                         Column(
                           children: [
                             const _MascotPlaceholder(),
@@ -94,13 +94,16 @@ class WelcomeScreen extends StatelessWidget {
                         ),
                         Padding(
                           padding: const EdgeInsets.only(
-                            top: AppSpacing.stackLg,
+                            top: AppSpacing.stackMd,
                           ),
-                          child: TactileButton(
-                            label: 'Get Started',
-                            icon: Icons.arrow_forward,
-                            onPressed: () =>
-                                Navigator.pushNamed(context, '/signup'),
+                          child: FractionallySizedBox(
+                            widthFactor: 0.8,
+                            child: TactileButton(
+                              label: 'Get Started',
+                              icon: Icons.arrow_forward,
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/signup'),
+                            ),
                           ),
                         ),
                       ],
@@ -156,7 +159,11 @@ class _MascotPlaceholder extends StatelessWidget {
                   width: AppBorder.standard,
                 ),
               ),
-              child: const Icon(Icons.pets, size: 104, color: AppColors.ink),
+              padding: const EdgeInsets.all(AppSpacing.unit),
+              child: Image.asset(
+                'assets/images/nori_front.png',
+                fit: BoxFit.contain,
+              ),
             ),
           ),
         ],

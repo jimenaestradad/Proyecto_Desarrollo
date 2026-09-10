@@ -6,6 +6,7 @@ import 'package:nori/screens/achievements/achievements_screen.dart';
 import 'package:nori/screens/leaderboard/leaderboard_screen.dart';
 import 'package:nori/screens/notifications/notifications_screen.dart';
 import 'package:nori/screens/premium/nori_plus_screen.dart';
+import 'package:nori/screens/settings/settings_screen.dart';
 import 'package:nori/screens/shop/shop_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
@@ -57,6 +58,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const AchievementsScreen()),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
     );
   }
 
@@ -130,7 +138,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             const _HabitStatisticsCard(),
                             const SizedBox(height: AppSpacing.stackMd),
                             _AccountCard(
-                              onSettings: _showComingSoon,
+                              onSettings: _openSettings,
                               onNotifications: _openNotifications,
                               onAppearance: _showComingSoon,
                             ),

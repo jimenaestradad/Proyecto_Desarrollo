@@ -137,6 +137,36 @@ class Habit {
 
   bool get hasProgressTracking => type != HabitType.binary;
 
+  /// Whether this habit is due on [date], per its [repeat] schedule and
+  /// optional [startDate]/[endDate] window. Drives both today's list and any
+  /// past day's list, so history never shows a habit on a day it was never
+  /// scheduled (e.g. an M/W/F gym habit on a Tuesday).
+  ///
+  /// Note this is calendar-day scheduling only. FEATURES.md §5 also describes
+  /// X-times-per-period habits ("5x any day this week"), which have no
+  /// calendar-day answer — that scheduling style is still open, see
+  /// docs/OPEN_DECISIONS.md.
+  bool isScheduledOn(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+
+    final start = startDate;
+    if (start != null &&
+        day.isBefore(DateTime(start.year, start.month, start.day))) {
+      return false;
+    }
+    final end = endDate;
+    if (end != null && day.isAfter(DateTime(end.year, end.month, end.day))) {
+      return false;
+    }
+
+    return switch (repeat) {
+      HabitRepeat.daily => true,
+      HabitRepeat.weekdays => day.weekday <= DateTime.friday,
+      HabitRepeat.weekends => day.weekday >= DateTime.saturday,
+      HabitRepeat.custom => customDays?.contains(day.weekday) ?? true,
+    };
+  }
+
   /// "Stay under a max" instead of "reach a target".
   bool get isInverted => type == HabitType.limit;
 

@@ -1,54 +1,141 @@
 import '../models/calendar_day.dart';
+import '../models/habit.dart';
+import 'habit_history_store.dart' show dateOnly;
+import 'habit_repository.dart';
 
 abstract class CalendarRepository {
+  /// Stats and day grid for [year]/[month] (1-indexed). Backs the month
+  /// arrows on the calendar screen.
+  Future<CalendarMonthStats> getMonth(int year, int month);
+
+  /// Convenience for whatever month "today" falls in.
   Future<CalendarMonthStats> getCurrentMonth();
 }
 
+/// Derives the calendar entirely from [HabitRepository.getHabitsForDate], so
+/// a day's colour here and that day's habit list (via the same call) can
+/// never disagree — there is no separate calendar dataset to drift.
 class MockCalendarRepository implements CalendarRepository {
-  @override
-  Future<CalendarMonthStats> getCurrentMonth() async {
-    const statuses = [
-      CalendarDayStatus.empty,
-      CalendarDayStatus.empty,
-      CalendarDayStatus.perfect,
-      CalendarDayStatus.done,
-      CalendarDayStatus.done,
-      CalendarDayStatus.missed,
-      CalendarDayStatus.perfect,
-      CalendarDayStatus.done,
-      CalendarDayStatus.done,
-      CalendarDayStatus.done,
-      CalendarDayStatus.perfect,
-      CalendarDayStatus.done,
-      CalendarDayStatus.done,
-      CalendarDayStatus.today,
-      CalendarDayStatus.future,
-      CalendarDayStatus.future,
-      CalendarDayStatus.future,
-      CalendarDayStatus.future,
-      CalendarDayStatus.future,
-      CalendarDayStatus.future,
-      CalendarDayStatus.future,
-    ];
+  MockCalendarRepository(this._habits);
 
-    final days = <CalendarDay>[];
-    var dayNumber = 1;
-    for (final status in statuses) {
-      if (status == CalendarDayStatus.empty) {
-        days.add(const CalendarDay(day: null, status: CalendarDayStatus.empty));
-      } else {
-        days.add(CalendarDay(day: dayNumber, status: status));
-        dayNumber++;
+  final HabitRepository _habits;
+
+  static const _monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  @override
+  Future<CalendarMonthStats> getCurrentMonth() {
+    final now = DateTime.now();
+    return getMonth(now.year, now.month);
+  }
+
+  @override
+  Future<CalendarMonthStats> getMonth(int year, int month) async {
+    final today = dateOnly(DateTime.now());
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    // Monday-first grid padding, matching the Mon..Sun header.
+    final leadingEmpty = (DateTime(year, month, 1).weekday - DateTime.monday) % 7;
+
+    final statusByDay = <int, CalendarDayStatus>{};
+    var perfectDays = 0;
+    var missedDays = 0;
+    var habitsDone = 0;
+
+    for (var d = 1; d <= daysInMonth; d++) {
+      final date = DateTime(year, month, d);
+      if (date.isAfter(today)) {
+        statusByDay[d] = CalendarDayStatus.future;
+        continue;
       }
+      final scheduled = await _habits.getHabitsForDate(date);
+      habitsDone += scheduled.where((h) => h.isCompletedToday).length;
+
+      final status = _statusFor(date, today, scheduled);
+      statusByDay[d] = status;
+      if (status == CalendarDayStatus.perfect) perfectDays++;
+      if (status == CalendarDayStatus.missed) missedDays++;
     }
 
+    final days = <CalendarDay>[
+      for (var i = 0; i < leadingEmpty; i++)
+        const CalendarDay(day: null, status: CalendarDayStatus.empty),
+      for (var d = 1; d <= daysInMonth; d++)
+        CalendarDay(
+          day: d,
+          status: statusByDay[d]!,
+          date: DateTime(year, month, d),
+        ),
+    ];
+
     return CalendarMonthStats(
-      monthLabel: 'October',
-      currentStreak: 12,
-      perfectDays: 8,
-      habitsDone: 45,
-      missedDays: 3,
+      year: year,
+      month: month,
+      monthLabel: _monthNames[month - 1],
+      currentStreak: await _currentStreak(today),
+      perfectDays: perfectDays,
+      habitsDone: habitsDone,
+      missedDays: missedDays,
       days: days,
     );
+  }
+
+  /// Today always renders as [CalendarDayStatus.today] regardless of
+  /// progress — it's still in flight. A day with nothing scheduled (every
+  /// habit's schedule skips it) reads as [CalendarDayStatus.done] rather
+  /// than missed, per FEATURES.md §5: an off-schedule day isn't a broken
+  /// commitment.
+  CalendarDayStatus _statusFor(
+    DateTime date,
+    DateTime today,
+    List<Habit> scheduled,
+  ) {
+    if (dateOnly(date) == today) return CalendarDayStatus.today;
+    if (scheduled.isEmpty) return CalendarDayStatus.done;
+    final claimedCount = scheduled.where((h) => h.isCompletedToday).length;
+    if (claimedCount == 0) return CalendarDayStatus.missed;
+    if (claimedCount == scheduled.length) return CalendarDayStatus.perfect;
+    return CalendarDayStatus.done;
+  }
+
+  /// Consecutive days (walking back from today) with at least one claimed
+  /// habit, skipping days nothing was scheduled — mirrors the "streaks
+  /// aren't broken by off-schedule days" rule in FEATURES.md §5, applied
+  /// across all habits together since this is a single aggregate number.
+  /// Today itself only counts once every scheduled habit is claimed; until
+  /// then it's "still in progress" rather than a break.
+  Future<int> _currentStreak(DateTime today) async {
+    var streak = 0;
+    var day = today;
+    while (today.difference(day).inDays <= 400) {
+      final scheduled = await _habits.getHabitsForDate(day);
+      if (scheduled.isNotEmpty) {
+        final isToday = dateOnly(day) == today;
+        final allClaimed = scheduled.every((h) => h.isCompletedToday);
+        final anyClaimed = scheduled.any((h) => h.isCompletedToday);
+        if (isToday) {
+          if (!allClaimed) {
+            day = day.subtract(const Duration(days: 1));
+            continue;
+          }
+        } else if (!anyClaimed) {
+          break;
+        }
+        streak++;
+      }
+      day = day.subtract(const Duration(days: 1));
+    }
+    return streak;
   }
 }
