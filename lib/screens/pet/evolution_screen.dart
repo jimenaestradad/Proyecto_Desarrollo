@@ -8,11 +8,12 @@ import 'package:nori/widgets/tactile_button.dart';
 
 /// Full-screen celebration shown the moment [Pet.stage] advances — the
 /// "Pantalla/animacion de evolucion" beat FEATURES.md §6 calls for but
-/// doesn't spec further. Reuses [NoriBreathingSprite] rather than new art:
-/// only one evolution stage exists today (MVP per §6), so there's no
-/// second sprite to swap in yet — see docs/OPEN_DECISIONS.md "Pet
-/// mechanics". When stage-specific art exists, swap the sprite here for
-/// one that depends on [stage].
+/// doesn't spec further. Reuses [NoriBreathingSprite] behind a warm glow
+/// (the same placeholder "grew" treatment as [NoriRoomStage]'s evolved
+/// aura) rather than new art — see docs/KNOWN_ISSUES.md: real stage-2
+/// character art needs new photography of the physical prop the existing
+/// frames were shot from, not something drawable in code. Swap both spots
+/// for real per-stage art together once it exists.
 ///
 /// Push with [showEvolutionCelebration] rather than a bare
 /// `Navigator.push`, so every call site gets the same fade+scale entrance.
@@ -135,24 +136,53 @@ class _EvolutionScreenState extends State<EvolutionScreen> {
                             ),
                           ),
                           const SizedBox(height: AppSpacing.stackSm),
+                          // The glow behind the circle is the same
+                          // "grown" cue as NoriRoomStage's evolved aura —
+                          // a placeholder for real stage-2 art, not a
+                          // one-off effect (see docs/KNOWN_ISSUES.md).
                           SizedBox(
-                            width: 160,
-                            height: 160,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: AppColors.mossLight,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: AppColors.ink,
-                                  width: AppBorder.standard,
+                            width: 200,
+                            height: 200,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                ImageFiltered(
+                                  imageFilter: ui.ImageFilter.blur(
+                                    sigmaX: 28,
+                                    sigmaY: 28,
+                                  ),
+                                  child: Container(
+                                    width: 190,
+                                    height: 190,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: AppColors.mustard.withValues(
+                                        alpha: 0.6,
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(
-                                  AppSpacing.unit,
+                                SizedBox(
+                                  width: 160,
+                                  height: 160,
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: AppColors.mossLight,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: AppColors.ink,
+                                        width: AppBorder.standard,
+                                      ),
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(
+                                        AppSpacing.unit,
+                                      ),
+                                      child: const NoriBreathingSprite(),
+                                    ),
+                                  ),
                                 ),
-                                child: NoriBreathingSprite(),
-                              ),
+                              ],
                             ),
                           ),
                           const SizedBox(height: AppSpacing.stackMd),

@@ -198,7 +198,10 @@ class _HomeScreenState extends State<HomeScreen>
                   // padded/rounded card — the HUD and habit panel float
                   // over it instead of sitting in a separate section.
                   Positioned.fill(
-                    child: NoriRoomStage(onTapNori: _openCustomization),
+                    child: NoriRoomStage(
+                      onTapNori: _openCustomization,
+                      stage: pet.stage,
+                    ),
                   ),
                   SafeArea(
                     bottom: false,
