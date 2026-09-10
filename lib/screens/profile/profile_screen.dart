@@ -3,6 +3,7 @@ import 'package:nori/data/app_data.dart';
 import 'package:nori/models/achievement.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/achievements/achievements_screen.dart';
+import 'package:nori/screens/customization/customization_screen.dart';
 import 'package:nori/screens/leaderboard/leaderboard_screen.dart';
 import 'package:nori/screens/notifications/notifications_screen.dart';
 import 'package:nori/screens/premium/nori_plus_screen.dart';
@@ -25,6 +26,8 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   NoriUser? _user;
   List<Achievement>? _achievementPreview;
+  double? _weeklyCompletion;
+  int? _currentStreak;
 
   @override
   void initState() {
@@ -40,12 +43,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
         .expand((category) => category)
         .take(4)
         .toList(growable: false);
+    final weeklyCompletion = await _computeWeeklyCompletion();
+    final monthStats = await AppData.calendar.getCurrentMonth();
 
     if (!mounted) return;
     setState(() {
       _user = user;
       _achievementPreview = achievements;
+      _weeklyCompletion = weeklyCompletion;
+      _currentStreak = monthStats.currentStreak;
     });
+  }
+
+  /// Fraction (0-1) of scheduled habits claimed over the last 7 days
+  /// (today inclusive), the same "scheduled vs. claimed" definition
+  /// [MockCalendarRepository] uses for a day's status — so this and the
+  /// calendar screen can never disagree about what counts as done.
+  Future<double> _computeWeeklyCompletion() async {
+    final today = DateTime.now();
+    var scheduled = 0;
+    var completed = 0;
+    for (var i = 0; i < 7; i++) {
+      final date = today.subtract(Duration(days: i));
+      final habits = await AppData.habits.getHabitsForDate(date);
+      scheduled += habits.length;
+      completed += habits.where((h) => h.isCompletedToday).length;
+    }
+    return scheduled == 0 ? 0 : completed / scheduled;
   }
 
   void _showComingSoon() {
@@ -58,6 +82,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const AchievementsScreen()),
+    );
+  }
+
+  void _openCustomization() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CustomizationScreen()),
     );
   }
 
@@ -100,10 +131,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final user = _user;
     final achievementPreview = _achievementPreview;
+    final weeklyCompletion = _weeklyCompletion;
+    final currentStreak = _currentStreak;
 
     return Scaffold(
       body: SafeArea(
-        child: user == null || achievementPreview == null
+        child:
+            user == null ||
+                achievementPreview == null ||
+                weeklyCompletion == null ||
+                currentStreak == null
             ? const Center(child: CircularProgressIndicator())
             : LayoutBuilder(
                 builder: (context, constraints) {
@@ -135,12 +172,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               onViewAll: _openAchievements,
                             ),
                             const SizedBox(height: AppSpacing.stackMd),
-                            const _HabitStatisticsCard(),
+                            _HabitStatisticsCard(
+                              weeklyCompletion: weeklyCompletion,
+                              currentStreak: currentStreak,
+                            ),
                             const SizedBox(height: AppSpacing.stackMd),
                             _AccountCard(
                               onSettings: _openSettings,
                               onNotifications: _openNotifications,
-                              onAppearance: _showComingSoon,
+                              onAppearance: _openCustomization,
                             ),
                             const SizedBox(height: AppSpacing.stackMd),
                             _ExploreCard(
@@ -405,27 +445,43 @@ class _AchievementPreview extends StatelessWidget {
 }
 
 class _HabitStatisticsCard extends StatelessWidget {
-  const _HabitStatisticsCard();
+  const _HabitStatisticsCard({
+    required this.weeklyCompletion,
+    required this.currentStreak,
+  });
+
+  /// Fraction 0-1, from [_ProfileScreenState._computeWeeklyCompletion].
+  final double weeklyCompletion;
+
+  /// Consecutive-day streak, from [CalendarMonthStats.currentStreak].
+  final int currentStreak;
 
   @override
   Widget build(BuildContext context) {
+    // Daily Quests aren't part of the MVP (see docs/FEATURES.md §11 — vision
+    // only), so the second row is the streak instead of a quest-completion
+    // rate. The /30 here is purely a visual fill for the progress pill (a
+    // month reads as "full") — not a game rule, unlike the streak count
+    // itself.
+    final streakProgress = (currentStreak / 30).clamp(0, 1).toDouble();
+
     return _ProfileCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('Habit Statistics', style: AppTextStyles.headlineMd),
           const SizedBox(height: AppSpacing.stackMd),
-          const _StatisticRow(
+          _StatisticRow(
             label: 'Weekly Completion',
-            value: '85%',
-            progress: 0.85,
+            value: '${(weeklyCompletion * 100).round()}%',
+            progress: weeklyCompletion,
             color: AppColors.moss,
           ),
           const SizedBox(height: AppSpacing.stackMd),
-          const _StatisticRow(
-            label: 'Daily Quests',
-            value: '80%',
-            progress: 0.8,
+          _StatisticRow(
+            label: 'Current Streak',
+            value: currentStreak == 1 ? '1 day' : '$currentStreak days',
+            progress: streakProgress,
             color: AppColors.terracotta,
           ),
         ],
