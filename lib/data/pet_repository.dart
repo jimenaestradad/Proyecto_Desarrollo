@@ -18,7 +18,7 @@ class MockPetRepository implements PetRepository {
     id: 'nori-pet',
     name: 'Nori',
     stage: PetEvolutionStage.baby,
-    evolutionLevelThreshold: 20,
+    evolutionLevelThreshold: 7,
     hunger: 78,
     hygiene: 90,
     happiness: 88,

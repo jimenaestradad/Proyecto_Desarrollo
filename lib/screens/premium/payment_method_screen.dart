@@ -408,7 +408,13 @@ class _CheckoutBar extends StatelessWidget {
         top: false,
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.containerPaddingMobile),
-          child: Center(
+          // Align (not Center) with heightFactor: 1 so this shrink-wraps to
+          // its content's height — Scaffold lays bottomNavigationBar out
+          // with a loose (not tight) height constraint, and a plain Center
+          // expands to fill all of it, which made this bar balloon to
+          // consume nearly the whole screen and starve `body` of space.
+          child: Align(
+            heightFactor: 1,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 680),
               child: LayoutBuilder(

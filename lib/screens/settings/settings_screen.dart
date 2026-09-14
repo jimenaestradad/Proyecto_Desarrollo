@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/widgets/nori_screen_header.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -90,10 +91,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.moss,
-              foregroundColor: AppColors.ink,
-            ),
             onPressed: () => Navigator.pop(dialogContext, controller.text),
             child: const Text('Save'),
           ),
@@ -132,19 +129,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Row(
-                              children: [
-                                IconButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  icon: const Icon(Icons.arrow_back),
-                                ),
-                                Expanded(
-                                  child: Text(
-                                    'Settings',
-                                    style: AppTextStyles.headlineLgMobile,
-                                  ),
-                                ),
-                              ],
+                            NoriScreenHeader(
+                              leading: NoriScreenHeader.backButton(context),
+                              title: 'Settings',
+                              titleStyle: AppTextStyles.headlineLgMobile,
                             ),
                             const SizedBox(height: AppSpacing.stackMd),
                             Text(

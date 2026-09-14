@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/habit.dart';
 import '../theme/app_theme.dart';
+import 'nori_icon_badge.dart';
 
 /// A single habit row: checkbox, icon badge, name/subtitle, XP reward.
 /// Used by the Habits List screen and the Home dashboard's daily goal card.
@@ -55,15 +56,11 @@ class HabitTile extends StatelessWidget {
           children: [
             _Checkbox(checked: completed),
             const SizedBox(width: 12),
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: habit.color,
-                borderRadius: BorderRadius.circular(AppRadius.sm * 0.75),
-                border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-              ),
-              child: Icon(habit.icon, color: AppColors.ink, size: 20),
+            NoriIconBadge(
+              icon: habit.icon,
+              background: habit.color,
+              size: 40,
+              iconSize: 20,
             ),
             const SizedBox(width: 12),
             Expanded(

@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/bucket_list_item.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/id_generator.dart';
+import 'package:nori/widgets/nori_icon_badge.dart';
+import 'package:nori/widgets/nori_screen_header.dart';
+import 'package:nori/widgets/reward_pill.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 /// One-time major life goals — see docs/FEATURES.md §11. Reached from the
@@ -86,19 +90,10 @@ class _BucketListScreenState extends State<BucketListScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Row(
-                              children: [
-                                IconButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  icon: const Icon(Icons.arrow_back),
-                                ),
-                                Expanded(
-                                  child: Text(
-                                    'Bucket List',
-                                    style: AppTextStyles.headlineLgMobile,
-                                  ),
-                                ),
-                              ],
+                            NoriScreenHeader(
+                              leading: NoriScreenHeader.backButton(context),
+                              title: 'Bucket List',
+                              titleStyle: AppTextStyles.headlineLgMobile,
                             ),
                             const SizedBox(height: 2),
                             Padding(
@@ -194,15 +189,11 @@ class _BucketListCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: item.color,
-                  borderRadius: BorderRadius.circular(AppRadius.sm * 0.75),
-                  border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-                ),
-                child: Icon(item.icon, color: AppColors.ink, size: 22),
+              NoriIconBadge(
+                icon: item.icon,
+                background: item.color,
+                size: 44,
+                iconSize: 22,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -238,30 +229,7 @@ class _BucketListCard extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.mustard,
-                  borderRadius: BorderRadius.circular(AppRadius.full),
-                  border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '+${item.xpReward} XP',
-                      style: AppTextStyles.labelSm.copyWith(color: AppColors.ink),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.monetization_on, size: 12, color: AppColors.mustardDark),
-                    const SizedBox(width: 2),
-                    Text(
-                      '${item.coinReward}',
-                      style: AppTextStyles.labelSm.copyWith(color: AppColors.ink),
-                    ),
-                  ],
-                ),
-              ),
+              RewardPill(xp: item.xpReward, coins: item.coinReward),
               const Spacer(),
               FilledButton(
                 onPressed: onToggle,
@@ -326,7 +294,7 @@ class _AddBucketItemDialogState extends State<_AddBucketItemDialog> {
     final title = _titleController.text.trim();
     if (title.isEmpty) return;
     final item = BucketListItem(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: generateId(),
       title: title,
       description: _descriptionController.text.trim(),
       icon: _icon,
@@ -427,10 +395,6 @@ class _AddBucketItemDialogState extends State<_AddBucketItemDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.moss,
-            foregroundColor: AppColors.ink,
-          ),
           onPressed: _save,
           child: const Text('Add'),
         ),

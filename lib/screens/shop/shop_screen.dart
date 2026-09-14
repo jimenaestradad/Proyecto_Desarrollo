@@ -5,7 +5,9 @@ import 'package:nori/models/inventory.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/formatting.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
+import 'package:nori/widgets/nori_icon_badge.dart';
 
 enum _CareEffect { snacks, soap, toys }
 
@@ -354,10 +356,7 @@ class _BalanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final formatted = coins.toString().replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-      (match) => ',',
-    );
+    final formatted = formatThousands(coins);
     return Container(
       padding: const EdgeInsets.all(AppSpacing.gutter),
       decoration: BoxDecoration(
@@ -367,19 +366,13 @@ class _BalanceCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.white,
-              border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-            ),
-            child: const Icon(
-              Icons.monetization_on,
-              color: AppColors.mustardDark,
-              size: 28,
-            ),
+          const NoriIconBadge(
+            icon: Icons.monetization_on,
+            background: AppColors.white,
+            size: 44,
+            circle: true,
+            iconSize: 28,
+            iconColor: AppColors.mustardDark,
           ),
           const SizedBox(width: AppSpacing.stackSm),
           Expanded(

@@ -61,5 +61,11 @@ const List<AccessoryItem> kAccessoryCatalog = [
   ),
 ];
 
-AccessoryItem accessoryById(String id) =>
-    kAccessoryCatalog.firstWhere((item) => item.id == id);
+/// Null if [id] doesn't match any entry — e.g. a stored id from an accessory
+/// that's since been removed from the catalog.
+AccessoryItem? accessoryById(String id) {
+  for (final item in kAccessoryCatalog) {
+    if (item.id == id) return item;
+  }
+  return null;
+}

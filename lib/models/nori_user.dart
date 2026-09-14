@@ -34,6 +34,7 @@ class NoriUser {
     int? level,
     int? totalXp,
     int? xpIntoLevel,
+    int? currentStreak,
     int? coins,
     bool? vacationModeEnabled,
   }) {
@@ -46,7 +47,7 @@ class NoriUser {
       totalXp: totalXp ?? this.totalXp,
       xpIntoLevel: xpIntoLevel ?? this.xpIntoLevel,
       xpForNextLevel: xpForNextLevel,
-      currentStreak: currentStreak,
+      currentStreak: currentStreak ?? this.currentStreak,
       coins: coins ?? this.coins,
       vacationModeEnabled: vacationModeEnabled ?? this.vacationModeEnabled,
       avatarUrl: avatarUrl,

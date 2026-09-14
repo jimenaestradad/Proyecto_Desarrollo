@@ -30,61 +30,7 @@ re-running the audit.
 
 ## 🔴 Critical
 
-### Editing a habit from a past day silently destroys today's progress (2026-09-10 audit)
-
-**The most serious finding of the audit — an active bug, not a caveat.**
-
-`MockHabitRepository.getHabitsForDate` (`lib/data/habit_repository.dart:321`) returns
-habits hydrated with *that day's* logged state via `_hydrate`
-(`lib/data/habit_repository.dart:313`), which overwrites `currentValue`,
-`isCompletedToday`, `lastAwardedXp`, and `lastAwardedCoins`. Two screens push one of
-these hydrated objects straight into the editor: `CalendarScreen._editHabitDefinition`
-(`lib/screens/calendar/calendar_screen.dart:567`, always a past day) and
-`HabitsListScreen._openEditHabit` (`lib/screens/habits/habits_list_screen.dart:156`,
-whenever the selected date isn't today).
-
-`AddHabitScreen._saveHabit` then carries those same fields forward from `widget.habit`
-(`lib/screens/habits/add_habit_screen.dart:235,238,242` —
-`currentValue`/`lastAwardedXp`/`lastAwardedCoins`/`isCompletedToday`), and
-`MockHabitRepository.updateHabit` (`lib/data/habit_repository.dart:259`) replaces the
-habit in `_habits` — the *today* list — wholesale.
-
-**Concrete failure:** log 750/1000 ml on today's water habit and claim it (+10 XP). Open
-Calendar, tap a day last week where 200 ml was logged and never claimed, edit that
-habit's name. On save, today's habit becomes `currentValue: 200`,
-`isCompletedToday: false`, `lastAwardedXp: 0` — today's progress and claim are gone, and
-the 10 XP is now **permanently unreversible** (`unclaimHabit` no-ops when
-`isCompletedToday` is already false). No error, no undo, no signal to the user.
-
-The interface doc (`lib/data/habit_repository.dart:38`) tells callers to carry those
-fields forward themselves — the contract is fine, it's just impossible to honor
-correctly from a past-day context, since the caller only has the past day's values to
-carry. Safer shape: have `updateHabit` merge only the *habit definition* fields
-(name/icon/type/target/schedule/etc.) and leave `currentValue`/`isCompletedToday`/
-`lastAwarded*` untouched — that makes the failure structurally impossible rather than
-dependent on every future caller getting the carry-forward right.
-
-Also check the **habit complete button's underlying logic** while in this area — dictated
-2026-09-10, not yet root-caused. Unclear whether what was noticed is this same bug, a
-different one, or a false alarm that just needs a re-read to confirm it's fine.
-
-### Evolution screen doesn't appear despite leveling up (dictated 2026-09-10, not yet investigated)
-
-Demo user went from level 5 to level 7 and the evolution moment never showed. Relates to
-the existing art-placeholder limitation below and to
-`PetRepository.syncEvolution`/`evolutionLevelThreshold` (see `docs/OPEN_DECISIONS.md` —
-Pet mechanics), but the reported symptom here is the *screen never triggering at all*,
-not the missing art — so check `EvolutionScreen`'s trigger/navigation path specifically
-before assuming this is the same issue as the art gap. This also overlaps the "No reward
-feedback" finding below (level-up/evolution has no visible event) — worth fixing both
-together since they're likely the same code path.
-
-### Payment method screen renders blank (2026-09-10 audit)
-
-Rendered as a blank white screen with no AppBar/body across 4 repeated attempts in the
-headless-Chrome pass, no console exception. It's the only screen combining `appBar:` and
-`bottomNavigationBar:` — unconfirmed whether this is a real bug or a harness artifact;
-worth two minutes on a real device to rule in or out.
+(None open right now — see Resolved below for the four fixed 2026-09-11.)
 
 ---
 
@@ -182,15 +128,25 @@ to announce.
   inviting tap target on the Home screen leads to the cosmetics screen, not a
   feed/groom/play interaction.
 
-### Habit statistics progress bars overflow their own outline (dictated 2026-09-10, not yet investigated)
+### Habit statistics progress bars overflow their own outline (2026-09-11, partially investigated)
 
-Rendering/clipping bug, not just a style nit — the fill visibly extends past the bar's
-own border. Separate from the "more in-depth stats" item below.
+Investigated and found (and fixed — see Resolved) one confirmed cause on the *threshold*
+variant (`ProgressBarPill.thresholdFraction`, used on per-habit progress cards): the
+threshold tick mark was rendering as a solid block from 0% to the threshold, not a thin
+line — `FractionallySizedBox` gives its child a *tight* width constraint, silently
+overriding the tick's own `width: AppBorder.standard`. Confirmed via pixel-sampling a
+live render, and fixed.
 
-### Home screen habits panel: habit entries getting visually cut off (dictated 2026-09-10, not yet investigated)
-
-Layout/overflow bug on the Home screen's habits panel specifically — needs a look at
-whatever `ListView`/`Column` sizing is constraining it.
+That fix does **not** apply to `ProfileScreen`'s "Habit Statistics" card (`Weekly
+Completion`, `Current Streak`) — those bars pass no `thresholdFraction` at all. Whoever's
+driving separately confirmed (2026-09-11, from their own `flutter run -d chrome` +
+DevTools device-toolbar session) that on those specific bars, the colored fill visibly
+paints over the rounded border's corner instead of stopping inside it — most visible on
+a fully/near-fully filled bar like `Current Streak`. Not yet reproduced in automated
+(Playwright) testing at either normal or simulated high-DPI (2.625x) resolution — may be
+specific to DevTools' device-toolbar rendering path. Needs either a repro from that exact
+environment (device preset/zoom) or a real Android device to confirm before fixing
+further.
 
 ### Profile isn't editable (dictated 2026-09-10, not yet investigated)
 
@@ -202,23 +158,9 @@ Add edit capability — currently display-only.
   `HabitRepository.getHabitsForDate` once per day in the visible month, and
   `_currentStreak` (`:118`) walks backward awaiting it again per day — up to ~430
   sequential round-trips for one Calendar screen load. Free against an in-memory mock;
-  worth batching before this points at Firestore.
-- `InventoryRepository.setEquippedAccessory` (`lib/data/inventory_repository.dart`) writes
-  whatever id it's given without checking it's in `ownedAccessoryIds`. Unreachable today —
-  `CustomizationScreen` only offers owned items — but it's a missing invariant in the data
-  layer itself, not just in the one caller that happens to behave.
-- Both `AddHabitScreen._saveHabit` (`lib/screens/habits/add_habit_screen.dart:221`) and
-  `BucketListScreen`'s add flow (`lib/screens/bucket_list/bucket_list_screen.dart:329`)
-  generate ids via `DateTime.now().millisecondsSinceEpoch.toString()`. Two items created
-  in the same millisecond would collide and one would silently overwrite the other via
-  `indexWhere`-based updates. Not reachable by tapping a UI, but worth knowing before this
-  logic ever moves off-device.
-- `HabitsListScreen._onReorder` (`lib/screens/habits/habits_list_screen.dart:164`) applies
-  the new order to `setState` before awaiting `AppData.habits.reorderHabits(...)`. On
-  failure the displayed order and the repository's stored order silently diverge — the
-  same class of gap as "no error handling outside auth screens" above, called out
-  separately because the failure mode here (silent data/UI mismatch, not just a stuck
-  spinner) is worth naming on its own.
+  worth batching before this points at Firestore. (Now called even more often — see the
+  Resolved streak-unification entry below — so this is worth prioritizing sooner rather
+  than later.)
 
 ---
 
@@ -241,25 +183,32 @@ instead of silently doing nothing. This is a deliberate stand-in, not a design d
 when real stage-2 art lands, swap it in at both call sites (`NoriRoomStage.stage` and
 `EvolutionScreen`) and drop the aura treatment.
 
-### Accessories use one fixed position across the whole breathing loop (needs anchor points)
+### Neck/hand accessory anchors not implemented (necktie, bow, hand-held items)
 
-`accessory_art.dart`'s `_kPlacements` gives each accessory a single `topFraction`/`scale`
-pair, applied uniformly to every frame of `NoriBreathingSprite`'s 67-frame loop. That loop
-is real photographed footage of a physical prop (see the issue above), not a vector rig,
-so the head genuinely shifts a few pixels frame to frame as it "breathes" — a fixed offset
-is only ever exactly right at the one frame it was eyeballed against, so equipped
-accessories (confirmed with Smart Glasses) visibly drift off-position for the rest of the
-loop. The placement math itself is already fraction-based (`referenceSize * topFraction`),
-so this isn't a display-size bug — it reads as one because the drift becomes more
-noticeable at some viewport sizes/DPRs than others.
+Per-frame anchor points now exist for eye-midpoint and head-top (see Resolved below,
+2026-09-13), covering glasses and every current hat/headphones item. Neckties/bows and
+hand-held accessories are explicitly **not** covered yet:
 
-Fix shape: replace the single fixed placement with real anchor points (head-top for hats,
-eye-midpoint for glasses, etc.) mapped per frame of the breathing loop — likely only needs
-hand-marking a handful of representative frames (breathing is smooth/periodic) and
-interpolating the rest, not all 67. One anchor map then serves every accessory, current
-and future, instead of a fresh eyeballed constant per item. Don't solve this by filming a
-separate animation per accessory — that means reshooting/hand-compositing 67 frames per
-item, which doesn't scale past the 5 accessories that already exist.
+- **Neck/chest**: Nori's silhouette is one rounded body with no distinct head/neck/torso
+  break, so there's no clean anatomical landmark to detect automatically the way eye and
+  head-top blobs were. The best available proxy (his mouth, as a dark blob) only detects
+  reliably on ~56 of the 67 frames — good enough to *derive* an anchor from with
+  interpolation across the gaps, but nobody's calibrated it yet, and no necktie/bow item
+  exists in `accessory_catalog.dart` to tune it against.
+- **Hands**: his arms are tucked into the body outline in most frames — there's no
+  separate hand/paw shape to anchor to at all in the neutral breathing pose (only a couple
+  of the blink/laugh-expression frames show a raised paw). Not solvable with the current
+  art; would need new footage/art that actually draws a hand before this is anchorable.
+
+A tail anchor *is* already tracked (`NoriFrameAnchors.tail` in
+`lib/widgets/nori_frame_anchors.dart`) and validated against sample frames, ready for a
+future tail-bow item — it's just unused today since no such item exists in the catalog.
+
+Fix shape when a necktie/bow item is actually added: extend the mouth-blob detection
+script (referenced in `nori_frame_anchors.dart`'s doc comment) to interpolate the ~11
+missing frames, add an `AccessoryAnchor.chest` case parallel to `eyeMid`/`headTop` in
+`lib/widgets/accessory_art.dart`, and calibrate one `_AnimatedAccessoryPlacement` entry by
+eye the same way the existing five were.
 
 ### Remaining layout defects (2026-09-10 audit — verify against current build before fixing, this snapshot is one commit stale on a few screens)
 
@@ -286,73 +235,61 @@ item, which doesn't scale past the 5 accessories that already exist.
   off one alignment constant. Re-verify visually before fixing; this is from the
   screenshot pass and may have shifted.
 
-### Architecture: component duplication instead of reuse (2026-09-10 audit)
+### Architecture: component duplication instead of reuse (2026-09-10 audit; widget/header/badge extraction done 2026-09-13, see Resolved)
 
-`lib/widgets/` has 12 components and all of them are healthy — none are unused, none are
-single-call-site abstractions that didn't pay off (verified by call-site census). The
-actual problem is upstream: `lib/screens/` has 74 private widget classes, and several
-concepts are re-implemented per-screen instead of promoted to `lib/widgets/`. The two
-newest screens (`SocialScreen`, `BucketListScreen`) each independently re-implemented
-concepts that already existed elsewhere, which is the signal this is actively
-regenerating, not just historical debt.
+Re-verified 2026-09-13 before fixing (counts had drifted from the original audit — see
+the Resolved entry for the corrected numbers). Fixed: screen header, icon badge, section
+header, `RewardPill`/`LoadingOverlay` byte-identical duplicates, and the styled
+`FilledButton` moss/ink default are now shared (`lib/widgets/nori_screen_header.dart`,
+`nori_icon_badge.dart`, `section_header.dart`, `reward_pill.dart`, `loading_overlay.dart`,
+and `AppTheme.light.filledButtonThemeData`).
 
-Concepts implemented 5+ times with no shared widget:
+Still open — deliberately deferred as higher-risk/higher-effort than the rest of this
+pass:
 
-| Concept | Count | Example divergence |
-|---|---|---|
-| Screen header (avatar/back + title + trailing) | 8 | 3 are byte-identical apart from the title string; only one handles narrow-width reflow |
-| Scaffolding preamble (`SafeArea → LayoutBuilder → SingleChildScrollView → ConstrainedBox → Column`) | 16 screens, ~320 lines | the only variable is a desktop `maxWidth` taking 9 distinct values, none reachable on a phone (see Dead code below) |
-| Ink-outlined card shell | 59 raw containers, 3 competing private shells | same card is `EdgeInsets.all(12)`/`AppBorder.standard` in one screen, `all(8)`/`thin` in another — visibly, this also produces card-inside-card double borders on Habits, Profile, Shop, and Social |
-| Icon badge (colored rounded square + icon) | 9 | 5 different sizes, 4 different radii for the same concept |
-| Section header (title + trailing action) | 6 | only one (`SocialScreen._SectionHeader`) is actually extracted |
-| Styled `FilledButton` (moss/ink CTA) | 7 | 5 different `styleFrom` bodies for the same visual treatment |
+| Concept | Status |
+|---|---|
+| Scaffolding preamble (`SafeArea → LayoutBuilder → SingleChildScrollView → ConstrainedBox → Column`) | Still duplicated across 12 screens (not 16 — re-verified), each with its own dead desktop `maxWidth` branch (see Dead code below). A `NoriScrollScaffold` would collapse this and delete the dead branching in the same pass — not attempted yet, touches every screen's top-level layout. |
+| Ink-outlined card shell | Still duplicated — 75 raw bordered containers (grew from 59), 3 competing private shells (`_CardShell`, `_ItemCardShell`, `_ProfileCard`) plus 20+ screen-local card classes each picking their own padding/border-width. A `NoriCard` extraction needs a visual pass per screen to catch the suspected double-border spots (Profile, Shop) — not attempted yet. |
 
-Two byte-identical duplicates worth calling out directly: `_RewardPill`
-(`lib/widgets/habit_progress_card.dart`) has an inline twin in `BucketListScreen`, and
-`_LoadingOverlay` is defined twice, byte-for-byte, once in `LoginScreen` and once in
-`SignUpScreen`.
+### Duplicated logic (2026-09-10 audit; formatting/date/coin-formula dedup done 2026-09-13, see Resolved)
 
-Suggested extraction, roughly in priority order: `NoriScrollScaffold` (collapses the
-16-screen preamble and deletes the dead desktop branching in the same pass),
-`NoriScreenHeader`, `NoriCard`, `NoriIconBadge`, promote `_SectionHeader`/`RewardPill`,
-and move the repeated `FilledButton`/dialog/chip styling into `AppTheme.light` (which
-today only themes `appBarTheme`).
+Fixed: thousands-separator formatting (now 1 helper, was actually 4 copies — a 4th,
+undocumented one was found in `ProfileScreen` during re-verification), `_formatNum`,
+the weekday/month name tables (was actually 7 tables across 4 files, not 5), the
+duplicated coin-reward formula, and a newly-spotted duplicate id-generation expression
+in `AddHabitScreen`/`BucketListScreen` — see Resolved for details, including a real
+`RangeError` bug the id-generation dedup surfaced and fixed.
 
-### Duplicated logic (2026-09-10 audit)
+Still open — deliberately deferred, this one's behavior code, not presentation:
 
-- Thousands-separator formatting is implemented identically three times:
-  `lib/widgets/xp_pill.dart:13`, `lib/screens/home/home_screen.dart:293`,
-  `lib/screens/shop/shop_screen.dart:359`.
-- `_formatNum` is defined identically twice: `lib/screens/habits/add_habit_screen.dart:18`
-  and `lib/widgets/habit_progress_card.dart:68`.
-- Five separate weekday/month name tables exist across `calendar_screen.dart`,
-  `habits_list_screen.dart`, `calendar_repository.dart`, and `add_habit_screen.dart`.
-- The coin-reward formula (`baseXp ~/ 2`) is written twice in
-  `lib/screens/habits/add_habit_screen.dart` (once where it's actually saved, once in the
-  preview ~700 lines away) — the analogous XP drift bug was already fixed once per the
-  comment at `add_habit_screen.dart:913`; the coin line is the same class of bug, still
-  live.
-- Claim/unclaim/quick-log orchestration (~60 lines each) is triplicated across
-  `HomeScreen`, `HabitsListScreen`, and `CalendarScreen`'s day-detail sheet — same six
-  methods against the same repository, differing only in which date they use. A single
-  `HabitDayController` would remove ~120 lines and, importantly, make the past-day
-  corruption bug above fixable in one place instead of three.
-- Two disagreeing streak sources: `NoriUser.currentStreak` is a static literal that's
-  never recomputed (`lib/data/user_repository.dart:12`), while
-  `MockCalendarRepository._currentStreak` walks real history and computes a different
-  number. These can show different streak values on the same day depending on which
-  screen you're looking at.
+- Claim/unclaim/quick-log orchestration is duplicated across `HomeScreen`,
+  `HabitsListScreen`, and `CalendarScreen`'s day-detail sheet — re-verified 2026-09-13:
+  `HabitsListScreen` and `CalendarScreen` are genuinely near-identical (six methods each,
+  differing only in date source), but `HomeScreen`'s version is meaningfully different
+  (no evolution-celebration sync, different today-only repository methods) — it's closer
+  to "2.5x" than a clean triplication. A `HabitDayController` would remove the
+  `HabitsListScreen`/`CalendarScreen` half of this and, importantly, make the past-day
+  corruption bug (see Resolved) fixable in one place instead of two-to-three. Not
+  attempted: this is behavior code that's already had subtle per-screen bugs fixed
+  individually, and there's no test suite yet to catch a regression from merging it.
+- Related, found during the 2026-09-13 pass but out of scope for it: the "sync pet
+  evolution → refetch → compare stage → show celebration" sequence is copy-pasted 4
+  times (`HomeScreen._loadData`, `HomeScreen._reloadUserAndPet`,
+  `CalendarScreen._applyReward`, `HabitsListScreen._claimHabit`), each with its own
+  slightly-different guarding comment. Same risk profile as the item above — worth
+  tackling together once there's test coverage for the evolution-celebration flow.
 
 ### Dead code (2026-09-10 audit)
 
-Roughly 95 lines of desktop-only branching (`isWide`/`constraints.maxWidth >= 700|800`,
-`AppSpacing.containerPaddingDesktop`) across 7+ files, plus the ~320-line scaffolding
-preamble it's embedded in — dead because desktop is explicitly not a target for this
-Android-only APK. **Not** included in that: `CustomizationScreen`'s grid breakpoints at
-440/620 and `NotificationsScreen`'s `< 360` check are real in-phone breakpoints and
-should stay. Also unused: `accessoryById` (`lib/data/accessory_catalog.dart:50`, zero
-references, throws uncaught `StateError` on an unknown id — harmless while unused, worth
-an `orElse` before it's wired up).
+Roughly 95+ lines of desktop-only branching (`isWide`/`constraints.maxWidth >= 700|760|
+800`, `AppSpacing.containerPaddingDesktop`) across 12 files (re-verified 2026-09-13; the
+audit said "7+"), plus the scaffolding preamble it's embedded in — dead because desktop
+is explicitly not a target for this Android-only APK. **Not** included in that:
+`CustomizationScreen`'s grid breakpoints at 440/620, `NotificationsScreen`'s `< 360`
+check, and `PaymentMethodScreen`'s form-layout breakpoint at 440 are real in-phone
+breakpoints and should stay. (`accessoryById`'s missing `orElse` — no longer unused, now
+fixed, see Resolved.)
 
 ### Minor / cohesion (2026-09-10 audit)
 
@@ -451,6 +388,258 @@ Several screens beyond the ones named above read as flat/generic and need a desi
 ---
 
 ## Resolved
+
+### 2026-09-13 — widget/logic duplication cleanup pass + accessoryById crash risk + id-generation RangeError
+
+Addressed the "Safe + widgets" tier of the 2026-09-10 audit's component-duplication and
+duplicated-logic findings (full re-verification first, since counts had drifted — see
+the trimmed "Architecture"/"Duplicated logic" sections above for what's still open).
+
+**New shared widgets** (`lib/widgets/`): `NoriScreenHeader` (leading/title/trailing
+slots — migrated the 7 screens whose header genuinely fit the shape: Bucket List,
+Settings, Profile, Social, Achievements, Calendar, Customization; left Notifications,
+Home, and Habits List bespoke since forcing their shape in would've grown the API for
+no reduction in duplication), `NoriIconBadge` (9 fixed-size instances, 2 more found
+during review and folded in: Shop's coin badge, Add Habit's reward-preview badge),
+`SectionHeader` (promoted from `SocialScreen._SectionHeader`, 5 call sites),
+`RewardPill` and `LoadingOverlay` (promoted from byte-identical private duplicates).
+`AppTheme.light` gained a `filledButtonThemeData` (moss/ink default), letting 3 of 7
+`FilledButton` call sites drop their now-redundant `styleFrom`.
+
+**New shared logic** (`lib/utils/`, didn't exist before this pass): `formatting.dart`
+(`formatThousands` — 4 copies found, not the audited 3; `formatTrimmedNumber` — 2
+copies), `date_labels.dart` (consolidates 7 weekday/month tables across 4 files down to
+one canonical source with format-specific accessors, since the tables weren't
+interchangeable — full name vs. abbreviated vs. single-letter), `id_generator.dart`
+(`generateId()` — found via the reuse-angle review pass, not the original plan: the
+`'$microseconds-$random'` id expression was hand-copied into both `AddHabitScreen` and
+`BucketListScreen`, this pass's exact target). `Habit.baseCoins` (next to the existing
+`baseXp`) replaces two copies of `baseXp ~/ 2` in `AddHabitScreen`.
+
+**Correctness fixes, not just dedup:**
+- `accessoryById` (`lib/data/accessory_catalog.dart`) now returns `AccessoryItem?`
+  instead of throwing `StateError` on an unknown id. Reclassified from "harmless while
+  unused" (its 2026-09-10 audit status) to a live crash risk: two call sites were added
+  after that audit (`HomeScreen`, `CustomizationScreen`) without anyone revisiting this.
+- **`generateId()`'s `Random().nextInt(1 << 32)` threw `RangeError` on Flutter Web**,
+  silently breaking every "Add Habit" and "Add Bucket List Item" tap on web — caught live
+  via a Playwright smoke pass (console showed `EXCEPTION CAUGHT BY GESTURE`, the tap's
+  `onPressed` aborted before `Navigator.pop`, so the dialog just silently stayed open with
+  no error shown, consistent with the "No error handling" gap above). Root cause: under
+  Flutter Web's compiler, `1 << 32` doesn't evaluate to 2^32 the way it does on the VM.
+  This was pre-existing behavior in both call sites this pass consolidated — moving the
+  expression into one shared helper is what surfaced it. Fixed by using a plain decimal
+  literal (`2000000000`) instead of a bit-shift for the random suffix's range.
+
+Verified via `flutter analyze` (clean throughout) plus a `flutter run -d chrome`
+Playwright pass at a Pixel-equivalent viewport (412×915) across Home, Habits, Calendar,
+Social, Profile, Achievements, Bucket List (including adding a new item), Settings
+(including its Add Category dialog), Add Habit (including saving a new habit) — every
+touched screen rendered identically to before, and both `generateId()` call sites were
+exercised end-to-end post-fix.
+
+Review process: `/code-review` and 4 parallel `/simplify` angle-reviews (reuse,
+simplification, efficiency, altitude) were run scoped to just the files this pass
+touched (the repo has an unrelated in-progress pet-accessory feature in the working tree
+that needed to stay out of scope). Findings applied: hoisted `formatThousands`'s regex
+to a `static final`, precomputed abbreviated/initial weekday-month tables instead of
+slicing on every call, collapsed `NoriScreenHeader`'s `leadingGap`+list-`trailing` into
+plain `leading`/`trailing` widget slots (callers compose their own `Row` for multi-part
+cases), defaulted `NoriIconBadge.iconColor` and `SectionHeader.titleStyle` to their
+majority-case values. Skipped (out of scope for this pass, noted above instead): the
+claim/unclaim/quick-log and evolution-celebration duplication (behavior code, no tests
+yet), the card-shell/`NoriScrollScaffold` extractions (bigger, visually riskier), and one
+review finding about a pre-existing `MockUserRepository.getCurrentUser` performance
+issue that's already covered by the "Other correctness gaps" entry above.
+
+### 2026-09-13 — accessories drifted off-position across the breathing loop (needed anchor points)
+
+Root cause confirmed: `nori_breathing/frame_NN.png` is real footage of Nori breathing, so
+his eyes/head genuinely move up to ~19px (of a 238px-tall frame) as he inhales/exhales —
+verified by extracting, for every one of the 67 frames, the two dark filled blobs inside a
+face-sized region of each frame's alpha cutout (his eyes; distinguished from the tail and
+horn-shading marks, which are dark too but sit outside that region) and the largest dark
+blob left of/below his face (his tail). Eye-midpoint x stayed effectively constant
+(118.1–118.7px) but y ranged 81.0–100.2px across the loop — confirmed by compositing
+crosshairs at the detected points back onto sample frames, including blink frames, where
+the eyes are thin closed lines rather than filled pupils (handled by restricting blob
+search to a face-shaped region, so the tail/mouth blobs that briefly out-rank the closed-
+eye lines by area don't get picked up instead).
+
+Fixed by adding `lib/widgets/nori_frame_anchors.dart` (`NoriFrameAnchors`, one entry per
+frame: `eyeMidY`, `headTopY`, `tail`, all in the frames' shared 223×238 pixel space) and
+giving `NoriBreathingSprite` an `overlayBuilder` hook that receives the current frame's
+anchors and its own rendered width, composited in the *same* `AnimatedBuilder` tick as the
+sprite image so the two can never fall out of sync. `accessory_art.dart` gained
+`animatedPositionedAccessoryArt` (anchor-relative placement, calibrated by eye against
+rendered frames the same way the old fixed placements were, just referencing a moving
+anchor instead of a constant) alongside the pre-existing `positionedAccessoryArt`, which
+`NoriRoomStage` now falls back to for any accessory without a calibrated anchor entry yet,
+rather than the accessory disappearing. `smart-glasses`, `wizard-hat`,
+`propeller-beanie`, `flower-crown`, and `cozy-headphones` all have anchor entries now,
+using `eyeMid` and `headTop` respectively — see the open neck/hand-accessory gap above for
+what's still unanchored. `CustomizationScreen`'s preview (a static `nori_front.png`, not
+the breathing loop) never had this bug and is untouched — still uses the original fixed
+placement.
+
+Checked live via `flutter run -d chrome` on two device-toolbar presets: tracking held up
+correctly on both (glasses stayed on the eyes through the whole breathing cycle, no
+per-frame drift), surfacing two follow-on issues instead, both now fixed:
+
+- **Equipped accessories rendered oversized and off-position on a wider preset, but not a
+  narrower one.** Root cause: `NoriBreathingSprite`'s `Image` had no explicit `width`, and
+  Flutter's default image layout only ever *shrinks* an unconstrained image to fit tighter
+  constraints — it never grows one past its native pixel size (223×238 for these frames) to
+  fill a more generous one. So on any screen offering more than 223 logical px of sprite
+  width, the image's real rendered width silently stayed pinned at 223 while `spriteWidth`
+  (used for the overlay's own scale/position math) kept assuming the larger offered width —
+  the two only agreed by coincidence on screens narrow enough to stay under that threshold.
+  This is a screen-width threshold, not a platform one — a wide-enough Android device would
+  hit the identical bug — so it's fixed outright rather than documented as an iOS gap:
+  `Image` now takes an explicit `width: spriteWidth`, forcing it to always render at the
+  width the rest of the code already assumed.
+- **Smart Glasses read too small** even where tracking/scale were otherwise correct. Its
+  `_AnimatedAccessoryPlacement.scale` (0.27, inherited from the old fixed-placement value)
+  undersized the lenses relative to his actual eye spacing (~0.27 of canvas width
+  center-to-center) — bumped to 0.34 (with `dyFrac` recomputed from the same
+  `-scale * 0.44 / 2` formula so it stays vertically centered on the eye line). Only
+  `smart-glasses` was reported as wrong-sized, so the other four items' scales are
+  untouched; revisit them the same way if they turn out to read too small/large too.
+- **Still a small horizontal offset after the above two fixes.** `eyeMid`/`headTop`
+  anchored accessories were relying on the parent `Stack`'s own `Alignment.topCenter` to
+  center horizontally, which centers on the *canvas's* horizontal center (223/2 =
+  111.5px) — but his tail sticks out on the left, which drags his alpha bounding box (and
+  therefore that center-of-canvas point) left of where his face actually is. His actual
+  face-symmetry axis, measured the same way as the other anchors (eye-midpoint x, which
+  is 118.1–118.7px across all 67 frames — effectively constant), sits about 3% of his
+  width to the right of that. Fixed by adding `kNoriFaceCenterX` (118.3,
+  `lib/widgets/nori_frame_anchors.dart`) and computing an explicit `left` for every anchor
+  kind in `animatedPositionedAccessoryArt` instead of only doing so for `tail` and leaving
+  `eyeMid`/`headTop` to the Stack's alignment.
+
+### 2026-09-11 — editing a habit from a past day silently destroyed today's progress
+
+Fixed at the root cause identified in the audit: `MockHabitRepository.updateHabit`
+(`lib/data/habit_repository.dart`) now always preserves the *live* `currentValue`/
+`isCompletedToday`/`lastAwardedXp`/`lastAwardedCoins` from the stored today-habit,
+via `habit.copyWith(currentValue: live.currentValue, ...)`, regardless of what those
+fields happen to be on the `Habit` object a caller passes in. This makes the bug
+structurally impossible rather than dependent on every caller carrying the right
+fields forward — a past-day edit (or any future caller) can no longer clobber today's
+state no matter what it passes. The interface doc on `updateHabit` was updated to
+describe the new (safer) contract.
+
+### 2026-09-11 — habit "Complete" button's underlying logic — investigated, not a bug
+
+This was the "habit complete button's underlying logic" note attached to the past-day
+bug above. Investigated and found `HomeScreen._claimHabit` was the odd one out: it
+blocked tapping the checkbox below `isMinMet`/`isTargetMet` with a snackbar ("Log more
+progress before completing this habit"), while `HabitsListScreen`/`CalendarScreen`
+(via `HabitProgressCard`'s `_ProgressCard`) let "Complete" fire at any progress,
+snapping straight to the full target/reward. First guess was that the *latter* was the
+bug (0%-progress free XP), and a matching gate was added at the repository layer and
+in the widget — but that was backwards. Confirmed (by whoever's driving): "Complete"
+snapping straight to 100% regardless of current progress **is** the intended
+behavior — a one-tap "I finished this" shortcut, like a binary habit's checkbox,
+exactly as `_claimValue`'s own doc comment already said. `docs/FEATURES.md` §3's
+"below minimum → no success" language describes the *reward tier* math, not a
+prerequisite for the Complete button itself. Fix direction reversed: the
+repo-layer/widget gate was reverted, and `HomeScreen._claimHabit`'s snackbar-block was
+removed instead, so all three screens now behave the same — tap Complete, it jumps to
+100% and pays the full reward, no minimum required anywhere.
+
+### 2026-09-11 — evolution celebration never shown outside Home-tab actions
+
+Root-caused: `PetRepository.syncEvolution` was called (and the pet's stage silently
+updated) from four places — `HomeScreen._loadData`, `HomeScreen._reloadUserAndPet`,
+`HabitsListScreen._applyReward`, `CalendarScreen._applyReward` — but only
+`_reloadUserAndPet` (reward actions taken *while already on the Home tab*) ever
+compared the before/after stage and called `showEvolutionCelebration`. A level-up
+crossed while claiming from the Habits tab or Calendar evolved the pet with zero
+visible feedback, and switching back to the Home tab afterward (`_loadData`, the
+tab-switch reload path) didn't catch it either. All three other call sites now do the
+same before/after stage check and show the celebration. Separately: the specific
+originally-reported case (demo user level 5 → 7) likely wasn't actually eligible to
+evolve regardless — `evolutionLevelThreshold` is 20 and still an open product decision
+(see `docs/OPEN_DECISIONS.md` — Pet mechanics) — so that anecdote may have been a
+false alarm for an unrelated reason even though the trigger-wiring gap it prompted was
+real and is now fixed.
+
+### 2026-09-11 — payment method screen rendered blank
+
+Root cause found via a Flutter-web repro (not a headless-Chrome artifact — reproduced
+identically in a normal, non-headless, freshly-restarted session): `_CheckoutBar`
+(`PaymentMethodScreen`'s `bottomNavigationBar`) wrapped its content in `Center`.
+`Scaffold` lays `bottomNavigationBar` out with a *loose* (not tight) height
+constraint, and `Center`/`Align` with no `heightFactor` expands to fill all of the
+space it's offered rather than shrink-wrapping to its child — so `_CheckoutBar`
+ballooned to claim nearly the entire screen height, leaving `body` almost no room
+(confirmed by swapping `body` for trivial placeholder content, which was equally
+invisible). The checkout row itself still rendered, just vertically centered within
+that oversized bar instead of pinned to the bottom, which is what looked like a
+"blank screen with a floating price row." Fixed by changing `Center(child: ...)` to
+`Align(heightFactor: 1, child: ...)`, which keeps the horizontal centering but makes
+the bar shrink-wrap to its actual content height. Verified in a running instance:
+full body content now renders, and the checkout button's snackbar fires correctly.
+
+### 2026-09-11 — progress bar threshold tick rendered as a solid block
+
+Root-caused via pixel-sampling a live render (see the still-open half of this finding
+above): `ProgressBarPill`'s threshold marker used `FractionallySizedBox(widthFactor:
+thresholdFraction, child: Container(width: AppBorder.standard, ...))` to try to place a
+thin line at the threshold position. `FractionallySizedBox` gives its child a *tight*
+width constraint of `widthFactor × available width`, which overrides the child's own
+`width: AppBorder.standard` instead of just capping it — so the "line" rendered as a
+solid dark block from 0% to the threshold. Fixed by computing the pixel offset via
+`LayoutBuilder` and placing a fixed-width `Positioned` marker instead. Verified by
+sampling fill colors before/after: before, a full block of `ink@0.5`-over-`moss`
+(`rgb(100,103,70)`) spanned 0–50%; after, only a single-pixel-wide sample at exactly the
+threshold position differs from the surrounding fill color.
+
+### 2026-09-11 — Home habits panel: habit entries getting visually cut off
+
+Root-caused: the expanded panel's scrollable list is capped at `ConstrainedBox(maxHeight:
+screenHeight * 0.4)`, which essentially never lands on a whole-tile boundary, so the last
+visible tile got hard-clipped mid-row with no visual cue the list was scrollable (it was
+— confirmed by manually scrolling past the cut). Fixed with a `ShaderMask` fading the
+list's bottom ~12% to transparent, applied only when the content actually overflows
+(tracked via `NotificationListener<ScrollMetricsNotification>`, so a short list that
+already fits isn't faded for no reason). Fading to transparent — not a solid color — was
+the right call here specifically because the panel itself is translucent frosted glass
+(`BackdropFilter` blur), so there's no flat background color to fade into.
+
+### 2026-09-11 — `InventoryRepository.setEquippedAccessory` accepted any id
+
+Now no-ops if `accessoryId` isn't in `ownedAccessoryIds` (`null`/unequip is still always
+allowed). Unreachable via the UI today (`CustomizationScreen` only offers owned items),
+but the data layer no longer relies on every future caller behaving.
+
+### 2026-09-11 — habit / bucket-list item id collisions possible
+
+`AddHabitScreen` and `BucketListScreen` generated ids from
+`DateTime.now().millisecondsSinceEpoch` alone; two items created in the same millisecond
+would collide and silently overwrite each other. Both now combine
+`microsecondsSinceEpoch` with a random suffix.
+
+### 2026-09-11 — `HabitsListScreen._onReorder` updated the UI before the repository call
+
+Swapped the order: `AppData.habits.reorderHabits(...)` is now awaited first, and
+`setState` only runs after it succeeds — so a failed reorder (once a real backend can
+fail) leaves the displayed order unchanged instead of silently diverging from what's
+actually stored.
+
+### 2026-09-11 — two disagreeing streak sources
+
+`NoriUser.currentStreak` was a static literal (`12`) that never changed, while
+`MockCalendarRepository._currentStreak` walked real habit history and computed a
+different number (`90`) — both shown simultaneously on Profile (confirmed via a
+screenshot showing "12 Day Streak" and "90 days" on the same screen), and inconsistently
+across Home/Calendar/Habits too. Fixed by making `MockUserRepository` depend on
+`CalendarRepository` (mirroring how `MockCalendarRepository` already depends on
+`HabitRepository`) and compute `currentStreak` live in `getCurrentUser()`, instead of
+storing a stale copy. `NoriUser.copyWith` now also supports overriding `currentStreak`.
+Verified: Home, Profile's streak chip, and Profile's Habit Statistics card all show `90d`
+/ `90 Day Streak` / `90 days` consistently after the fix.
 
 ### 2026-09-10 — primary-button contrast (white-on-moss)
 

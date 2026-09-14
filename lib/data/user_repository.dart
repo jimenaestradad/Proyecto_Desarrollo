@@ -1,4 +1,5 @@
 import '../models/nori_user.dart';
+import 'calendar_repository.dart';
 
 const kDemoUser = NoriUser(
   id: 'mock-user',
@@ -14,7 +15,10 @@ const kDemoUser = NoriUser(
   totalXp: 7220,
   xpIntoLevel: 620,
   xpForNextLevel: 1650,
-  currentStreak: 12,
+  // Overwritten on the first getCurrentUser() call with the real,
+  // computed-from-history streak (see MockUserRepository) — this initial
+  // value is never actually shown.
+  currentStreak: 0,
   coins: 340,
 );
 
@@ -34,10 +38,24 @@ abstract class UserRepository {
 }
 
 class MockUserRepository implements UserRepository {
+  MockUserRepository(this._calendar);
+
+  final CalendarRepository _calendar;
+
   NoriUser _user = kDemoUser;
 
   @override
-  Future<NoriUser> getCurrentUser() async => _user;
+  Future<NoriUser> getCurrentUser() async {
+    // Live-computed from habit history (see MockCalendarRepository), rather
+    // than a stored field — a stored copy previously went stale and
+    // disagreed with the real streak shown on Profile's Habit Statistics
+    // card and Calendar's own stats panel.
+    final streak = (await _calendar.getCurrentMonth()).currentStreak;
+    if (streak != _user.currentStreak) {
+      _user = _user.copyWith(currentStreak: streak);
+    }
+    return _user;
+  }
 
   @override
   Future<void> addXp(int amount) async {

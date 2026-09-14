@@ -36,9 +36,11 @@ abstract class HabitRepository {
   Future<void> addHabit(Habit habit);
 
   /// Replaces a habit's definition (name, target, schedule, etc.) in place.
-  /// Today's progress/completion state travels with whatever [habit] the
-  /// caller passes in — callers editing a habit should carry those fields
-  /// forward themselves.
+  /// Today's live `currentValue`/`isCompletedToday`/`lastAwarded*` are always
+  /// preserved from the stored habit, no matter what [habit] carries for
+  /// those fields — callers (e.g. editing a habit from a past day, where the
+  /// only `Habit` object on hand is hydrated with *that day's* state) don't
+  /// need to, and can't safely, carry them forward themselves.
   Future<void> updateHabit(Habit habit);
 
   /// Reverses a non-binary claim, mirroring [setHabitCompleted]'s `false`
@@ -273,7 +275,13 @@ class MockHabitRepository implements HabitRepository {
   Future<void> updateHabit(Habit habit) async {
     final index = _habits.indexWhere((h) => h.id == habit.id);
     if (index == -1) return;
-    _habits[index] = habit;
+    final live = _habits[index];
+    _habits[index] = habit.copyWith(
+      currentValue: live.currentValue,
+      isCompletedToday: live.isCompletedToday,
+      lastAwardedXp: live.lastAwardedXp,
+      lastAwardedCoins: live.lastAwardedCoins,
+    );
   }
 
   @override

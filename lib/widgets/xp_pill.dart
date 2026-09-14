@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../utils/formatting.dart';
 
 /// The "★ 1,250 XP" pill shown in most top app bars.
 class XpPill extends StatelessWidget {
@@ -10,10 +11,7 @@ class XpPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final formatted = xp.toString().replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-      (match) => ',',
-    );
+    final formatted = formatThousands(xp);
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 10 : 14,

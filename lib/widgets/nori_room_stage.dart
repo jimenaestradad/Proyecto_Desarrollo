@@ -54,9 +54,6 @@ class NoriRoomStage extends StatelessWidget {
       builder: (context, constraints) {
         // Placeholder "grew" cue for evolution1 — see [stage] doc.
         final widthFactor = _isEvolved ? 0.66 : 0.56;
-        // Nori's actual rendered width here, so the accessory art below
-        // can size itself relative to him instead of a guessed constant.
-        final spriteWidth = constraints.maxWidth * widthFactor;
 
         return Stack(
           fit: StackFit.expand,
@@ -81,17 +78,19 @@ class NoriRoomStage extends StatelessWidget {
                 widthFactor: widthFactor,
                 child: GestureDetector(
                   onTap: onTapNori,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    alignment: Alignment.topCenter,
-                    children: [
-                      const NoriBreathingSprite(),
-                      if (equippedAccessory != null)
-                        positionedAccessoryArt(
-                          item: equippedAccessory!,
-                          referenceSize: spriteWidth,
-                        ),
-                    ],
+                  child: NoriBreathingSprite(
+                    overlayBuilder: equippedAccessory == null
+                        ? null
+                        : (context, spriteWidth, anchors) =>
+                              animatedPositionedAccessoryArt(
+                                item: equippedAccessory!,
+                                spriteWidth: spriteWidth,
+                                anchors: anchors,
+                              ) ??
+                              positionedAccessoryArt(
+                                item: equippedAccessory!,
+                                referenceSize: spriteWidth,
+                              ),
                   ),
                 ),
               ),

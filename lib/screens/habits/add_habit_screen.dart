@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/date_labels.dart';
+import 'package:nori/utils/formatting.dart';
+import 'package:nori/utils/id_generator.dart';
+import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 class AddHabitScreen extends StatefulWidget {
@@ -15,9 +19,6 @@ class AddHabitScreen extends StatefulWidget {
   State<AddHabitScreen> createState() => _AddHabitScreenState();
 }
 
-String _formatNum(double value) =>
-    value == value.roundToDouble() ? value.round().toString() : value.toString();
-
 class _AddHabitScreenState extends State<AddHabitScreen> {
   static const _icons = [
     Icons.water_drop,
@@ -27,8 +28,6 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     Icons.savings,
     Icons.bedtime,
   ];
-  static const _weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-
   final _nameController = TextEditingController();
   final _targetController = TextEditingController();
   final _unitController = TextEditingController();
@@ -72,15 +71,15 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     _repeat = habit.repeat;
     if (habit.customDays != null) _customDays.addAll(habit.customDays!);
     if (habit.targetValue != null) {
-      _targetController.text = _formatNum(habit.targetValue!);
+      _targetController.text = formatTrimmedNumber(habit.targetValue!);
     }
     _unitController.text = habit.unit ?? '';
     _minThresholdEnabled = habit.minThreshold != null;
     if (habit.minThreshold != null) {
-      _minThresholdController.text = _formatNum(habit.minThreshold!);
+      _minThresholdController.text = formatTrimmedNumber(habit.minThreshold!);
     }
     if (habit.quickLogAmount != null) {
-      _quickLogController.text = _formatNum(habit.quickLogAmount!);
+      _quickLogController.text = formatTrimmedNumber(habit.quickLogAmount!);
     }
     _allowVacationFreeze = habit.allowVacationFreeze;
     _endDateEnabled = habit.startDate != null && habit.endDate != null;
@@ -178,7 +177,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
         final unit = _unitController.text.trim();
         if (target == null || target <= 0) return '25% of target';
         final step = (target * 0.25).clamp(1, double.infinity).roundToDouble();
-        return '+${_formatNum(step)}${unit.isEmpty ? '' : ' $unit'}';
+        return '+${formatTrimmedNumber(step)}${unit.isEmpty ? '' : ' $unit'}';
     }
   }
 
@@ -218,13 +217,13 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
 
     final existing = widget.habit;
     final habit = Habit(
-      id: existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: existing?.id ?? generateId(),
       name: enteredName.isEmpty ? 'New Habit' : enteredName,
       subtitle: _selectedCategory ?? (_categories.isEmpty ? '' : _categories.first),
       icon: _selectedIcon,
       color: existing?.color ?? AppColors.terracotta,
       xpReward: _difficulty.baseXp,
-      coinReward: _difficulty.baseXp ~/ 2,
+      coinReward: _difficulty.baseCoins,
       repeat: _repeat,
       type: _selectedType,
       difficulty: _difficulty,
@@ -577,7 +576,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                           children: [
                             for (var day = 1; day <= 7; day++)
                               _DayCircle(
-                                label: _weekdayLabels[day - 1],
+                                label: weekdayInitial(day),
                                 selected: _customDays.contains(day),
                                 onTap: () => setState(() {
                                   if (!_customDays.remove(day)) {
@@ -925,7 +924,7 @@ class _RewardPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final xp = (difficulty.baseXp * adaptiveMultiplier).round();
-    final coins = difficulty.baseXp ~/ 2;
+    final coins = difficulty.baseCoins;
     return Container(
       padding: const EdgeInsets.all(AppSpacing.gutter),
       decoration: BoxDecoration(
@@ -935,19 +934,13 @@ class _RewardPreview extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.white,
-              border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-            ),
-            child: const Icon(
-              Icons.card_giftcard,
-              color: AppColors.mustardDark,
-              size: 18,
-            ),
+          const NoriIconBadge(
+            icon: Icons.card_giftcard,
+            background: AppColors.white,
+            size: 36,
+            circle: true,
+            iconSize: 18,
+            iconColor: AppColors.mustardDark,
           ),
           const SizedBox(width: AppSpacing.stackSm),
           Expanded(

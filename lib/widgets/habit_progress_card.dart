@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../models/habit.dart';
 import '../theme/app_theme.dart';
+import '../utils/formatting.dart';
 import 'habit_tile.dart';
+import 'nori_icon_badge.dart';
 import 'progress_bar_pill.dart';
+import 'reward_pill.dart';
 
 /// Type-aware habit card for the Habits tab. Binary habits render as the
 /// existing [HabitTile]; every other type gets a progress bar + quick-log +
@@ -64,9 +67,6 @@ class HabitProgressCard extends StatelessWidget {
 }
 
 String _mmss(double minutes) => '${minutes.floor().toString().padLeft(2, '0')}:00';
-
-String _formatNum(double value) =>
-    value == value.roundToDouble() ? value.round().toString() : value.toString();
 
 String _formatValue(Habit habit) {
   final target = habit.targetValue;
@@ -149,15 +149,11 @@ class _CardShell extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(AppRadius.sm * 0.75),
-                  border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-                ),
-                child: Icon(icon, color: AppColors.ink, size: 20),
+              NoriIconBadge(
+                icon: icon,
+                background: iconBg,
+                size: 40,
+                iconSize: 20,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -280,35 +276,6 @@ class _Chip extends StatelessWidget {
   }
 }
 
-class _RewardPill extends StatelessWidget {
-  const _RewardPill({required this.xp, required this.coins});
-
-  final int xp;
-  final int coins;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.mustard,
-        borderRadius: BorderRadius.circular(AppRadius.full),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('+$xp XP', style: AppTextStyles.labelSm.copyWith(color: AppColors.ink)),
-          const SizedBox(width: 4),
-          const Icon(Icons.monetization_on, size: 12, color: AppColors.mustardDark),
-          const SizedBox(width: 2),
-          Text('$coins', style: AppTextStyles.labelSm.copyWith(color: AppColors.ink)),
-        ],
-      ),
-    );
-  }
-}
-
 /// Quantity / Duration / Cumulative / MultipleCompletion — "reach a target",
 /// with an optional partial-credit minimum threshold.
 class _ProgressCard extends StatelessWidget {
@@ -353,7 +320,7 @@ class _ProgressCard extends StatelessWidget {
       trailing: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          _RewardPill(xp: reward.xp, coins: reward.coins),
+          RewardPill(xp: reward.xp, coins: reward.coins),
           const SizedBox(height: 4),
           _EditableValue(
             habit: habit,
@@ -495,7 +462,7 @@ class _EditProgressDialog extends StatefulWidget {
 
 class _EditProgressDialogState extends State<_EditProgressDialog> {
   late final TextEditingController _controller = TextEditingController(
-    text: _formatNum(widget.habit.currentValue),
+    text: formatTrimmedNumber(widget.habit.currentValue),
   );
 
   @override
@@ -563,10 +530,6 @@ class _EditProgressDialogState extends State<_EditProgressDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.moss,
-            foregroundColor: AppColors.ink,
-          ),
           onPressed: () {
             final value = double.tryParse(_controller.text.trim());
             Navigator.pop(context, value ?? 0.0);

@@ -31,8 +31,10 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
   `nori_breathing_sprite.dart`) reads visually as a toddler, not a newborn or an
   already-evolved pet, so the mock user (`kDemoUser` in `lib/data/user_repository.dart`)
   starts at **level 5** rather than level 1 or 18+ to match. `evolutionLevelThreshold`
-  (currently 20, `lib/data/pet_repository.dart`) is unchanged — still needs a real decision,
-  along with thresholds for any stage beyond evolution1.
+  (`lib/data/pet_repository.dart`) is a placeholder testing value, lowered 2026-09-11 from
+  20 to **7** (just above the level-5 starting point) purely so the evolution screen is
+  reachable in a normal test session — not a real balance decision, along with thresholds
+  for any stage beyond evolution1.
 - How additional pets are unlocked
 - Whether XP belongs to the user or to the currently active pet
 - Whether only one pet can progress at a time

@@ -66,6 +66,15 @@ class AppTheme {
         titleTextStyle: AppTextStyles.headlineMd,
         iconTheme: const IconThemeData(color: AppColors.ink),
       ),
+      // The moss/ink pairing every FilledButton in the app already sets
+      // explicitly, one way or another — centralized here so a plain
+      // FilledButton with no override reads the same way by default.
+      filledButtonTheme: const FilledButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStatePropertyAll(AppColors.moss),
+          foregroundColor: WidgetStatePropertyAll(AppColors.ink),
+        ),
+      ),
       splashFactory: InkRipple.splashFactory,
     );
   }

@@ -4,6 +4,8 @@ import 'package:nori/models/achievement.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/widgets/nori_icon_badge.dart';
+import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
@@ -118,20 +120,11 @@ class _AchievementsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back),
-        ),
-        Expanded(
-          child: Text(
-            'Achievements',
-            style: AppTextStyles.headlineLgMobile,
-          ),
-        ),
-        XpPill(xp: user.totalXp),
-      ],
+    return NoriScreenHeader(
+      leading: NoriScreenHeader.backButton(context),
+      title: 'Achievements',
+      titleStyle: AppTextStyles.headlineLgMobile,
+      trailing: XpPill(xp: user.totalXp),
     );
   }
 }
@@ -220,18 +213,13 @@ class _AchievementCard extends StatelessWidget {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: accentColor.withValues(alpha: 0.16),
-                    border: Border.all(
-                      color: AppColors.ink,
-                      width: AppBorder.thin,
-                    ),
-                  ),
-                  child: Icon(achievement.icon, size: 34, color: accentColor),
+                NoriIconBadge(
+                  icon: achievement.icon,
+                  background: accentColor.withValues(alpha: 0.16),
+                  size: 72,
+                  circle: true,
+                  iconSize: 34,
+                  iconColor: accentColor,
                 ),
                 if (isLocked)
                   Positioned(

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../data/accessory_catalog.dart';
 import '../theme/app_theme.dart';
+import 'nori_frame_anchors.dart';
 
 /// A hand-drawn, flat-outlined illustration for one accessory — drawn in
 /// the same line-and-flat-color language as Nori himself (thick black
@@ -89,6 +90,128 @@ Widget positionedAccessoryArt({
       item: item,
       headWidth: referenceSize * placement.scale,
     ),
+  );
+}
+
+/// Which of Nori's per-frame [NoriFrameAnchors] an accessory should track.
+/// Only the anchors that already have a real body part behind them are
+/// here — see the "not yet anchored" list on [_kAnimatedPlacements].
+enum AccessoryAnchor { eyeMid, headTop, tail }
+
+/// Like [_AccessoryPlacement], but the vertical position is expressed as an
+/// offset from a moving per-frame [AccessoryAnchor] instead of a constant
+/// fraction of [referenceSize] — see [animatedPositionedAccessoryArt].
+class _AnimatedAccessoryPlacement {
+  const _AnimatedAccessoryPlacement({
+    required this.scale,
+    required this.anchor,
+    required this.dyFrac,
+    // ignore: unused_element_parameter
+    this.dxFrac = 0,
+  });
+
+  final double scale;
+  final AccessoryAnchor anchor;
+
+  /// Offset from the anchor to the accessory box's top edge, as a fraction
+  /// of the sprite's rendered width — the animated equivalent of
+  /// [_AccessoryPlacement.topFraction], just measured from a point that
+  /// moves with Nori's breathing instead of from a fixed origin.
+  final double dyFrac;
+
+  /// Horizontal fine-nudge from the anchor to the accessory box's left
+  /// edge, same units as [dyFrac] — on top of, not instead of, the
+  /// automatic horizontal centering every anchor already gets (see
+  /// [animatedPositionedAccessoryArt]: `eyeMid`/`headTop` center on
+  /// [kNoriFaceCenterX], `tail` on the per-frame tail position). No current
+  /// placement needs one; left here for whichever accessory's art isn't
+  /// visually centered in its own box and needs a manual correction.
+  final double dxFrac;
+}
+
+/// Anchor-based placements for [NoriRoomStage]'s animated breathing sprite.
+/// Calibrated by eye against rendered frames (frame_00 in particular) the
+/// same way [_kPlacements] was, but referencing [kNoriFrameAnchors] instead
+/// of a single fixed fraction, so the accessory now moves with Nori instead
+/// of drifting off him over the loop (docs/KNOWN_ISSUES.md).
+///
+/// `smart-glasses`'s [_AnimatedAccessoryPlacement.dyFrac] is derived
+/// directly from its own art (glasses box height is `scale * 0.44`, see
+/// [_SmartGlasses]) so its vertical center — not just its top edge — lands
+/// on the eye line: `dyFrac = -scale * 0.44 / 2`.
+///
+/// Not yet anchored: neckties/bows (no anatomical "neck" on Nori's
+/// silhouette to detect automatically — he's a single rounded body with no
+/// distinct head/neck/torso break — and no such accessory exists in the
+/// catalog yet to calibrate against) and hand accessories (his arms are
+/// tucked into the body outline with no separate hand/paw shape in most
+/// frames to anchor to). Add both once real art needs them. A tail anchor
+/// *is* tracked in [kNoriFrameAnchors] and ready for a future tail-bow, but
+/// no such item is in the catalog yet either, so nothing references
+/// [AccessoryAnchor.tail] below.
+const Map<String, _AnimatedAccessoryPlacement> _kAnimatedPlacements = {
+  'smart-glasses': _AnimatedAccessoryPlacement(
+    scale: 0.34,
+    anchor: AccessoryAnchor.eyeMid,
+    dyFrac: -0.0748, // = -scale * 0.44 / 2, see doc comment above
+  ),
+  'wizard-hat': _AnimatedAccessoryPlacement(
+    scale: 0.26,
+    anchor: AccessoryAnchor.headTop,
+    dyFrac: -0.196,
+  ),
+  'propeller-beanie': _AnimatedAccessoryPlacement(
+    scale: 0.26,
+    anchor: AccessoryAnchor.headTop,
+    dyFrac: -0.116,
+  ),
+  'flower-crown': _AnimatedAccessoryPlacement(
+    scale: 0.32,
+    anchor: AccessoryAnchor.headTop,
+    dyFrac: -0.056,
+  ),
+  'cozy-headphones': _AnimatedAccessoryPlacement(
+    scale: 0.3,
+    anchor: AccessoryAnchor.headTop,
+    dyFrac: 0.004,
+  ),
+};
+
+/// Anchor-tracking counterpart to [positionedAccessoryArt], used only by
+/// [NoriRoomStage] (the animated breathing sprite) via
+/// [NoriBreathingSprite.overlayBuilder]. Returns null when [item] has no
+/// entry in [_kAnimatedPlacements] yet, so callers can fall back to
+/// [positionedAccessoryArt]'s fixed placement rather than the accessory
+/// disappearing.
+Widget? animatedPositionedAccessoryArt({
+  required AccessoryItem item,
+  required double spriteWidth,
+  required NoriFrameAnchors anchors,
+}) {
+  final placement = _kAnimatedPlacements[item.id];
+  if (placement == null) return null;
+
+  final scale = spriteWidth / kNoriFrameCanvasSize.width;
+  final accWidth = spriteWidth * placement.scale;
+  final double top;
+  double anchorX;
+  switch (placement.anchor) {
+    case AccessoryAnchor.eyeMid:
+      top = anchors.eyeMidY * scale + placement.dyFrac * spriteWidth;
+      anchorX = kNoriFaceCenterX;
+    case AccessoryAnchor.headTop:
+      top = anchors.headTopY * scale + placement.dyFrac * spriteWidth;
+      anchorX = kNoriFaceCenterX;
+    case AccessoryAnchor.tail:
+      top = anchors.tail.dy * scale + placement.dyFrac * spriteWidth;
+      anchorX = anchors.tail.dx;
+  }
+  final left = anchorX * scale - accWidth / 2 + placement.dxFrac * spriteWidth;
+
+  return Positioned(
+    top: top,
+    left: left,
+    child: AccessoryArt(item: item, headWidth: accWidth),
   );
 }
 

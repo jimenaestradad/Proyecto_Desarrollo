@@ -7,8 +7,10 @@ import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/bucket_list/bucket_list_screen.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
 import 'package:nori/screens/notifications/notifications_screen.dart';
+import 'package:nori/screens/pet/evolution_screen.dart';
 import 'package:nori/screens/shop/shop_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/date_labels.dart';
 import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/habit_progress_card.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
@@ -92,8 +94,14 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
     if (reward.xpDelta != 0) await AppData.user.addXp(reward.xpDelta);
     if (reward.coinsDelta != 0) await AppData.user.addCoins(reward.coinsDelta);
     final user = await AppData.user.getCurrentUser();
+    final previousStage = (await AppData.pet.getPet()).stage;
     await AppData.pet.syncEvolution(user.level);
     await _reloadUser();
+    final pet = await AppData.pet.getPet();
+    if (!mounted) return;
+    if (previousStage != pet.stage) {
+      await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
+    }
   }
 
   Future<void> _toggleBinary(Habit habit, bool completed) async {
@@ -168,8 +176,12 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
     if (newIndex > oldIndex) newIndex -= 1;
     final habit = habits.removeAt(oldIndex);
     habits.insert(newIndex, habit);
-    setState(() => _habits = habits);
+    // Persist before updating the displayed order — on failure (once a real
+    // backend can fail) the UI simply doesn't move instead of silently
+    // diverging from what's actually stored.
     await AppData.habits.reorderHabits([for (final h in habits) h.id]);
+    if (!mounted) return;
+    setState(() => _habits = habits);
   }
 
   void _openNotifications() {
@@ -499,20 +511,12 @@ class _DateNavRow extends StatelessWidget {
   final VoidCallback onForward;
   final VoidCallback onJumpToToday;
 
-  static const _weekdays = [
-    'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', //
-  ];
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
   String get _label {
     final today = dateOnly(DateTime.now());
     final diff = today.difference(date).inDays;
     if (diff == 0) return "Today's Goals";
     if (diff == 1) return "Yesterday's Goals";
-    return '${_weekdays[date.weekday - 1]}, ${_months[date.month - 1]} ${date.day}';
+    return '${weekdayAbbr(date.weekday)}, ${monthAbbr(date.month)} ${date.day}';
   }
 
   @override

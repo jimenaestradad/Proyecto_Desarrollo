@@ -5,9 +5,12 @@ import 'package:nori/models/calendar_day.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
+import 'package:nori/screens/pet/evolution_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/date_labels.dart';
 import 'package:nori/widgets/habit_progress_card.dart';
 import 'package:nori/widgets/nori_avatar.dart';
+import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/streak_chip.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
@@ -217,22 +220,26 @@ class _CalendarHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        NoriAvatar(imageUrl: user.avatarUrl),
-        const SizedBox(width: AppSpacing.stackSm),
-        Expanded(
-          child: Text(
-            'Nori',
-            style: AppTextStyles.headlineMd,
-          ),
-        ),
-        if (user.currentStreak > 0) ...[
-          StreakChip(streak: user.currentStreak),
-          const SizedBox(width: 4),
+    return NoriScreenHeader(
+      leading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          NoriAvatar(imageUrl: user.avatarUrl),
+          const SizedBox(width: AppSpacing.stackSm),
         ],
-        XpPill(xp: user.totalXp),
-      ],
+      ),
+      title: 'Nori',
+      titleStyle: AppTextStyles.headlineMd,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (user.currentStreak > 0) ...[
+            StreakChip(streak: user.currentStreak),
+            const SizedBox(width: 4),
+          ],
+          XpPill(xp: user.totalXp),
+        ],
+      ),
     );
   }
 }
@@ -279,8 +286,6 @@ class _CalendarStatCard extends StatelessWidget {
 class _CalendarCard extends StatelessWidget {
   const _CalendarCard({required this.days, required this.onDayTap});
 
-  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
   final List<CalendarDay> days;
   final ValueChanged<DateTime> onDayTap;
 
@@ -298,10 +303,10 @@ class _CalendarCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              for (final weekday in _weekdays)
+              for (var weekday = DateTime.monday; weekday <= DateTime.sunday; weekday++)
                 Expanded(
                   child: Text(
-                    weekday,
+                    weekdayAbbr(weekday),
                     textAlign: TextAlign.center,
                     style: AppTextStyles.labelSm,
                   ),
@@ -499,14 +504,6 @@ class _DayDetailSheet extends StatefulWidget {
 class _DayDetailSheetState extends State<_DayDetailSheet> {
   List<Habit>? _habits;
 
-  static const _weekdays = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday', //
-  ];
-  static const _months = [
-    'January', 'February', 'March', 'April', 'May', 'June', //
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -524,7 +521,13 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
     if (reward.xpDelta != 0) await AppData.user.addXp(reward.xpDelta);
     if (reward.coinsDelta != 0) await AppData.user.addCoins(reward.coinsDelta);
     final user = await AppData.user.getCurrentUser();
+    final previousStage = (await AppData.pet.getPet()).stage;
     await AppData.pet.syncEvolution(user.level);
+    final pet = await AppData.pet.getPet();
+    if (!mounted) return;
+    if (previousStage != pet.stage) {
+      await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
+    }
   }
 
   Future<void> _toggleBinary(Habit habit, bool completed) async {
@@ -578,7 +581,7 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
 
   String get _title {
     final date = widget.date;
-    return '${_weekdays[date.weekday - 1]}, ${_months[date.month - 1]} ${date.day}';
+    return '${weekdayFull(date.weekday)}, ${monthFull(date.month)} ${date.day}';
   }
 
   @override

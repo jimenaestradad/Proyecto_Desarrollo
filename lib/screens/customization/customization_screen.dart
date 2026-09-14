@@ -4,6 +4,7 @@ import 'package:nori/data/app_data.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/accessory_art.dart';
+import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 class CustomizationScreen extends StatefulWidget {
@@ -140,29 +141,23 @@ class _CustomizationHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Material(
-          color: AppColors.white,
-          shape: const CircleBorder(
-            side: BorderSide(color: AppColors.ink, width: AppBorder.standard),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: IconButton(
-            tooltip: 'Back',
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.arrow_back),
-          ),
+    return NoriScreenHeader(
+      leading: Material(
+        color: AppColors.white,
+        shape: const CircleBorder(
+          side: BorderSide(color: AppColors.ink, width: AppBorder.standard),
         ),
-        Expanded(
-          child: Text(
-            'Style Pet',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.headlineLgMobile,
-          ),
+        clipBehavior: Clip.antiAlias,
+        child: IconButton(
+          tooltip: 'Back',
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back),
         ),
-        const SizedBox(width: 48),
-      ],
+      ),
+      title: 'Style Pet',
+      titleStyle: AppTextStyles.headlineLgMobile,
+      titleTextAlign: TextAlign.center,
+      trailing: const SizedBox(width: 48),
     );
   }
 }

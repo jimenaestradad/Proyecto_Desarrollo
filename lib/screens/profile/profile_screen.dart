@@ -8,18 +8,15 @@ import 'package:nori/screens/premium/nori_plus_screen.dart';
 import 'package:nori/screens/settings/settings_screen.dart';
 import 'package:nori/screens/shop/shop_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/formatting.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
 import 'package:nori/widgets/nori_avatar.dart';
+import 'package:nori/widgets/nori_icon_badge.dart';
+import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
+import 'package:nori/widgets/section_header.dart';
 import 'package:nori/widgets/tactile_button.dart';
 import 'package:nori/widgets/xp_pill.dart';
-
-/// Matches [XpPill]'s thousands-separator formatting, for the one XP value
-/// on this screen that renders as plain text instead of through the pill.
-String _formatXp(int xp) => xp.toString().replaceAllMapped(
-  RegExp(r'\B(?=(\d{3})+(?!\d))'),
-  (match) => ',',
-);
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, required this.active});
@@ -218,13 +215,17 @@ class _ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        NoriAvatar(imageUrl: user.avatarUrl),
-        const SizedBox(width: AppSpacing.stackSm),
-        Expanded(child: Text('Profile', style: AppTextStyles.headlineMd)),
-        XpPill(xp: user.totalXp),
-      ],
+    return NoriScreenHeader(
+      leading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          NoriAvatar(imageUrl: user.avatarUrl),
+          const SizedBox(width: AppSpacing.stackSm),
+        ],
+      ),
+      title: 'Profile',
+      titleStyle: AppTextStyles.headlineMd,
+      trailing: XpPill(xp: user.totalXp),
     );
   }
 }
@@ -286,7 +287,7 @@ class _ProfileHero extends StatelessWidget {
               ),
               _ProfilePill(
                 icon: Icons.diamond,
-                label: '${_formatXp(user.totalXp)} XP',
+                label: '${formatThousands(user.totalXp)} XP',
                 color: AppColors.terracottaDark,
               ),
               _ProfilePill(
@@ -354,26 +355,23 @@ class _AchievementsPreviewCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text('My Achievements', style: AppTextStyles.headlineMd),
-              ),
-              TextButton(
-                onPressed: onViewAll,
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.mossDark,
-                  side: const BorderSide(
-                    color: AppColors.ink,
-                    width: AppBorder.thin,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.full),
-                  ),
+          SectionHeader(
+            title: 'My Achievements',
+            titleStyle: AppTextStyles.headlineMd,
+            trailing: TextButton(
+              onPressed: onViewAll,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.mossDark,
+                side: const BorderSide(
+                  color: AppColors.ink,
+                  width: AppBorder.thin,
                 ),
-                child: const Text('View All'),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                ),
               ),
-            ],
+              child: const Text('View All'),
+            ),
           ),
           const SizedBox(height: AppSpacing.stackSm),
           GridView.count(
@@ -414,19 +412,13 @@ class _AchievementPreview extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color.withValues(alpha: 0.16),
-              border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-            ),
-            child: Icon(
-              isLocked ? Icons.lock : achievement.icon,
-              color: color,
-              size: 28,
-            ),
+          NoriIconBadge(
+            icon: isLocked ? Icons.lock : achievement.icon,
+            background: color.withValues(alpha: 0.16),
+            size: 54,
+            circle: true,
+            iconSize: 28,
+            iconColor: color,
           ),
           const SizedBox(height: AppSpacing.unit),
           Text(

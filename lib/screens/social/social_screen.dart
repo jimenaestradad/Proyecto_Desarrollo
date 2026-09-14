@@ -4,7 +4,9 @@ import 'package:nori/models/nori_user.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
 import 'package:nori/widgets/nori_avatar.dart';
+import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
+import 'package:nori/widgets/section_header.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
 /// Replaces the old Achievements nav tab (achievements moved under Profile
@@ -68,15 +70,17 @@ class _SocialScreenState extends State<SocialScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Row(
-                              children: [
-                                NoriAvatar(imageUrl: user.avatarUrl),
-                                const SizedBox(width: AppSpacing.stackSm),
-                                Expanded(
-                                  child: Text('Social', style: AppTextStyles.headlineMd),
-                                ),
-                                XpPill(xp: user.totalXp),
-                              ],
+                            NoriScreenHeader(
+                              leading: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  NoriAvatar(imageUrl: user.avatarUrl),
+                                  const SizedBox(width: AppSpacing.stackSm),
+                                ],
+                              ),
+                              title: 'Social',
+                              titleStyle: AppTextStyles.headlineMd,
+                              trailing: XpPill(xp: user.totalXp),
                             ),
                             const SizedBox(height: AppSpacing.stackMd),
                             const FutureFeatureBanner(
@@ -84,11 +88,14 @@ class _SocialScreenState extends State<SocialScreen> {
                                   "Preview only — friends, feeds & competitions aren't built yet.",
                             ),
                             const SizedBox(height: AppSpacing.stackLg),
-                            _SectionHeader(
+                            SectionHeader(
                               icon: Icons.dynamic_feed,
                               title: 'Activity Feed',
-                              actionLabel: 'Post proof',
-                              onAction: _showComingSoon,
+                              trailing: TextButton(
+                                onPressed: _showComingSoon,
+                                style: TextButton.styleFrom(foregroundColor: AppColors.mossDark),
+                                child: const Text('Post proof'),
+                              ),
                             ),
                             const SizedBox(height: AppSpacing.stackSm),
                             const _FeedCard(
@@ -107,20 +114,26 @@ class _SocialScreenState extends State<SocialScreen> {
                               reactions: 2,
                             ),
                             const SizedBox(height: AppSpacing.stackLg),
-                            _SectionHeader(
+                            SectionHeader(
                               icon: Icons.leaderboard,
                               title: 'Leaderboard',
-                              actionLabel: 'View all',
-                              onAction: _showComingSoon,
+                              trailing: TextButton(
+                                onPressed: _showComingSoon,
+                                style: TextButton.styleFrom(foregroundColor: AppColors.mossDark),
+                                child: const Text('View all'),
+                              ),
                             ),
                             const SizedBox(height: AppSpacing.stackSm),
                             const _LeaderboardPreview(),
                             const SizedBox(height: AppSpacing.stackLg),
-                            _SectionHeader(
+                            SectionHeader(
                               icon: Icons.emoji_events,
                               title: 'Active Competitions',
-                              actionLabel: 'Start one',
-                              onAction: _showComingSoon,
+                              trailing: TextButton(
+                                onPressed: _showComingSoon,
+                                style: TextButton.styleFrom(foregroundColor: AppColors.mossDark),
+                                child: const Text('Start one'),
+                              ),
                             ),
                             const SizedBox(height: AppSpacing.stackSm),
                             const _CompetitionCard(
@@ -139,11 +152,14 @@ class _SocialScreenState extends State<SocialScreen> {
                               color: AppColors.blushPink,
                             ),
                             const SizedBox(height: AppSpacing.stackLg),
-                            _SectionHeader(
+                            SectionHeader(
                               icon: Icons.groups,
                               title: 'My Circles',
-                              actionLabel: 'New circle',
-                              onAction: _showComingSoon,
+                              trailing: TextButton(
+                                onPressed: _showComingSoon,
+                                style: TextButton.styleFrom(foregroundColor: AppColors.mossDark),
+                                child: const Text('New circle'),
+                              ),
                             ),
                             const SizedBox(height: AppSpacing.stackSm),
                             SizedBox(
@@ -177,36 +193,6 @@ class _SocialScreenState extends State<SocialScreen> {
                 },
               ),
       ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.icon,
-    required this.title,
-    required this.actionLabel,
-    required this.onAction,
-  });
-
-  final IconData icon;
-  final String title;
-  final String actionLabel;
-  final VoidCallback onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: AppColors.mossDark, size: 20),
-        const SizedBox(width: AppSpacing.unit),
-        Expanded(child: Text(title, style: AppTextStyles.headlineMd.copyWith(fontSize: 18))),
-        TextButton(
-          onPressed: onAction,
-          style: TextButton.styleFrom(foregroundColor: AppColors.mossDark),
-          child: Text(actionLabel),
-        ),
-      ],
     );
   }
 }

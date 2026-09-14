@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/widgets/loading_overlay.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -147,7 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
               },
             ),
           ),
-          if (_loading) const _LoadingOverlay(),
+          if (_loading) const LoadingOverlay(),
         ],
       ),
     );
@@ -330,16 +331,3 @@ class _Divider extends StatelessWidget {
   }
 }
 
-class _LoadingOverlay extends StatelessWidget {
-  const _LoadingOverlay();
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: ColoredBox(
-        color: AppColors.linen.withValues(alpha: 0.72),
-        child: const Center(child: CircularProgressIndicator()),
-      ),
-    );
-  }
-}

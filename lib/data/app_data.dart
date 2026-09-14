@@ -17,13 +17,13 @@ class AppData {
   AppData._();
 
   static AuthRepository auth = MockAuthRepository();
-  static UserRepository user = MockUserRepository();
   static HabitRepository habits = MockHabitRepository();
+  static CalendarRepository calendar = MockCalendarRepository(habits);
+  static UserRepository user = MockUserRepository(calendar);
   static HabitCategoryRepository habitCategories = MockHabitCategoryRepository();
   static BucketListRepository bucketList = MockBucketListRepository();
   static AchievementRepository achievements = MockAchievementRepository();
   static NotificationRepository notifications = MockNotificationRepository();
-  static CalendarRepository calendar = MockCalendarRepository(habits);
   static PetRepository pet = MockPetRepository();
   static InventoryRepository inventory = MockInventoryRepository();
 }

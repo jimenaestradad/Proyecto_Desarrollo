@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/app_notification.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/widgets/nori_icon_badge.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -172,15 +173,12 @@ class _NotificationCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: notification.color,
-              border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-            ),
-            child: Icon(notification.icon, size: 24, color: AppColors.ink),
+          NoriIconBadge(
+            icon: notification.icon,
+            background: notification.color,
+            size: 48,
+            circle: true,
+            iconSize: 24,
           ),
           const SizedBox(width: AppSpacing.stackSm),
           Expanded(

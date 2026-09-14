@@ -12,9 +12,11 @@ import 'package:nori/screens/customization/customization_screen.dart';
 import 'package:nori/screens/pet/evolution_screen.dart';
 import 'package:nori/screens/shop/shop_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/formatting.dart';
 import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/habit_tile.dart';
 import 'package:nori/widgets/nori_avatar.dart';
+import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_room_stage.dart';
 import 'package:nori/widgets/pet_vital_ring.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
@@ -63,6 +65,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadData() async {
+    // Captured before the reload so a stage change picked up here — e.g. a
+    // claim made on another tab while Home was last loaded — still gets its
+    // celebration on switching back, not just one earned via a Home action.
+    final previousStage = _pet?.stage;
     final user = await AppData.user.getCurrentUser();
     final habits = await AppData.habits.getTodayHabits();
     await AppData.pet.syncEvolution(user.level);
@@ -75,6 +81,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _pet = pet;
       _inventory = inventory;
     });
+    if (previousStage != null && previousStage != pet.stage) {
+      await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
+    }
   }
 
   Future<void> _reloadHabits() async {
@@ -125,12 +134,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _claimHabit(Habit habit) async {
-    if (!habit.isMinMet && !habit.isTargetMet) {
-      // Not "on the Habits tab" — the quick-log button right here on this
-      // tile does the same logging now, so don't send them away for it.
-      _showSnack('Log more progress before completing this habit.');
-      return;
-    }
     final reward = await AppData.habits.claimHabit(habit.id);
     await _applyReward(reward);
     await _reloadHabits();
@@ -339,11 +342,6 @@ class _RoomHud extends StatefulWidget {
 class _RoomHudState extends State<_RoomHud> {
   bool _showEvolution = false;
 
-  static String _formattedXp(int xp) => xp.toString().replaceAllMapped(
-    RegExp(r'\B(?=(\d{3})+(?!\d))'),
-    (match) => ',',
-  );
-
   void _showCare({
     required IconData icon,
     required Color iconBg,
@@ -429,7 +427,7 @@ class _RoomHudState extends State<_RoomHud> {
                           const Icon(Icons.star, size: 11, color: AppColors.mustardDark),
                           const SizedBox(width: 2),
                           Text(
-                            _formattedXp(user.totalXp),
+                            formatThousands(user.totalXp),
                             style: AppTextStyles.labelSm.copyWith(color: AppColors.ink),
                           ),
                           const SizedBox(width: 3),
@@ -641,15 +639,12 @@ class _CareActionSheet extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: iconBg,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-                    ),
-                    child: Icon(icon, color: AppColors.ink),
+                  NoriIconBadge(
+                    icon: icon,
+                    background: iconBg,
+                    size: 44,
+                    circle: true,
+                    iconSize: 24,
                   ),
                   const SizedBox(width: AppSpacing.stackSm),
                   Expanded(
@@ -718,6 +713,11 @@ class _HabitPanelState extends State<_HabitPanel> {
 
   bool _expanded = false;
   double _dragAccum = 0;
+
+  // Whether the expanded list's ConstrainedBox actually clips content —
+  // it rarely lands on a whole tile boundary, so without this the last
+  // visible tile gets sliced mid-row with no indication it's scrollable.
+  bool _listOverflows = false;
 
   void _onDragUpdate(DragUpdateDetails details) {
     _dragAccum += details.delta.dy;
@@ -860,22 +860,42 @@ class _HabitPanelState extends State<_HabitPanel> {
                           constraints: BoxConstraints(
                             maxHeight: maxExpandedListHeight,
                           ),
-                          child: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                for (var i = 0; i < habits.length; i++) ...[
-                                  HabitTile(
-                                    habit: habits[i],
-                                    onToggle: (completed) =>
-                                        widget.onToggle(habits[i], completed),
-                                    onQuickLog: (amount) =>
-                                        widget.onQuickLog(habits[i], amount),
-                                    onEdit: widget.onOpenHabits,
-                                  ),
-                                  const SizedBox(height: AppSpacing.stackSm),
-                                ],
-                              ],
+                          child: ShaderMask(
+                            shaderCallback: (rect) => LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: const [Colors.black, Colors.black, Colors.transparent],
+                              stops: const [0.0, 0.88, 1.0],
+                            ).createShader(rect),
+                            blendMode: _listOverflows ? BlendMode.dstIn : BlendMode.dst,
+                            child: NotificationListener<ScrollMetricsNotification>(
+                              onNotification: (notification) {
+                                final overflows = notification.metrics.maxScrollExtent > 0;
+                                if (overflows != _listOverflows) {
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    if (mounted) setState(() => _listOverflows = overflows);
+                                  });
+                                }
+                                return false;
+                              },
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    for (var i = 0; i < habits.length; i++) ...[
+                                      HabitTile(
+                                        habit: habits[i],
+                                        onToggle: (completed) =>
+                                            widget.onToggle(habits[i], completed),
+                                        onQuickLog: (amount) =>
+                                            widget.onQuickLog(habits[i], amount),
+                                        onEdit: widget.onOpenHabits,
+                                      ),
+                                      const SizedBox(height: AppSpacing.stackSm),
+                                    ],
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         )

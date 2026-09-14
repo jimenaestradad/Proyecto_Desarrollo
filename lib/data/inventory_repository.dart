@@ -14,6 +14,9 @@ abstract class InventoryRepository {
   Future<void> addToys(int amount);
 
   Future<void> addAccessory(String accessoryId);
+
+  /// No-op if [accessoryId] isn't in [Inventory.ownedAccessoryIds] — `null`
+  /// (unequip) is always allowed.
   Future<void> setEquippedAccessory(String? accessoryId);
 }
 
@@ -76,6 +79,10 @@ class MockInventoryRepository implements InventoryRepository {
 
   @override
   Future<void> setEquippedAccessory(String? accessoryId) async {
+    if (accessoryId != null &&
+        !_inventory.ownedAccessoryIds.contains(accessoryId)) {
+      return;
+    }
     _inventory = _inventory.copyWith(equippedAccessoryId: accessoryId);
   }
 }

@@ -50,6 +50,8 @@ extension HabitDifficultyXp on HabitDifficulty {
     HabitDifficulty.hard => 30,
   };
 
+  int get baseCoins => baseXp ~/ 2;
+
   String get label => switch (this) {
     HabitDifficulty.easy => 'Easy',
     HabitDifficulty.medium => 'Medium',

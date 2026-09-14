@@ -1,5 +1,6 @@
 import '../models/calendar_day.dart';
 import '../models/habit.dart';
+import '../utils/date_labels.dart';
 import 'habit_history_store.dart' show dateOnly;
 import 'habit_repository.dart';
 
@@ -19,21 +20,6 @@ class MockCalendarRepository implements CalendarRepository {
   MockCalendarRepository(this._habits);
 
   final HabitRepository _habits;
-
-  static const _monthNames = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
 
   @override
   Future<CalendarMonthStats> getCurrentMonth() {
@@ -82,7 +68,7 @@ class MockCalendarRepository implements CalendarRepository {
     return CalendarMonthStats(
       year: year,
       month: month,
-      monthLabel: _monthNames[month - 1],
+      monthLabel: monthFull(month),
       currentStreak: await _currentStreak(today),
       perfectDays: perfectDays,
       habitsDone: habitsDone,

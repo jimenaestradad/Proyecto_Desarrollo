@@ -36,29 +36,42 @@ class ProgressBarPill extends StatelessWidget {
             : null,
       ),
       clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FractionallySizedBox(
-              widthFactor: progress.clamp(0, 1),
-              child: Container(height: height, color: color),
-            ),
-          ),
-          if (thresholdFraction != null)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FractionallySizedBox(
-                widthFactor: thresholdFraction!.clamp(0, 1),
-                alignment: Alignment.centerRight,
-                child: Container(
-                  width: AppBorder.standard,
-                  height: height,
-                  color: AppColors.ink.withValues(alpha: 0.5),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Stack(
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: progress.clamp(0, 1),
+                  child: Container(height: height, color: color),
                 ),
               ),
-            ),
-        ],
+              if (thresholdFraction != null)
+                Positioned(
+                  // Not FractionallySizedBox here: it gives its child a
+                  // *tight* width of widthFactor × available width, which
+                  // overrides this line's own `width: AppBorder.standard`
+                  // instead of just capping it — the tick rendered as a
+                  // solid block from 0 to thresholdFraction instead of a
+                  // thin marker at that position.
+                  left: (thresholdFraction!.clamp(0, 1) * constraints.maxWidth -
+                          AppBorder.standard / 2)
+                      .clamp(
+                        0.0,
+                        (constraints.maxWidth - AppBorder.standard).clamp(
+                          0.0,
+                          double.infinity,
+                        ),
+                      ),
+                  top: 0,
+                  bottom: 0,
+                  width: AppBorder.standard,
+                  child: ColoredBox(color: AppColors.ink.withValues(alpha: 0.5)),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
