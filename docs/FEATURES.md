@@ -78,20 +78,40 @@ level / evolve / collect / customize pets → stay motivated
 
 ## 6. Pet progression
 
-- Levels and evolutions are separate: evolutions span level *ranges* (e.g. levels 1–X = Baby,
-  X–Y = Evolution 1), not one evolution per level. XP-per-level increases progressively (a curve).
-- Vision: ~3 evolution stages (Pokémon is the inspiration for staged evolution only, not gameplay).
-- MVP may ship with only **one** evolution implemented, while the fuller system stays documented
-  for later.
-- Exact XP requirements / level curve / evolution thresholds are undecided.
+- Levels and evolutions are separate: evolutions span level *ranges*, not one evolution per
+  level. XP-per-level increases progressively (a curve).
+- **XP curve (decided 2026-09-16):** `xpForNextLevel = 100 × currentLevel`. Level 1→2 costs 100
+  XP, 2→3 costs 200, 6→7 costs 600. Cumulative XP to reach level n is `50 × n × (n − 1)`.
+- **Evolution stages (decided 2026-09-16)** — three stages, spanning level ranges:
+
+  | Stage | Levels | Cumulative XP to enter | Roughly, at ~100 XP/day |
+  |---|---|---|---|
+  | Baby | 1–6 | 0 | from day one |
+  | Evolution 1 | 7–14 | 2,100 | ~3 weeks |
+  | Evolution 2 (final) | 15+ | 10,500 | ~3–4 months |
+
+  A "maxed out" pet means reaching Evolution 2. The pacing assumes a moderately consistent user
+  with ~5 habits earning 50–150 XP/day; adjust the thresholds, not the curve, if that turns out
+  wrong in practice.
+- **MVP ships only the first evolution** (Baby → Evolution 1 at level 7). Evolution 2 is
+  specified here so the art and thresholds are known, but is not built this semester.
+- Pokémon is the inspiration for staged evolution only, not for gameplay.
 
 ## 7. Multiple pets (vision, not MVP)
 
 Users can eventually own more than one pet (so reaching max evolution doesn't kill motivation):
 adopt → care/level/evolve → unlock more pets → maintain a collection; friends can visit pets.
-Mechanics almost entirely undecided — how pets unlock, whether XP belongs to the user or the
-active pet, whether only one pet progresses at a time, inactive-pet stat behavior, per-pet vs.
-shared inventory. See OPEN_DECISIONS.
+
+**Unlock mechanic (direction set 2026-09-16, still not MVP):** once a pet is maxed out —
+Evolution 2, level 15 per §6 — the user can **buy an egg with coins and hatch a new pet**. That
+ties the collection loop to the existing economy rather than inventing a separate unlock
+currency, and gives late-game coins somewhere to go once the shop is exhausted. Egg price,
+whether eggs are the *only* way to get a new pet, and whether species/appearance vary per egg
+are all still open.
+
+Still undecided: whether XP belongs to the user or the active pet, whether only one pet
+progresses at a time, inactive-pet stat behavior, per-pet vs. shared inventory. See
+OPEN_DECISIONS.
 
 ## 8. Pet care
 
