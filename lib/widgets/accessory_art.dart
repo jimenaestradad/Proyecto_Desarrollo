@@ -1,21 +1,16 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 
 import '../data/accessory_catalog.dart';
-import '../theme/app_theme.dart';
 import 'nori_frame_anchors.dart';
 
-/// A hand-drawn, flat-outlined illustration for one accessory — drawn in
-/// the same line-and-flat-color language as Nori himself (thick black
-/// outlines, solid pastel fills, simple rounded shapes), not a generic
-/// Material icon in a circle. Each accessory gets its own small shape
-/// (headband + earcups, a cone hat, etc.) built from basic canvas
-/// primitives so it actually reads as "worn" rather than as a UI badge.
+/// Draws one equipped accessory as a hand-drawn cutout PNG (see
+/// accessory_catalog.dart's [AccessoryItem.image]) — every catalog entry
+/// has real art now, cut from Jimena's reference sheets in
+/// assets/source/accessories/.
 ///
-/// [headWidth] is the art's own width; each shape picks its height to
-/// match (see the per-shape widgets below), so callers only need to hand
-/// in one size number.
+/// [headWidth] is the art's own width; height comes from
+/// [_kImageAspectRatios] so the box is sized correctly before the image
+/// itself has loaded.
 class AccessoryArt extends StatelessWidget {
   const AccessoryArt({super.key, required this.item, required this.headWidth});
 
@@ -24,22 +19,31 @@ class AccessoryArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    switch (item.id) {
-      case 'cozy-headphones':
-        return _Headphones(width: headWidth, color: item.color);
-      case 'smart-glasses':
-        return _SmartGlasses(width: headWidth, color: item.color);
-      case 'wizard-hat':
-        return _WizardHat(width: headWidth, color: item.color);
-      case 'propeller-beanie':
-        return _PropellerBeanie(width: headWidth, color: item.color);
-      case 'flower-crown':
-        return _FlowerCrown(width: headWidth, color: item.color);
-      default:
-        return const SizedBox.shrink();
-    }
+    final image = item.wornImage ?? item.image;
+    final aspect = _kImageAspectRatios[item.id];
+    if (image == null || aspect == null) return const SizedBox.shrink();
+    return SizedBox(
+      width: headWidth,
+      height: headWidth * aspect,
+      child: Image.asset(image, fit: BoxFit.contain),
+    );
   }
 }
+
+/// height/width of each hand-cutout PNG, so [AccessoryArt] can size its box
+/// before the image itself has loaded. Source pixel dimensions, from the
+/// cutout script run against assets/source/accessories/ — see
+/// accessory_catalog.dart. Keyed by the image [AccessoryArt] actually
+/// renders (`wornImage ?? image`), so `tail-charm-clasp` reflects its
+/// smaller worn cutout, not the bold shop-icon one.
+const Map<String, double> _kImageAspectRatios = {
+  'flower-crown': 59 / 160,
+  'horn-bow': 71 / 85,
+  'sunglasses': 58 / 130,
+  'steampunk-goggles': 55 / 144,
+  'chef-hat': 82 / 100,
+  'tail-charm-clasp': 85 / 45,
+};
 
 /// How to place [AccessoryArt] on top of Nori: a size (as a fraction of
 /// whatever single reference measurement the caller has on hand — Nori's
@@ -50,26 +54,42 @@ class AccessoryArt extends StatelessWidget {
 ///
 /// [scale] is relative to Nori's whole body span (that's the only
 /// measurement either screen actually has on hand), and his head is only
-/// roughly a quarter to a third of that — the first pass here used
-/// 0.4-0.5, sized as if it were relative to the head itself, which is why
-/// everything rendered oversized (a propeller beanie taller than Nori).
-/// These are recalibrated against the original icon-badge version (which
-/// *was* sized right, at 0.24) and are still a first pass tuned by eye
-/// against screenshots — nudge further here if something looks off once
-/// Jimena tests it on device.
+/// roughly a quarter to a third of that. Tuned by eye against screenshots —
+/// nudge further here if something looks off once Jimena tests it on
+/// device.
 class _AccessoryPlacement {
-  const _AccessoryPlacement({required this.scale, required this.topFraction});
+  const _AccessoryPlacement({
+    required this.scale,
+    required this.topFraction,
+    this.dxFraction = 0,
+  });
 
   final double scale;
   final double topFraction;
+
+  /// Horizontal nudge (fraction of [referenceSize]) from the Stack's
+  /// automatic horizontal centering — every other accessory here sits on
+  /// Nori's centerline so this defaults to 0; `tail-charm-clasp` is the one
+  /// exception, since the tail it hangs from sticks out to his side rather
+  /// than sitting on the centerline.
+  final double dxFraction;
 }
 
 const Map<String, _AccessoryPlacement> _kPlacements = {
-  'cozy-headphones': _AccessoryPlacement(scale: 0.3, topFraction: 0.04),
-  'smart-glasses': _AccessoryPlacement(scale: 0.27, topFraction: 0.2),
-  'wizard-hat': _AccessoryPlacement(scale: 0.26, topFraction: -0.16),
-  'propeller-beanie': _AccessoryPlacement(scale: 0.26, topFraction: -0.08),
-  'flower-crown': _AccessoryPlacement(scale: 0.32, topFraction: -0.02),
+  'flower-crown': _AccessoryPlacement(scale: 0.32, topFraction: 0.1),
+  'horn-bow': _AccessoryPlacement(
+    scale: 0.26,
+    topFraction: 0.09,
+    dxFraction: 0.15,
+  ),
+  'sunglasses': _AccessoryPlacement(scale: 0.52, topFraction: 0.25),
+  'steampunk-goggles': _AccessoryPlacement(scale: 0.4, topFraction: -0.02),
+  'chef-hat': _AccessoryPlacement(scale: 0.28, topFraction: -0.12),
+  'tail-charm-clasp': _AccessoryPlacement(
+    scale: 0.11,
+    topFraction: 0.7,
+    dxFraction: -0.28,
+  ),
 };
 
 /// Wraps [AccessoryArt] in the `Positioned` it needs to sit correctly
@@ -84,12 +104,18 @@ Widget positionedAccessoryArt({
 }) {
   final placement = _kPlacements[item.id];
   if (placement == null) return const SizedBox.shrink();
+  final art = AccessoryArt(
+    item: item,
+    headWidth: referenceSize * placement.scale,
+  );
   return Positioned(
     top: referenceSize * placement.topFraction,
-    child: AccessoryArt(
-      item: item,
-      headWidth: referenceSize * placement.scale,
-    ),
+    child: placement.dxFraction == 0
+        ? art
+        : Transform.translate(
+            offset: Offset(referenceSize * placement.dxFraction, 0),
+            child: art,
+          ),
   );
 }
 
@@ -106,7 +132,6 @@ class _AnimatedAccessoryPlacement {
     required this.scale,
     required this.anchor,
     required this.dyFrac,
-    // ignore: unused_element_parameter
     this.dxFrac = 0,
   });
 
@@ -123,9 +148,9 @@ class _AnimatedAccessoryPlacement {
   /// edge, same units as [dyFrac] — on top of, not instead of, the
   /// automatic horizontal centering every anchor already gets (see
   /// [animatedPositionedAccessoryArt]: `eyeMid`/`headTop` center on
-  /// [kNoriFaceCenterX], `tail` on the per-frame tail position). No current
-  /// placement needs one; left here for whichever accessory's art isn't
-  /// visually centered in its own box and needs a manual correction.
+  /// [kNoriFaceCenterX], `tail` on the per-frame tail position). Used by
+  /// `horn-bow`, which sits off-center near the left horn rather than
+  /// centered like a hat.
   final double dxFrac;
 }
 
@@ -135,45 +160,56 @@ class _AnimatedAccessoryPlacement {
 /// of a single fixed fraction, so the accessory now moves with Nori instead
 /// of drifting off him over the loop (docs/KNOWN_ISSUES.md).
 ///
-/// `smart-glasses`'s [_AnimatedAccessoryPlacement.dyFrac] is derived
-/// directly from its own art (glasses box height is `scale * 0.44`, see
-/// [_SmartGlasses]) so its vertical center — not just its top edge — lands
-/// on the eye line: `dyFrac = -scale * 0.44 / 2`.
+/// `sunglasses`'s [_AnimatedAccessoryPlacement.dyFrac] is derived directly
+/// from its own art's aspect ratio (see [_kImageAspectRatios]) so its
+/// vertical center — not just its top edge — lands on the eye line:
+/// `dyFrac = -scale * aspectRatio / 2`.
 ///
-/// Not yet anchored: neckties/bows (no anatomical "neck" on Nori's
-/// silhouette to detect automatically — he's a single rounded body with no
-/// distinct head/neck/torso break — and no such accessory exists in the
-/// catalog yet to calibrate against) and hand accessories (his arms are
-/// tucked into the body outline with no separate hand/paw shape in most
-/// frames to anchor to). Add both once real art needs them. A tail anchor
-/// *is* tracked in [kNoriFrameAnchors] and ready for a future tail-bow, but
-/// no such item is in the catalog yet either, so nothing references
-/// [AccessoryAnchor.tail] below.
+/// Not yet anchored: neckties/bows/necklaces/bandanas (no anatomical "neck"
+/// on Nori's silhouette to detect automatically — he's a single rounded
+/// body with no distinct head/neck/torso break), torso-worn items (bags,
+/// vests, capes), and feet (socks, boots) — none of these have a body part
+/// to anchor to in [kNoriFrameAnchors] yet. Add the anchor once one of
+/// these is actually implemented; the reference art for several already
+/// exists in assets/source/accessories/ waiting on it (see that folder's
+/// README entry for which sheet/item). `tail` *is* anchored, first used by
+/// `tail-charm-clasp` below.
 const Map<String, _AnimatedAccessoryPlacement> _kAnimatedPlacements = {
-  'smart-glasses': _AnimatedAccessoryPlacement(
-    scale: 0.34,
-    anchor: AccessoryAnchor.eyeMid,
-    dyFrac: -0.0748, // = -scale * 0.44 / 2, see doc comment above
-  ),
-  'wizard-hat': _AnimatedAccessoryPlacement(
-    scale: 0.26,
-    anchor: AccessoryAnchor.headTop,
-    dyFrac: -0.196,
-  ),
-  'propeller-beanie': _AnimatedAccessoryPlacement(
-    scale: 0.26,
-    anchor: AccessoryAnchor.headTop,
-    dyFrac: -0.116,
-  ),
   'flower-crown': _AnimatedAccessoryPlacement(
     scale: 0.32,
     anchor: AccessoryAnchor.headTop,
-    dyFrac: -0.056,
+    dyFrac: 0.08,
   ),
-  'cozy-headphones': _AnimatedAccessoryPlacement(
-    scale: 0.3,
+  'horn-bow': _AnimatedAccessoryPlacement(
+    scale: 0.22,
     anchor: AccessoryAnchor.headTop,
-    dyFrac: 0.004,
+    dyFrac: -0.06,
+    dxFrac: -0.14,
+  ),
+  'chef-hat': _AnimatedAccessoryPlacement(
+    scale: 0.28,
+    anchor: AccessoryAnchor.headTop,
+    dyFrac: -0.04,
+  ),
+  // Pushed-up-on-the-forehead goggles — anchored off eyeMid like sunglasses
+  // (same "near the eyes" family) but with a much bigger upward nudge, so
+  // they sit above the eyes instead of on them.
+  'steampunk-goggles': _AnimatedAccessoryPlacement(
+    scale: 0.4,
+    anchor: AccessoryAnchor.eyeMid,
+    dyFrac: -0.17,
+  ),
+  // dyFrac centers the lens box on the eye line: -scale * (own aspect
+  // ratio, 58/130) / 2.
+  'sunglasses': _AnimatedAccessoryPlacement(
+    scale: 0.52,
+    anchor: AccessoryAnchor.eyeMid,
+    dyFrac: -0.116,
+  ),
+  'tail-charm-clasp': _AnimatedAccessoryPlacement(
+    scale: 0.08,
+    anchor: AccessoryAnchor.tail,
+    dyFrac: -0.02,
   ),
 };
 
@@ -213,368 +249,4 @@ Widget? animatedPositionedAccessoryArt({
     left: left,
     child: AccessoryArt(item: item, headWidth: accWidth),
   );
-}
-
-class _Headphones extends StatelessWidget {
-  const _Headphones({required this.width, required this.color});
-
-  final double width;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: width * 0.85,
-      child: CustomPaint(painter: _HeadphonesPainter(color: color)),
-    );
-  }
-}
-
-class _HeadphonesPainter extends CustomPainter {
-  _HeadphonesPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final baselineY = h * 0.48;
-    final earR = w * 0.17;
-
-    final stroke = Paint()
-      ..color = AppColors.ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.055
-      ..strokeCap = StrokeCap.round;
-
-    // Band: the top half of an ellipse spanning the two earcups, so it
-    // reads as an arch going over the top of the head.
-    final bandRect = Rect.fromCenter(
-      center: Offset(w / 2, baselineY),
-      width: w * 0.84,
-      height: h * 0.82,
-    );
-    canvas.drawArc(bandRect, pi, pi, false, stroke);
-
-    final cupFill = Paint()..color = color;
-    final cupStroke = Paint()
-      ..color = AppColors.ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.05;
-    final innerShade = Paint()..color = AppColors.ink.withValues(alpha: 0.16);
-
-    for (final cx in [w * 0.1, w * 0.9]) {
-      final center = Offset(cx, baselineY);
-      canvas.drawCircle(center, earR, cupFill);
-      canvas.drawCircle(center, earR, cupStroke);
-      canvas.drawCircle(center, earR * 0.42, innerShade);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _HeadphonesPainter oldDelegate) =>
-      oldDelegate.color != color;
-}
-
-class _SmartGlasses extends StatelessWidget {
-  const _SmartGlasses({required this.width, required this.color});
-
-  final double width;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: width * 0.44,
-      child: CustomPaint(painter: _SmartGlassesPainter(color: color)),
-    );
-  }
-}
-
-class _SmartGlassesPainter extends CustomPainter {
-  _SmartGlassesPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final lensW = w * 0.36;
-    final lensH = h * 0.9;
-
-    final lensFill = Paint()..color = color.withValues(alpha: 0.6);
-    final stroke = Paint()
-      ..color = AppColors.ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = h * 0.14
-      ..strokeCap = StrokeCap.round;
-
-    final leftLens = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, h * 0.05, lensW, lensH),
-      Radius.circular(lensH * 0.4),
-    );
-    final rightLens = RRect.fromRectAndRadius(
-      Rect.fromLTWH(w - lensW, h * 0.05, lensW, lensH),
-      Radius.circular(lensH * 0.4),
-    );
-    canvas.drawRRect(leftLens, lensFill);
-    canvas.drawRRect(leftLens, stroke);
-    canvas.drawRRect(rightLens, lensFill);
-    canvas.drawRRect(rightLens, stroke);
-
-    canvas.drawLine(
-      Offset(lensW, h * 0.45),
-      Offset(w - lensW, h * 0.45),
-      stroke,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _SmartGlassesPainter oldDelegate) =>
-      oldDelegate.color != color;
-}
-
-class _WizardHat extends StatelessWidget {
-  const _WizardHat({required this.width, required this.color});
-
-  final double width;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: width * 1.15,
-      child: CustomPaint(painter: _WizardHatPainter(color: color)),
-    );
-  }
-}
-
-class _WizardHatPainter extends CustomPainter {
-  _WizardHatPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    final fill = Paint()..color = color;
-    final stroke = Paint()
-      ..color = AppColors.ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.06
-      ..strokeJoin = StrokeJoin.round
-      ..strokeCap = StrokeCap.round;
-
-    final brimRect = Rect.fromCenter(
-      center: Offset(w / 2, h * 0.82),
-      width: w,
-      height: h * 0.22,
-    );
-    canvas.drawOval(brimRect, fill);
-    canvas.drawOval(brimRect, stroke);
-
-    // A gently curved cone, tipping to one side like a classic wizard hat.
-    final cone = Path()
-      ..moveTo(w * 0.22, h * 0.78)
-      ..quadraticBezierTo(w * 0.38, h * 0.2, w * 0.6, h * 0.02)
-      ..quadraticBezierTo(w * 0.7, h * 0.32, w * 0.78, h * 0.78)
-      ..close();
-    canvas.drawPath(cone, fill);
-    canvas.drawPath(cone, stroke);
-
-    _drawStar(
-      canvas,
-      Offset(w * 0.55, h * 0.44),
-      w * 0.075,
-      Paint()..color = AppColors.white.withValues(alpha: 0.9),
-    );
-  }
-
-  void _drawStar(Canvas canvas, Offset center, double r, Paint paint) {
-    const points = 5;
-    final path = Path();
-    for (var i = 0; i < points * 2; i++) {
-      final radius = i.isEven ? r : r * 0.42;
-      final angle = (pi / points) * i - pi / 2;
-      final point = Offset(
-        center.dx + radius * cos(angle),
-        center.dy + radius * sin(angle),
-      );
-      if (i == 0) {
-        path.moveTo(point.dx, point.dy);
-      } else {
-        path.lineTo(point.dx, point.dy);
-      }
-    }
-    path.close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _WizardHatPainter oldDelegate) =>
-      oldDelegate.color != color;
-}
-
-class _PropellerBeanie extends StatelessWidget {
-  const _PropellerBeanie({required this.width, required this.color});
-
-  final double width;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: width * 0.95,
-      child: CustomPaint(painter: _PropellerBeaniePainter(color: color)),
-    );
-  }
-}
-
-class _PropellerBeaniePainter extends CustomPainter {
-  _PropellerBeaniePainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    final fill = Paint()..color = color;
-    final stroke = Paint()
-      ..color = AppColors.ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.06
-      ..strokeCap = StrokeCap.round;
-
-    // Dome: the top half of a circle, sitting on the head like a cap.
-    final domeRect = Rect.fromCenter(
-      center: Offset(w / 2, h * 0.64),
-      width: w * 0.86,
-      height: h * 0.86,
-    );
-    final domePath = Path()
-      ..addArc(domeRect, pi, pi)
-      ..close();
-    canvas.drawPath(domePath, fill);
-    canvas.drawArc(domeRect, pi, pi, false, stroke);
-    canvas.drawLine(
-      Offset(domeRect.left, h * 0.64),
-      Offset(domeRect.right, h * 0.64),
-      stroke,
-    );
-
-    final stickTop = Offset(w / 2, h * 0.08);
-    canvas.drawLine(Offset(w / 2, h * 0.24), stickTop, stroke);
-
-    final bladeFill = Paint()..color = AppColors.white;
-    final bladeStroke = Paint()
-      ..color = AppColors.ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.035;
-    canvas.save();
-    canvas.translate(stickTop.dx, stickTop.dy);
-    for (final angle in [0.0, pi / 2]) {
-      canvas.save();
-      canvas.rotate(angle);
-      final blade = RRect.fromRectAndRadius(
-        Rect.fromCenter(center: Offset.zero, width: w * 0.5, height: w * 0.13),
-        Radius.circular(w * 0.065),
-      );
-      canvas.drawRRect(blade, bladeFill);
-      canvas.drawRRect(blade, bladeStroke);
-      canvas.restore();
-    }
-    canvas.restore();
-    canvas.drawCircle(stickTop, w * 0.05, fill);
-    canvas.drawCircle(stickTop, w * 0.05, stroke);
-  }
-
-  @override
-  bool shouldRepaint(covariant _PropellerBeaniePainter oldDelegate) =>
-      oldDelegate.color != color;
-}
-
-class _FlowerCrown extends StatelessWidget {
-  const _FlowerCrown({required this.width, required this.color});
-
-  final double width;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: width * 0.5,
-      child: CustomPaint(painter: _FlowerCrownPainter(color: color)),
-    );
-  }
-}
-
-class _FlowerCrownPainter extends CustomPainter {
-  _FlowerCrownPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final stroke = Paint()
-      ..color = AppColors.ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.018;
-
-    final leafFill = Paint()..color = AppColors.moss;
-    for (final cx in [w * 0.34, w * 0.66]) {
-      canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx, h * 0.5), width: w * 0.16, height: w * 0.08),
-        leafFill,
-      );
-    }
-
-    final flowerCenters = [
-      Offset(w * 0.16, h * 0.62),
-      Offset(w * 0.5, h * 0.18),
-      Offset(w * 0.84, h * 0.62),
-    ];
-    final petalColors = [color, AppColors.blush, color];
-    for (var i = 0; i < flowerCenters.length; i++) {
-      _drawFlower(canvas, flowerCenters[i], w * 0.13, petalColors[i], stroke);
-    }
-  }
-
-  void _drawFlower(
-    Canvas canvas,
-    Offset center,
-    double r,
-    Color petalColor,
-    Paint stroke,
-  ) {
-    final petalPaint = Paint()..color = petalColor;
-    for (var i = 0; i < 5; i++) {
-      final angle = (2 * pi / 5) * i;
-      final petalCenter = Offset(
-        center.dx + r * 0.55 * cos(angle),
-        center.dy + r * 0.55 * sin(angle),
-      );
-      canvas.drawCircle(petalCenter, r * 0.5, petalPaint);
-      canvas.drawCircle(petalCenter, r * 0.5, stroke);
-    }
-    final corePaint = Paint()..color = AppColors.mustard;
-    canvas.drawCircle(center, r * 0.38, corePaint);
-    canvas.drawCircle(center, r * 0.38, stroke);
-  }
-
-  @override
-  bool shouldRepaint(covariant _FlowerCrownPainter oldDelegate) =>
-      oldDelegate.color != color;
 }

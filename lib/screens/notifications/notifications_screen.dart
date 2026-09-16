@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/app_notification.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
+import 'package:nori/widgets/nori_scroll_scaffold.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -46,52 +48,27 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final horizontalPadding = constraints.maxWidth >= 800
-                ? AppSpacing.containerPaddingDesktop
-                : AppSpacing.containerPaddingMobile;
-
-            return SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                AppSpacing.gutter,
-                horizontalPadding,
-                AppSpacing.stackLg,
-              ),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 800),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _NotificationsHeader(
-                        isMarkingRead: _isMarkingRead,
-                        onBack: () => Navigator.pop(context),
-                        onMarkAllRead: _markAllRead,
-                      ),
-                      const SizedBox(height: AppSpacing.stackMd),
-                      if (notifications == null)
-                        const Padding(
-                          padding: EdgeInsets.all(AppSpacing.stackLg),
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      else
-                        for (
-                          var index = 0;
-                          index < notifications.length;
-                          index++
-                        ) ...[
-                          _NotificationCard(notification: notifications[index]),
-                          if (index != notifications.length - 1)
-                            const SizedBox(height: AppSpacing.unit),
-                        ],
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
+        child: NoriScrollScaffold(
+          maxWidth: 800,
+          children: [
+            _NotificationsHeader(
+              isMarkingRead: _isMarkingRead,
+              onBack: () => Navigator.pop(context),
+              onMarkAllRead: _markAllRead,
+            ),
+            const SizedBox(height: AppSpacing.stackMd),
+            if (notifications == null)
+              const Padding(
+                padding: EdgeInsets.all(AppSpacing.stackLg),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else
+              for (var index = 0; index < notifications.length; index++) ...[
+                _NotificationCard(notification: notifications[index]),
+                if (index != notifications.length - 1)
+                  const SizedBox(height: AppSpacing.unit),
+              ],
+          ],
         ),
       ),
     );
@@ -163,13 +140,9 @@ class _NotificationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isUnread = !notification.isRead;
 
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.all(AppSpacing.gutter),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
-      ),
+      radius: AppRadius.md,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -214,12 +187,11 @@ class _NotificationCard extends StatelessWidget {
                         color: AppColors.ink,
                         width: AppBorder.thin,
                       ),
-                      minimumSize: Size.zero,
+                      minimumSize: const Size(0, 48),
                       padding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.gutter,
                         vertical: AppSpacing.unit,
                       ),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       textStyle: AppTextStyles.labelLg,
                     ),
                     child: Text(ctaLabel),
@@ -230,13 +202,16 @@ class _NotificationCard extends StatelessWidget {
           ),
           if (isUnread) ...[
             const SizedBox(width: AppSpacing.unit),
-            Container(
-              width: 10,
-              height: 10,
-              margin: const EdgeInsets.only(top: 4),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: notification.color,
+            Semantics(
+              label: 'Unread',
+              child: Container(
+                width: 10,
+                height: 10,
+                margin: const EdgeInsets.only(top: 4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: notification.color,
+                ),
               ),
             ),
           ],

@@ -8,6 +8,7 @@ import 'inventory_repository.dart';
 import 'notification_repository.dart';
 import 'pet_repository.dart';
 import 'user_repository.dart';
+import 'vacation_log.dart';
 
 /// Single place every screen gets its data from. Each field is backed by an
 /// in-memory mock today; wiring up a real backend later means replacing the
@@ -18,12 +19,23 @@ class AppData {
 
   static AuthRepository auth = MockAuthRepository();
   static HabitRepository habits = MockHabitRepository();
-  static CalendarRepository calendar = MockCalendarRepository(habits);
-  static UserRepository user = MockUserRepository(calendar);
-  static HabitCategoryRepository habitCategories = MockHabitCategoryRepository();
+  static VacationLog vacationLog = VacationLog();
+  static CalendarRepository calendar = MockCalendarRepository(
+    habits,
+    vacationLog,
+  );
+  static UserRepository user = MockUserRepository(calendar, vacationLog);
+  static HabitCategoryRepository habitCategories =
+      MockHabitCategoryRepository();
   static BucketListRepository bucketList = MockBucketListRepository();
-  static AchievementRepository achievements = MockAchievementRepository();
   static NotificationRepository notifications = MockNotificationRepository();
   static PetRepository pet = MockPetRepository();
   static InventoryRepository inventory = MockInventoryRepository();
+  static AchievementRepository achievements = MockAchievementRepository(
+    habits,
+    calendar,
+    bucketList,
+    pet,
+    inventory,
+  );
 }

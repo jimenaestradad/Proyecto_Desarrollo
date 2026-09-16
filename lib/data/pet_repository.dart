@@ -3,12 +3,17 @@ import '../models/pet.dart';
 abstract class PetRepository {
   Future<Pet> getPet();
 
-  Future<void> feed();
-  Future<void> groom();
-  Future<void> play();
+  /// [amount] is the calling [CareItem]'s `restoreAmount` (see
+  /// care_item_catalog.dart) — different items restore different amounts.
+  Future<void> feed({required double amount});
+  Future<void> groom({required double amount});
+  Future<void> play({required double amount});
 
-  /// Promotes the pet's evolution stage once [userLevel] crosses its
-  /// threshold. Call after any action that might change the user's level.
+  /// Keeps the pet's evolution stage in sync with [userLevel] against its
+  /// threshold — promotes on crossing it, demotes back if a claim gets
+  /// undone and the level drops below it again, so evolution never drifts
+  /// out of sync with the level it's derived from. Call after any action
+  /// that might change the user's level.
   Future<void> syncEvolution(int userLevel);
 }
 
@@ -47,28 +52,30 @@ class MockPetRepository implements PetRepository {
   }
 
   @override
-  Future<void> feed() async {
+  Future<void> feed({required double amount}) async {
     _pet = _applyDecay(_pet);
-    _pet = _pet.copyWith(hunger: (_pet.hunger + 25).clamp(0, 100));
+    _pet = _pet.copyWith(hunger: (_pet.hunger + amount).clamp(0, 100));
   }
 
   @override
-  Future<void> groom() async {
+  Future<void> groom({required double amount}) async {
     _pet = _applyDecay(_pet);
-    _pet = _pet.copyWith(hygiene: (_pet.hygiene + 25).clamp(0, 100));
+    _pet = _pet.copyWith(hygiene: (_pet.hygiene + amount).clamp(0, 100));
   }
 
   @override
-  Future<void> play() async {
+  Future<void> play({required double amount}) async {
     _pet = _applyDecay(_pet);
-    _pet = _pet.copyWith(happiness: (_pet.happiness + 20).clamp(0, 100));
+    _pet = _pet.copyWith(happiness: (_pet.happiness + amount).clamp(0, 100));
   }
 
   @override
   Future<void> syncEvolution(int userLevel) async {
-    if (_pet.stage == PetEvolutionStage.baby &&
-        userLevel >= _pet.evolutionLevelThreshold) {
+    final shouldEvolve = userLevel >= _pet.evolutionLevelThreshold;
+    if (shouldEvolve && _pet.stage == PetEvolutionStage.baby) {
       _pet = _pet.copyWith(stage: PetEvolutionStage.evolution1);
+    } else if (!shouldEvolve && _pet.stage == PetEvolutionStage.evolution1) {
+      _pet = _pet.copyWith(stage: PetEvolutionStage.baby);
     }
   }
 }

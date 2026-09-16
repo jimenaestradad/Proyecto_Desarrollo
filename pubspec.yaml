@@ -1,5 +1,5 @@
 name: nori
-description: "A new Flutter project."
+description: "Nori — a habit tracker combined with a virtual-pet game."
 publish_to: 'none'
 version: 0.1.0
 
@@ -16,12 +16,28 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
     - assets/images/nori_breathing/
+    - assets/images/accessories/
+    - assets/images/achievements/
+
+# Android is the only real target (see CLAUDE.md); ios: false leaves the
+# scaffolded ios/ folder untouched. web: true also regenerates the browser
+# favicon/PWA icons and manifest theme colors to match.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/app_logo.png"
+  web:
+    generate: true
+    image_path: "assets/images/app_logo.png"
+    background_color: "#F3ECDD"
+    theme_color: "#F3ECDD"
 
 # firebase_core_web 3.11.0 requires Dart >=3.12.0 (isA<T>() on Object) but this
 # project is on Dart 3.10.7 — see https://github.com/firebase/flutterfire/issues/18611

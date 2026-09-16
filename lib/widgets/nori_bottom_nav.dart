@@ -62,49 +62,58 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadius.sm),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.mossLight : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-          border: selected
-              ? Border.all(color: AppColors.ink, width: AppBorder.thin)
-              : null,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 22,
-              color: selected ? AppColors.mossDark : AppColors.inkFaint,
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        child: ExcludeSemantics(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.mossLight : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              border: selected
+                  ? Border.all(color: AppColors.ink, width: AppBorder.thin)
+                  : null,
             ),
-            const SizedBox(height: 4),
-            // FittedBox instead of a fixed font size + ellipsis: on narrow
-            // screens five labels (one as long as "Achievements") in equal
-            // Expanded slices don't all fit at full size, and truncating to
-            // "Achiev…" reads as broken. Scaling down keeps the whole word.
-            SizedBox(
-              width: double.infinity,
-              height: 14,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 22,
+                  color: selected ? AppColors.mossDark : AppColors.inkFaint,
+                ),
+                const SizedBox(height: 4),
+                // Plain Text, not a fixed-height FittedBox(scaleDown): the
+                // old version shrank labels back down to fit a fixed 14px
+                // box, which meant a larger system font size made the nav
+                // labels *smaller* instead of bigger — the one place an
+                // accessibility setting made the app actively worse. Every
+                // label is short enough now ("Calendar" is the longest) to
+                // render at full size in an Expanded slice at normal scale;
+                // the bar has no fixed height (see NoriShell), so it simply
+                // grows taller under a larger text scale instead of
+                // shrinking its content. `ellipsis` is only a backstop for
+                // extreme scale factors, not the normal-case behavior.
+                Text(
                   label,
                   maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                   style: AppTextStyles.labelSm.copyWith(
                     letterSpacing: 0,
                     color: selected ? AppColors.ink : AppColors.inkFaint,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -4,8 +4,10 @@ import 'package:nori/models/achievement.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
+import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
@@ -49,64 +51,29 @@ class _AchievementsScreenState extends State<AchievementsScreen>
       body: SafeArea(
         child: user == null || achievementsByCategory == null
             ? const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 800;
-                  final horizontalPadding = isWide
-                      ? AppSpacing.containerPaddingDesktop
-                      : AppSpacing.containerPaddingMobile;
-
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      AppSpacing.gutter,
-                      horizontalPadding,
-                      AppSpacing.stackLg,
+            : NoriScrollScaffold(
+                maxWidth: 1200,
+                children: [
+                  _AchievementsHeader(user: user),
+                  const SizedBox(height: AppSpacing.stackLg),
+                  Text('Your Trophies', style: AppTextStyles.headlineLgMobile),
+                  const SizedBox(height: AppSpacing.stackSm),
+                  Text(
+                    'Track your progress and show off your consistency. Every habit brings you closer to your next milestone.',
+                    style: AppTextStyles.bodyLg.copyWith(
+                      color: AppColors.inkMuted,
                     ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1200),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _AchievementsHeader(user: user),
-                            const SizedBox(height: AppSpacing.stackLg),
-                            Text(
-                              'Your Trophies',
-                              textAlign: isWide
-                                  ? TextAlign.center
-                                  : TextAlign.start,
-                              style: isWide
-                                  ? AppTextStyles.headlineLg
-                                  : AppTextStyles.headlineLgMobile,
-                            ),
-                            const SizedBox(height: AppSpacing.stackSm),
-                            Text(
-                              'Track your progress and show off your consistency. Every habit brings you closer to your next milestone.',
-                              textAlign: isWide
-                                  ? TextAlign.center
-                                  : TextAlign.start,
-                              style: AppTextStyles.bodyLg.copyWith(
-                                color: AppColors.inkMuted,
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.stackLg),
-                            for (final entry
-                                in achievementsByCategory.entries) ...[
-                              _AchievementCategory(
-                                category: entry.key,
-                                achievements: entry.value,
-                                isWide: isWide,
-                              ),
-                              if (entry.key != achievementsByCategory.keys.last)
-                                const SizedBox(height: AppSpacing.stackLg),
-                            ],
-                          ],
-                        ),
-                      ),
+                  ),
+                  const SizedBox(height: AppSpacing.stackLg),
+                  for (final entry in achievementsByCategory.entries) ...[
+                    _AchievementCategory(
+                      category: entry.key,
+                      achievements: entry.value,
                     ),
-                  );
-                },
+                    if (entry.key != achievementsByCategory.keys.last)
+                      const SizedBox(height: AppSpacing.stackLg),
+                  ],
+                ],
               ),
       ),
     );
@@ -133,21 +100,24 @@ class _AchievementCategory extends StatelessWidget {
   const _AchievementCategory({
     required this.category,
     required this.achievements,
-    required this.isWide,
   });
 
   final String category;
   final List<Achievement> achievements;
-  final bool isWide;
 
   IconData get _categoryIcon => switch (category) {
     'Consistency' => Icons.bolt,
-    'Health' => Icons.favorite,
+    'Milestones' => Icons.military_tech,
+    'Habits' => Icons.checklist,
+    'Pet Care' => Icons.pets,
+    'Social' => Icons.groups,
     _ => Icons.emoji_events,
   };
 
   Color get _categoryColor => switch (category) {
-    'Health' => AppColors.terracotta,
+    'Milestones' => AppColors.mustardDark,
+    'Pet Care' => AppColors.terracottaDark,
+    'Social' => AppColors.mossDark,
     _ => AppColors.moss,
   };
 
@@ -167,10 +137,10 @@ class _AchievementCategory extends StatelessWidget {
         GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: isWide ? 4 : 2,
+          crossAxisCount: 2,
           crossAxisSpacing: AppSpacing.gutter,
           mainAxisSpacing: AppSpacing.gutter,
-          childAspectRatio: isWide ? 0.95 : 0.6,
+          childAspectRatio: 0.68,
           children: [
             for (final achievement in achievements)
               _AchievementCard(achievement: achievement),
@@ -190,38 +160,43 @@ class _AchievementCard extends StatelessWidget {
     AchievementStatus.unlocked => 'Completed',
     AchievementStatus.inProgress => 'Progress',
     AchievementStatus.locked => 'Locked',
+    AchievementStatus.comingSoon => 'Coming Soon',
   };
 
   @override
   Widget build(BuildContext context) {
     final isLocked = achievement.status == AchievementStatus.locked;
-    final accentColor = isLocked ? AppColors.ink : achievement.color;
+    final isComingSoon = achievement.status == AchievementStatus.comingSoon;
+    final isDimmed = isLocked || isComingSoon;
+    final accentColor = isDimmed ? AppColors.ink : achievement.color;
 
     return Opacity(
-      opacity: isLocked ? 0.68 : 1,
-      child: Container(
+      opacity: isDimmed ? 0.68 : 1,
+      child: NoriCard(
         padding: const EdgeInsets.all(AppSpacing.stackSm),
-        decoration: BoxDecoration(
-          color: isLocked
-              ? AppColors.linenAlt
-              : AppColors.white,
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-          border: Border.all(color: AppColors.ink, width: AppBorder.standard),
-        ),
+        color: isDimmed ? AppColors.linenAlt : AppColors.white,
         child: Column(
           children: [
             Stack(
               clipBehavior: Clip.none,
               children: [
-                NoriIconBadge(
-                  icon: achievement.icon,
-                  background: accentColor.withValues(alpha: 0.16),
-                  size: 72,
-                  circle: true,
-                  iconSize: 34,
-                  iconColor: accentColor,
-                ),
-                if (isLocked)
+                if (achievement.imageAsset != null)
+                  Image.asset(
+                    achievement.imageAsset!,
+                    width: 104,
+                    height: 104,
+                    fit: BoxFit.contain,
+                  )
+                else
+                  NoriIconBadge(
+                    icon: achievement.icon,
+                    background: accentColor.withValues(alpha: 0.16),
+                    size: 104,
+                    circle: true,
+                    iconSize: 50,
+                    iconColor: accentColor,
+                  ),
+                if (isDimmed)
                   Positioned(
                     right: -2,
                     bottom: -2,
@@ -235,8 +210,8 @@ class _AchievementCard extends StatelessWidget {
                           width: AppBorder.thin,
                         ),
                       ),
-                      child: const Icon(
-                        Icons.lock,
+                      child: Icon(
+                        isComingSoon ? Icons.hourglass_empty : Icons.lock,
                         size: 16,
                         color: AppColors.ink,
                       ),
@@ -259,12 +234,10 @@ class _AchievementCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: AppTextStyles.labelSm.copyWith(
-                color: isLocked
-                    ? AppColors.ink
-                    : AppColors.inkMuted,
+                color: isDimmed ? AppColors.ink : AppColors.inkMuted,
               ),
             ),
-            const Spacer(),
+            const SizedBox(height: AppSpacing.stackSm),
             Row(
               children: [
                 Expanded(
@@ -275,10 +248,11 @@ class _AchievementCard extends StatelessWidget {
                     style: AppTextStyles.labelSm.copyWith(color: accentColor),
                   ),
                 ),
-                Text(
-                  '${achievement.progressCurrent}/${achievement.progressTarget}',
-                  style: AppTextStyles.labelSm.copyWith(color: accentColor),
-                ),
+                if (achievement.progressTarget > 0)
+                  Text(
+                    '${achievement.progressCurrent}/${achievement.progressTarget}',
+                    style: AppTextStyles.labelSm.copyWith(color: accentColor),
+                  ),
               ],
             ),
             const SizedBox(height: 6),

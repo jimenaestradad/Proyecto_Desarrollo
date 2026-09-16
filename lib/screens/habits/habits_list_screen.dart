@@ -8,11 +8,12 @@ import 'package:nori/screens/bucket_list/bucket_list_screen.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
 import 'package:nori/screens/notifications/notifications_screen.dart';
 import 'package:nori/screens/pet/evolution_screen.dart';
-import 'package:nori/screens/shop/shop_screen.dart';
+import 'package:nori/screens/pet/level_up_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/date_labels.dart';
 import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/habit_progress_card.dart';
+import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
 import 'package:nori/widgets/streak_chip.dart';
 import 'package:nori/widgets/tactile_button.dart';
@@ -91,6 +92,7 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
 
   Future<void> _applyReward(HabitRewardResult reward) async {
     if (reward.xpDelta == 0 && reward.coinsDelta == 0) return;
+    final previousLevel = (await AppData.user.getCurrentUser()).level;
     if (reward.xpDelta != 0) await AppData.user.addXp(reward.xpDelta);
     if (reward.coinsDelta != 0) await AppData.user.addCoins(reward.coinsDelta);
     final user = await AppData.user.getCurrentUser();
@@ -99,8 +101,14 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
     await _reloadUser();
     final pet = await AppData.pet.getPet();
     if (!mounted) return;
-    if (previousStage != pet.stage) {
-      await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
+    if (pet.stage.index > previousStage.index) {
+      await showEvolutionCelebration(
+        context,
+        petName: pet.name,
+        stage: pet.stage,
+      );
+    } else if (user.level > previousLevel) {
+      await showLevelUpCelebration(context, level: user.level, petName: pet.name);
     }
   }
 
@@ -190,10 +198,6 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
     ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
   }
 
-  void _openShop() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ShopScreen()));
-  }
-
   void _openBucketList() {
     Navigator.of(
       context,
@@ -219,275 +223,206 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
       body: SafeArea(
         child: user == null || habits == null
             ? const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final horizontalPadding = constraints.maxWidth >= 800
-                      ? AppSpacing.containerPaddingDesktop
-                      : AppSpacing.containerPaddingMobile;
-                  final completedCount = habits
-                      .where((habit) => habit.isCompletedToday)
-                      .length;
-                  final completion = habits.isEmpty
-                      ? 0.0
-                      : completedCount / habits.length;
-                  final displayHabits = _completedToBottom
-                      ? _sortedForDisplay(habits)
-                      : habits;
-                  // Drag-reorder persists a global order, which doesn't make
-                  // sense to trigger from a past day's read-only-ish view —
-                  // history still falls back to the plain sorted list.
-                  final canReorder = _isToday;
+            : _buildContent(user, habits),
+      ),
+    );
+  }
 
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      AppSpacing.gutter,
-                      horizontalPadding,
-                      AppSpacing.stackLg,
-                    ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1200),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'Nori',
-                                    style: AppTextStyles.headlineMd,
-                                  ),
-                                ),
-                                CircularIconButton(
-                                  icon: Icons.flag,
-                                  tooltip: 'Bucket List',
-                                  onPressed: _openBucketList,
-                                ),
-                                const SizedBox(width: 6),
-                                CircularIconButton(
-                                  icon: Icons.notifications,
-                                  tooltip: 'Notifications',
-                                  onPressed: _openNotifications,
-                                ),
-                                const SizedBox(width: 6),
-                                CircularIconButton(
-                                  icon: Icons.shopping_bag,
-                                  tooltip: 'Shop',
-                                  onPressed: _openShop,
-                                ),
-                                const SizedBox(width: 8),
-                                if (user.currentStreak > 0) ...[
-                                  StreakChip(streak: user.currentStreak),
-                                  const SizedBox(width: 4),
-                                ],
-                                XpPill(xp: user.totalXp),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.stackLg),
-                            _DateNavRow(
-                              date: _selectedDate,
-                              canGoForward: !_isToday,
-                              onBack: () => _changeDate(-1),
-                              onForward: () => _changeDate(1),
-                              onJumpToToday: () {
-                                setState(
-                                  () => _selectedDate = dateOnly(DateTime.now()),
-                                );
-                                _loadData();
-                              },
-                            ),
-                            const SizedBox(height: AppSpacing.unit),
-                            Text(
-                              _isToday
-                                  ? 'Keep up the good work! Your pet is happy.'
-                                  : "You're viewing a past day — you can still log or edit it.",
-                              style: AppTextStyles.bodyMd.copyWith(
-                                color: AppColors.inkFaint,
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            Row(
-                              children: [
-                                Text(
-                                  'Completed to bottom',
-                                  style: AppTextStyles.labelSm.copyWith(
-                                    color: AppColors.inkFaint,
-                                  ),
-                                ),
-                                Switch(
-                                  value: _completedToBottom,
-                                  onChanged: (value) =>
-                                      setState(() => _completedToBottom = value),
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  activeThumbColor: AppColors.white,
-                                  activeTrackColor: AppColors.moss,
-                                  inactiveThumbColor: AppColors.white,
-                                  inactiveTrackColor: AppColors.linenAlt,
-                                ),
-                                const Spacer(),
-                                Text(
-                                  '$completedCount / ${habits.length} Completed',
-                                  style: AppTextStyles.labelLg.copyWith(
-                                    color: AppColors.terracottaDark,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.unit),
-                            ProgressBarPill(
-                              progress: completion,
-                              color: AppColors.terracotta,
-                            ),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            if (habits.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: AppSpacing.stackMd,
-                                ),
-                                child: Text(
-                                  _isToday
-                                      ? 'No habits scheduled for today.'
-                                      : 'No habits were scheduled that day.',
-                                  textAlign: TextAlign.center,
-                                  style: AppTextStyles.bodyMd.copyWith(
-                                    color: AppColors.inkFaint,
-                                  ),
-                                ),
-                              )
-                            else if (!(_reordering && canReorder && !_completedToBottom))
-                              for (final habit in displayHabits) ...[
-                                GestureDetector(
-                                  onLongPress: (canReorder && !_completedToBottom)
-                                      ? () => setState(() => _reordering = true)
-                                      : null,
-                                  child: HabitProgressCard(
-                                    habit: habit,
-                                    onToggleBinary: (completed) =>
-                                        _toggleBinary(habit, completed),
-                                    onLogProgress: (amount) =>
-                                        _logProgress(habit, amount),
-                                    onClaim: () => _claim(habit),
-                                    onUnclaim: () => _unclaim(habit),
-                                    onEditHabit: () => _openEditHabit(habit),
-                                    onEditProgress: (value) =>
-                                        _editProgress(habit, value),
-                                  ),
-                                ),
-                                if (habit != displayHabits.last)
-                                  const SizedBox(height: AppSpacing.stackSm),
-                              ]
-                            else ...[
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.drag_indicator,
-                                    size: 16,
-                                    color: AppColors.inkFaint,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Drag to reorder',
-                                    style: AppTextStyles.labelSm.copyWith(
-                                      color: AppColors.inkFaint,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  TextButton(
-                                    onPressed: () =>
-                                        setState(() => _reordering = false),
-                                    child: const Text('Done'),
-                                  ),
-                                ],
-                              ),
-                              ReorderableListView(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                buildDefaultDragHandles: false,
-                                onReorder: _onReorder,
-                                children: [
-                                  for (var index = 0; index < habits.length; index++)
-                                    Padding(
-                                      key: ValueKey(habits[index].id),
-                                      padding: const EdgeInsets.only(
-                                        bottom: AppSpacing.stackSm,
-                                      ),
-                                      child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          ReorderableDragStartListener(
-                                            index: index,
-                                            child: const Padding(
-                                              padding: EdgeInsets.only(
-                                                top: 14,
-                                                right: 4,
-                                              ),
-                                              child: Icon(
-                                                Icons.drag_indicator,
-                                                color: AppColors.inkFaint,
-                                              ),
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: HabitProgressCard(
-                                              habit: habits[index],
-                                              onToggleBinary: (completed) =>
-                                                  _toggleBinary(
-                                                    habits[index],
-                                                    completed,
-                                                  ),
-                                              onLogProgress: (amount) =>
-                                                  _logProgress(
-                                                    habits[index],
-                                                    amount,
-                                                  ),
-                                              onClaim: () =>
-                                                  _claim(habits[index]),
-                                              onUnclaim: () =>
-                                                  _unclaim(habits[index]),
-                                              onEditHabit: () =>
-                                                  _openEditHabit(habits[index]),
-                                              onEditProgress: (value) =>
-                                                  _editProgress(
-                                                    habits[index],
-                                                    value,
-                                                  ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ],
-                            const SizedBox(height: AppSpacing.stackMd),
-                            TactileButton(
-                              label: 'Add New Habit',
-                              icon: Icons.add,
-                              // A new habit belongs to today, not whatever
-                              // past day is on screen — jump back to add one.
-                              onPressed: _isToday ? _openAddHabit : null,
-                            ),
-                            if (!_isToday) ...[
-                              const SizedBox(height: AppSpacing.unit),
-                              Text(
-                                'Jump to Today to add a new habit.',
-                                textAlign: TextAlign.center,
-                                style: AppTextStyles.labelSm.copyWith(
-                                  color: AppColors.inkFaint,
-                                ),
-                              ),
-                            ],
-                          ],
+  Widget _buildContent(NoriUser user, List<Habit> habits) {
+    final completedCount = habits
+        .where((habit) => habit.isCompletedToday)
+        .length;
+    final completion = habits.isEmpty ? 0.0 : completedCount / habits.length;
+    final displayHabits = _completedToBottom
+        ? _sortedForDisplay(habits)
+        : habits;
+    // Drag-reorder persists a global order, which doesn't make sense to
+    // trigger from a past day's read-only-ish view — history still falls
+    // back to the plain sorted list.
+    final canReorder = _isToday;
+
+    return NoriScrollScaffold(
+      maxWidth: 1200,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text('Habits', style: AppTextStyles.headlineMd)),
+            CircularIconButton(
+              icon: Icons.flag,
+              tooltip: 'Bucket List',
+              onPressed: _openBucketList,
+            ),
+            const SizedBox(width: 6),
+            CircularIconButton(
+              icon: Icons.notifications,
+              tooltip: 'Notifications',
+              onPressed: _openNotifications,
+            ),
+            const SizedBox(width: 8),
+            if (user.currentStreak > 0) ...[
+              StreakChip(streak: user.currentStreak),
+              const SizedBox(width: 4),
+            ],
+            XpPill(xp: user.totalXp),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.stackLg),
+        _DateNavRow(
+          date: _selectedDate,
+          canGoForward: !_isToday,
+          onBack: () => _changeDate(-1),
+          onForward: () => _changeDate(1),
+          onJumpToToday: () {
+            setState(() => _selectedDate = dateOnly(DateTime.now()));
+            _loadData();
+          },
+        ),
+        const SizedBox(height: AppSpacing.unit),
+        Text(
+          _isToday
+              ? 'Keep up the good work! Your pet is happy.'
+              : "You're viewing a past day — you can still log or edit it.",
+          style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkFaint),
+        ),
+        const SizedBox(height: AppSpacing.stackMd),
+        Row(
+          children: [
+            Text(
+              'Completed to bottom',
+              style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
+            ),
+            Switch(
+              value: _completedToBottom,
+              onChanged: (value) => setState(() => _completedToBottom = value),
+              activeThumbColor: AppColors.white,
+              activeTrackColor: AppColors.moss,
+              inactiveThumbColor: AppColors.white,
+              inactiveTrackColor: AppColors.linenAlt,
+            ),
+            const Spacer(),
+            Text(
+              '$completedCount / ${habits.length} Completed',
+              style: AppTextStyles.labelLg.copyWith(
+                color: AppColors.terracottaDark,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.unit),
+        ProgressBarPill(progress: completion, color: AppColors.terracotta),
+        const SizedBox(height: AppSpacing.stackMd),
+        if (habits.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.stackMd),
+            child: Text(
+              _isToday
+                  ? 'No habits scheduled for today.'
+                  : 'No habits were scheduled that day.',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkFaint),
+            ),
+          )
+        else if (!(_reordering && canReorder && !_completedToBottom))
+          for (final habit in displayHabits) ...[
+            GestureDetector(
+              onLongPress: (canReorder && !_completedToBottom)
+                  ? () => setState(() => _reordering = true)
+                  : null,
+              child: HabitProgressCard(
+                habit: habit,
+                onToggleBinary: (completed) => _toggleBinary(habit, completed),
+                onLogProgress: (amount) => _logProgress(habit, amount),
+                onClaim: () => _claim(habit),
+                onUnclaim: () => _unclaim(habit),
+                onEditHabit: () => _openEditHabit(habit),
+                onEditProgress: (value) => _editProgress(habit, value),
+              ),
+            ),
+            if (habit != displayHabits.last)
+              const SizedBox(height: AppSpacing.stackSm),
+          ]
+        else ...[
+          Row(
+            children: [
+              const Icon(
+                Icons.drag_indicator,
+                size: 16,
+                color: AppColors.inkFaint,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'Drag to reorder',
+                style: AppTextStyles.labelSm.copyWith(
+                  color: AppColors.inkFaint,
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: () => setState(() => _reordering = false),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            onReorder: _onReorder,
+            children: [
+              for (var index = 0; index < habits.length; index++)
+                Padding(
+                  key: ValueKey(habits[index].id),
+                  padding: const EdgeInsets.only(bottom: AppSpacing.stackSm),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ReorderableDragStartListener(
+                        index: index,
+                        child: const Padding(
+                          padding: EdgeInsets.only(top: 14, right: 4),
+                          child: Icon(
+                            Icons.drag_indicator,
+                            color: AppColors.inkFaint,
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
-      ),
+                      Expanded(
+                        child: HabitProgressCard(
+                          habit: habits[index],
+                          onToggleBinary: (completed) =>
+                              _toggleBinary(habits[index], completed),
+                          onLogProgress: (amount) =>
+                              _logProgress(habits[index], amount),
+                          onClaim: () => _claim(habits[index]),
+                          onUnclaim: () => _unclaim(habits[index]),
+                          onEditHabit: () => _openEditHabit(habits[index]),
+                          onEditProgress: (value) =>
+                              _editProgress(habits[index], value),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: AppSpacing.stackMd),
+        TactileButton(
+          label: 'Add New Habit',
+          icon: Icons.add,
+          // A new habit belongs to today, not whatever past day is on
+          // screen — jump back to add one.
+          onPressed: _isToday ? _openAddHabit : null,
+        ),
+        if (!_isToday) ...[
+          const SizedBox(height: AppSpacing.unit),
+          Text(
+            'Jump to Today to add a new habit.',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -566,4 +501,3 @@ class _DateArrowButton extends StatelessWidget {
     );
   }
 }
-

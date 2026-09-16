@@ -47,6 +47,12 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Consumable vs. permanent items
 - Power-up design (e.g. cake's special effect)
 - Per-pet vs. shared inventory/accessories
+- Care item tiers/pricing (2026-09-14): valevasqc asked for a choice of which owned item to use
+  when caring for a stat, suggesting pricier items should restore more. Implemented as a
+  placeholder — two tiers per stat (`lib/data/care_item_catalog.dart`: Food/Cake,
+  Shampoo/Hair Brush, Plushie/Blanket), tier 2 priced and restoring roughly 1.7-2x tier 1 — but
+  the actual price-to-restore-amount curve, and whether all 15 reference-sheet consumables
+  (see `assets/source/accessories/README.md`) get wired in, are still undecided.
 - Cosmetic ownership rules
 
 ## Social (vision-only — still not MVP regardless of these answers)

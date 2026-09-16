@@ -3,8 +3,10 @@ import 'package:nori/data/app_data.dart';
 import 'package:nori/models/bucket_list_item.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/id_generator.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
+import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/reward_pill.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
@@ -50,10 +52,20 @@ class _BucketListScreenState extends State<BucketListScreen> {
   Future<void> _openAddDialog() async {
     final added = await showDialog<BucketListItem>(
       context: context,
-      builder: (_) => const _AddBucketItemDialog(),
+      builder: (_) => const _BucketItemDialog(),
     );
     if (added == null) return;
     await AppData.bucketList.addItem(added);
+    await _loadItems();
+  }
+
+  Future<void> _openEditDialog(BucketListItem item) async {
+    final updated = await showDialog<BucketListItem>(
+      context: context,
+      builder: (_) => _BucketItemDialog(existing: item),
+    );
+    if (updated == null) return;
+    await AppData.bucketList.updateItem(updated);
     await _loadItems();
   }
 
@@ -70,92 +82,71 @@ class _BucketListScreenState extends State<BucketListScreen> {
       body: SafeArea(
         child: items == null
             ? const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final horizontalPadding = constraints.maxWidth >= 800
-                      ? AppSpacing.containerPaddingDesktop
-                      : AppSpacing.containerPaddingMobile;
-                  final completedCount = items.where((i) => i.isCompleted).length;
-
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      AppSpacing.gutter,
-                      horizontalPadding,
-                      AppSpacing.stackLg,
+            : NoriScrollScaffold(
+                maxWidth: 900,
+                children: [
+                  NoriScreenHeader(
+                    leading: NoriScreenHeader.backButton(context),
+                    title: 'Bucket List',
+                    titleStyle: AppTextStyles.headlineLgMobile,
+                  ),
+                  const SizedBox(height: 2),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.containerPaddingMobile,
                     ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 900),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            NoriScreenHeader(
-                              leading: NoriScreenHeader.backButton(context),
-                              title: 'Bucket List',
-                              titleStyle: AppTextStyles.headlineLgMobile,
-                            ),
-                            const SizedBox(height: 2),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.containerPaddingMobile,
-                              ),
-                              child: Text(
-                                'Big, one-time milestones — travel, a marathon, a degree. '
-                                'Worth a lot more XP and coins than a daily habit.',
-                                style: AppTextStyles.bodyMd.copyWith(
-                                  color: AppColors.inkMuted,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.stackSm),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.containerPaddingMobile,
-                              ),
-                              child: Text(
-                                '$completedCount / ${items.length} completed',
-                                style: AppTextStyles.labelLg.copyWith(
-                                  color: AppColors.terracottaDark,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            if (items.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: AppSpacing.stackLg,
-                                ),
-                                child: Text(
-                                  'Nothing here yet — add your first big goal.',
-                                  textAlign: TextAlign.center,
-                                  style: AppTextStyles.bodyMd.copyWith(
-                                    color: AppColors.inkFaint,
-                                  ),
-                                ),
-                              )
-                            else
-                              for (final item in items) ...[
-                                _BucketListCard(
-                                  item: item,
-                                  onToggle: () => _toggleComplete(item),
-                                  onDelete: () => _deleteItem(item),
-                                ),
-                                if (item != items.last)
-                                  const SizedBox(height: AppSpacing.stackSm),
-                              ],
-                            const SizedBox(height: AppSpacing.stackMd),
-                            TactileButton(
-                              label: 'Add Bucket List Goal',
-                              icon: Icons.add,
-                              onPressed: _openAddDialog,
-                            ),
-                          ],
-                        ),
+                    child: Text(
+                      'Big, one-time milestones — travel, a marathon, a degree. '
+                      'Worth a lot more XP and coins than a daily habit.',
+                      style: AppTextStyles.bodyMd.copyWith(
+                        color: AppColors.inkMuted,
                       ),
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: AppSpacing.stackSm),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.containerPaddingMobile,
+                    ),
+                    child: Text(
+                      '${items.where((i) => i.isCompleted).length} / ${items.length} completed',
+                      style: AppTextStyles.labelLg.copyWith(
+                        color: AppColors.terracottaDark,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  if (items.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppSpacing.stackLg,
+                      ),
+                      child: Text(
+                        'Nothing here yet — add your first big goal.',
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.bodyMd.copyWith(
+                          color: AppColors.inkFaint,
+                        ),
+                      ),
+                    )
+                  else
+                    for (final item in items) ...[
+                      _BucketListCard(
+                        item: item,
+                        onToggle: () => _toggleComplete(item),
+                        onEdit: () => _openEditDialog(item),
+                        onDelete: () => _deleteItem(item),
+                      ),
+                      if (item != items.last)
+                        const SizedBox(height: AppSpacing.stackSm),
+                    ],
+                  const SizedBox(height: AppSpacing.stackMd),
+                  TactileButton(
+                    label: 'Add Bucket List Goal',
+                    icon: Icons.add,
+                    onPressed: _openAddDialog,
+                  ),
+                ],
               ),
       ),
     );
@@ -166,23 +157,22 @@ class _BucketListCard extends StatelessWidget {
   const _BucketListCard({
     required this.item,
     required this.onToggle,
+    required this.onEdit,
     required this.onDelete,
   });
 
   final BucketListItem item;
   final VoidCallback onToggle;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final claimed = item.isCompleted;
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: claimed ? AppColors.white : AppColors.linenAlt,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
+      color: claimed ? AppColors.white : AppColors.linenAlt,
+      borderWidth: AppBorder.thin,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -211,7 +201,9 @@ class _BucketListCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       item.description,
-                      style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
+                      style: AppTextStyles.labelSm.copyWith(
+                        color: AppColors.inkFaint,
+                      ),
                     ),
                   ],
                 ),
@@ -219,8 +211,13 @@ class _BucketListCard extends StatelessWidget {
               PopupMenuButton<void>(
                 tooltip: 'More',
                 padding: EdgeInsets.zero,
-                icon: const Icon(Icons.more_vert, size: 18, color: AppColors.inkFaint),
+                icon: const Icon(
+                  Icons.more_vert,
+                  size: 18,
+                  color: AppColors.inkFaint,
+                ),
                 itemBuilder: (context) => [
+                  PopupMenuItem(onTap: onEdit, child: const Text('Edit')),
                   PopupMenuItem(onTap: onDelete, child: const Text('Delete')),
                 ],
               ),
@@ -234,10 +231,18 @@ class _BucketListCard extends StatelessWidget {
               FilledButton(
                 onPressed: onToggle,
                 style: FilledButton.styleFrom(
-                  backgroundColor: claimed ? AppColors.linenAlt : AppColors.moss,
+                  backgroundColor: claimed
+                      ? AppColors.linenAlt
+                      : AppColors.moss,
                   foregroundColor: claimed ? AppColors.inkMuted : AppColors.ink,
-                  side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  side: const BorderSide(
+                    color: AppColors.ink,
+                    width: AppBorder.thin,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   textStyle: AppTextStyles.labelLg,
                 ),
                 child: Text(claimed ? 'Undo' : 'Mark Achieved'),
@@ -250,14 +255,16 @@ class _BucketListCard extends StatelessWidget {
   }
 }
 
-class _AddBucketItemDialog extends StatefulWidget {
-  const _AddBucketItemDialog();
+class _BucketItemDialog extends StatefulWidget {
+  const _BucketItemDialog({this.existing});
+
+  final BucketListItem? existing;
 
   @override
-  State<_AddBucketItemDialog> createState() => _AddBucketItemDialogState();
+  State<_BucketItemDialog> createState() => _BucketItemDialogState();
 }
 
-class _AddBucketItemDialogState extends State<_AddBucketItemDialog> {
+class _BucketItemDialogState extends State<_BucketItemDialog> {
   static const _icons = [
     Icons.flight_takeoff,
     Icons.directions_run,
@@ -274,12 +281,28 @@ class _AddBucketItemDialogState extends State<_AddBucketItemDialog> {
     AppColors.terracotta,
   ];
 
-  final _titleController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _xpController = TextEditingController(text: '150');
-  final _coinController = TextEditingController(text: '75');
-  IconData _icon = _icons.first;
-  Color _color = _colors.first;
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  late final TextEditingController _xpController;
+  late final TextEditingController _coinController;
+  late IconData _icon;
+  late Color _color;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = widget.existing;
+    _titleController = TextEditingController(text: existing?.title ?? '');
+    _descriptionController = TextEditingController(
+      text: existing?.description ?? '',
+    );
+    _xpController = TextEditingController(text: '${existing?.xpReward ?? 150}');
+    _coinController = TextEditingController(
+      text: '${existing?.coinReward ?? 75}',
+    );
+    _icon = existing?.icon ?? _icons.first;
+    _color = existing?.color ?? _colors.first;
+  }
 
   @override
   void dispose() {
@@ -293,15 +316,34 @@ class _AddBucketItemDialogState extends State<_AddBucketItemDialog> {
   void _save() {
     final title = _titleController.text.trim();
     if (title.isEmpty) return;
-    final item = BucketListItem(
-      id: generateId(),
-      title: title,
-      description: _descriptionController.text.trim(),
-      icon: _icon,
-      color: _color,
-      xpReward: int.tryParse(_xpController.text.trim()) ?? 150,
-      coinReward: int.tryParse(_coinController.text.trim()) ?? 75,
-    );
+    final description = _descriptionController.text.trim();
+    final existing = widget.existing;
+    // Falls back to the item's own existing reward (not the new-item default)
+    // on an unparsable/cleared field, so editing another field can't silently
+    // reset an established reward back to 150/75.
+    final xpReward =
+        int.tryParse(_xpController.text.trim()) ?? existing?.xpReward ?? 150;
+    final coinReward =
+        int.tryParse(_coinController.text.trim()) ?? existing?.coinReward ?? 75;
+
+    final item = existing == null
+        ? BucketListItem(
+            id: generateId(),
+            title: title,
+            description: description,
+            icon: _icon,
+            color: _color,
+            xpReward: xpReward,
+            coinReward: coinReward,
+          )
+        : existing.copyWith(
+            title: title,
+            description: description,
+            icon: _icon,
+            color: _color,
+            xpReward: xpReward,
+            coinReward: coinReward,
+          );
     Navigator.pop(context, item);
   }
 
@@ -313,7 +355,11 @@ class _AddBucketItemDialogState extends State<_AddBucketItemDialog> {
         borderRadius: BorderRadius.circular(AppRadius.sm),
         side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
       ),
-      title: const Text('New Bucket List Goal'),
+      title: Text(
+        widget.existing == null
+            ? 'New Bucket List Goal'
+            : 'Edit Bucket List Goal',
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -323,7 +369,9 @@ class _AddBucketItemDialogState extends State<_AddBucketItemDialog> {
               controller: _titleController,
               autofocus: true,
               textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(labelText: 'Title (e.g. Visit Japan)'),
+              decoration: const InputDecoration(
+                labelText: 'Title (e.g. Visit Japan)',
+              ),
             ),
             const SizedBox(height: AppSpacing.stackSm),
             TextField(
@@ -379,7 +427,9 @@ class _AddBucketItemDialogState extends State<_AddBucketItemDialog> {
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: AppColors.ink,
-                          width: _color == color ? AppBorder.thick : AppBorder.thin,
+                          width: _color == color
+                              ? AppBorder.thick
+                              : AppBorder.thin,
                         ),
                       ),
                     ),
@@ -396,7 +446,7 @@ class _AddBucketItemDialogState extends State<_AddBucketItemDialog> {
         ),
         FilledButton(
           onPressed: _save,
-          child: const Text('Add'),
+          child: Text(widget.existing == null ? 'Add' : 'Save'),
         ),
       ],
     );

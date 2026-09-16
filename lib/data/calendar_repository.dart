@@ -1,8 +1,10 @@
 import '../models/calendar_day.dart';
 import '../models/habit.dart';
+import '../models/habit_stat.dart';
 import '../utils/date_labels.dart';
 import 'habit_history_store.dart' show dateOnly;
 import 'habit_repository.dart';
+import 'vacation_log.dart';
 
 abstract class CalendarRepository {
   /// Stats and day grid for [year]/[month] (1-indexed). Backs the month
@@ -11,15 +13,22 @@ abstract class CalendarRepository {
 
   /// Convenience for whatever month "today" falls in.
   Future<CalendarMonthStats> getCurrentMonth();
+
+  /// Per-habit completion rate over the last [days] days (today inclusive) —
+  /// a rolling window, not tied to the visible calendar month, so "your
+  /// easiest / most-missed habit" stays meaningful on the 1st too. Only
+  /// habits scheduled at least once in the window are included.
+  Future<List<HabitStat>> getHabitStats({int days = 30});
 }
 
 /// Derives the calendar entirely from [HabitRepository.getHabitsForDate], so
 /// a day's colour here and that day's habit list (via the same call) can
 /// never disagree — there is no separate calendar dataset to drift.
 class MockCalendarRepository implements CalendarRepository {
-  MockCalendarRepository(this._habits);
+  MockCalendarRepository(this._habits, this._vacationLog);
 
   final HabitRepository _habits;
+  final VacationLog _vacationLog;
 
   @override
   Future<CalendarMonthStats> getCurrentMonth() {
@@ -81,14 +90,17 @@ class MockCalendarRepository implements CalendarRepository {
   /// progress — it's still in flight. A day with nothing scheduled (every
   /// habit's schedule skips it) reads as [CalendarDayStatus.done] rather
   /// than missed, per FEATURES.md §5: an off-schedule day isn't a broken
-  /// commitment.
+  /// commitment. A day Vacation Mode was active on gets the same neutral
+  /// treatment — per FEATURES.md §2, paused time shouldn't read as a miss.
   CalendarDayStatus _statusFor(
     DateTime date,
     DateTime today,
     List<Habit> scheduled,
   ) {
     if (dateOnly(date) == today) return CalendarDayStatus.today;
-    if (scheduled.isEmpty) return CalendarDayStatus.done;
+    if (scheduled.isEmpty || _vacationLog.isFrozen(date)) {
+      return CalendarDayStatus.done;
+    }
     final claimedCount = scheduled.where((h) => h.isCompletedToday).length;
     if (claimedCount == 0) return CalendarDayStatus.missed;
     if (claimedCount == scheduled.length) return CalendarDayStatus.perfect;
@@ -100,12 +112,15 @@ class MockCalendarRepository implements CalendarRepository {
   /// aren't broken by off-schedule days" rule in FEATURES.md §5, applied
   /// across all habits together since this is a single aggregate number.
   /// Today itself only counts once every scheduled habit is claimed; until
-  /// then it's "still in progress" rather than a break.
+  /// then it's "still in progress" rather than a break. Days Vacation Mode
+  /// was active on are skipped the same way — frozen, not missed.
   Future<int> _currentStreak(DateTime today) async {
     var streak = 0;
     var day = today;
     while (today.difference(day).inDays <= 400) {
-      final scheduled = await _habits.getHabitsForDate(day);
+      final scheduled = _vacationLog.isFrozen(day)
+          ? const <Habit>[]
+          : await _habits.getHabitsForDate(day);
       if (scheduled.isNotEmpty) {
         final isToday = dateOnly(day) == today;
         final allClaimed = scheduled.every((h) => h.isCompletedToday);
@@ -123,5 +138,37 @@ class MockCalendarRepository implements CalendarRepository {
       day = day.subtract(const Duration(days: 1));
     }
     return streak;
+  }
+
+  @override
+  Future<List<HabitStat>> getHabitStats({int days = 30}) async {
+    final today = dateOnly(DateTime.now());
+    final scheduled = <String, int>{};
+    final completed = <String, int>{};
+    final meta = <String, Habit>{};
+
+    for (var back = 0; back < days; back++) {
+      final date = today.subtract(Duration(days: back));
+      final habits = await _habits.getHabitsForDate(date);
+      for (final habit in habits) {
+        scheduled[habit.id] = (scheduled[habit.id] ?? 0) + 1;
+        meta[habit.id] = habit;
+        if (habit.isCompletedToday) {
+          completed[habit.id] = (completed[habit.id] ?? 0) + 1;
+        }
+      }
+    }
+
+    return [
+      for (final id in scheduled.keys)
+        HabitStat(
+          habitId: id,
+          name: meta[id]!.name,
+          icon: meta[id]!.icon,
+          color: meta[id]!.color,
+          scheduledDays: scheduled[id]!,
+          completedDays: completed[id] ?? 0,
+        ),
+    ];
   }
 }

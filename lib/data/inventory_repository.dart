@@ -3,15 +3,11 @@ import '../models/inventory.dart';
 abstract class InventoryRepository {
   Future<Inventory> getInventory();
 
-  /// Each returns `false` (and consumes nothing) when the count is already 0
-  /// — callers must not apply the matching pet-care action in that case.
-  Future<bool> consumeSnack();
-  Future<bool> consumeSoap();
-  Future<bool> consumeToy();
+  /// Returns `false` (and consumes nothing) when [careItemId]'s count is
+  /// already 0 — callers must not apply the matching pet-care action then.
+  Future<bool> consumeCareItem(String careItemId);
 
-  Future<void> addSnacks(int amount);
-  Future<void> addSoap(int amount);
-  Future<void> addToys(int amount);
+  Future<void> addCareItem(String careItemId, int amount);
 
   Future<void> addAccessory(String accessoryId);
 
@@ -22,52 +18,36 @@ abstract class InventoryRepository {
 
 class MockInventoryRepository implements InventoryRepository {
   // Starts non-empty so care actions work before anyone visits the Shop;
-  // 'smart-glasses' matches the pre-owned demo item Shop already showed.
+  // 'sunglasses' matches a pre-owned demo item Shop already shows (was
+  // 'smart-glasses' before that placeholder was dropped from the catalog —
+  // see accessory_catalog.dart).
   Inventory _inventory = const Inventory(
-    snacks: 3,
-    soap: 2,
-    toys: 1,
-    ownedAccessoryIds: {'smart-glasses'},
-    equippedAccessoryId: 'smart-glasses',
+    careItemCounts: {'food': 3, 'shampoo': 2, 'plushie': 1},
+    ownedAccessoryIds: {'sunglasses'},
+    equippedAccessoryId: 'sunglasses',
   );
 
   @override
   Future<Inventory> getInventory() async => _inventory;
 
   @override
-  Future<bool> consumeSnack() async {
-    if (_inventory.snacks <= 0) return false;
-    _inventory = _inventory.copyWith(snacks: _inventory.snacks - 1);
+  Future<bool> consumeCareItem(String careItemId) async {
+    final count = _inventory.countOf(careItemId);
+    if (count <= 0) return false;
+    _inventory = _inventory.copyWith(
+      careItemCounts: {..._inventory.careItemCounts, careItemId: count - 1},
+    );
     return true;
   }
 
   @override
-  Future<bool> consumeSoap() async {
-    if (_inventory.soap <= 0) return false;
-    _inventory = _inventory.copyWith(soap: _inventory.soap - 1);
-    return true;
-  }
-
-  @override
-  Future<bool> consumeToy() async {
-    if (_inventory.toys <= 0) return false;
-    _inventory = _inventory.copyWith(toys: _inventory.toys - 1);
-    return true;
-  }
-
-  @override
-  Future<void> addSnacks(int amount) async {
-    _inventory = _inventory.copyWith(snacks: _inventory.snacks + amount);
-  }
-
-  @override
-  Future<void> addSoap(int amount) async {
-    _inventory = _inventory.copyWith(soap: _inventory.soap + amount);
-  }
-
-  @override
-  Future<void> addToys(int amount) async {
-    _inventory = _inventory.copyWith(toys: _inventory.toys + amount);
+  Future<void> addCareItem(String careItemId, int amount) async {
+    _inventory = _inventory.copyWith(
+      careItemCounts: {
+        ..._inventory.careItemCounts,
+        careItemId: _inventory.countOf(careItemId) + amount,
+      },
+    );
   }
 
   @override

@@ -31,6 +31,9 @@ class NoriUser {
       xpForNextLevel == 0 ? 0 : xpIntoLevel / xpForNextLevel;
 
   NoriUser copyWith({
+    String? name,
+    String? username,
+    String? email,
     int? level,
     int? totalXp,
     int? xpIntoLevel,
@@ -40,9 +43,9 @@ class NoriUser {
   }) {
     return NoriUser(
       id: id,
-      name: name,
-      username: username,
-      email: email,
+      name: name ?? this.name,
+      username: username ?? this.username,
+      email: email ?? this.email,
       level: level ?? this.level,
       totalXp: totalXp ?? this.totalXp,
       xpIntoLevel: xpIntoLevel ?? this.xpIntoLevel,

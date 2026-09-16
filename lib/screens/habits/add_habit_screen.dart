@@ -192,11 +192,12 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
   Future<void> _saveHabit() async {
     if (_isSaving) return;
 
-    if (_needsTarget && double.tryParse(_targetController.text.trim()) == null) {
+    final target = double.tryParse(_targetController.text.trim());
+    if (_needsTarget && (target == null || target <= 0)) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(content: Text('Enter a valid ideal target.')),
+          const SnackBar(content: Text('Enter a target greater than 0.')),
         );
       return;
     }
@@ -204,9 +205,6 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     setState(() => _isSaving = true);
 
     final enteredName = _nameController.text.trim();
-    final target = _needsTarget
-        ? double.tryParse(_targetController.text.trim())
-        : null;
     final unit = _needsTarget ? _unitController.text.trim() : null;
     final minThreshold = (_minThresholdEnabled && _supportsThreshold)
         ? double.tryParse(_minThresholdController.text.trim())
@@ -227,7 +225,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       repeat: _repeat,
       type: _selectedType,
       difficulty: _difficulty,
-      targetValue: target,
+      targetValue: _needsTarget ? target : null,
       unit: unit == null || unit.isEmpty ? null : unit,
       minThreshold: minThreshold,
       quickLogAmount: quickLogAmount,
@@ -591,7 +589,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                       _ToggleRow(
                         title: 'Set End Date',
                         subtitle:
-                            'Auto-archives history without deleting statistics or streak records.',
+                            'Hides the habit from your list after this date.',
                         value: _endDateEnabled,
                         onChanged: (value) =>
                             setState(() => _endDateEnabled = value),
@@ -776,7 +774,7 @@ class _TypeCard extends StatelessWidget {
                     ),
                     Text(
                       type.description,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.labelSm.copyWith(
                         color: selected

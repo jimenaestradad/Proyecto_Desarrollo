@@ -143,7 +143,7 @@ class _QuickLogChip extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Container(
-          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
           padding: const EdgeInsets.symmetric(horizontal: 10),
           alignment: Alignment.center,
           decoration: BoxDecoration(
@@ -171,18 +171,21 @@ class _Checkbox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      width: 22,
-      height: 22,
-      decoration: BoxDecoration(
-        color: checked ? AppColors.moss : AppColors.white,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+    return Semantics(
+      checked: checked,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(
+          color: checked ? AppColors.moss : AppColors.white,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+        ),
+        child: checked
+            ? const Icon(Icons.check, size: 15, color: AppColors.ink)
+            : null,
       ),
-      child: checked
-          ? const Icon(Icons.check, size: 15, color: AppColors.ink)
-          : null,
     );
   }
 }

@@ -6,11 +6,14 @@ import 'package:nori/models/habit.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
 import 'package:nori/screens/pet/evolution_screen.dart';
+import 'package:nori/screens/pet/level_up_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/date_labels.dart';
 import 'package:nori/widgets/habit_progress_card.dart';
 import 'package:nori/widgets/nori_avatar.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
+import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/streak_chip.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
@@ -103,110 +106,86 @@ class _CalendarScreenState extends State<CalendarScreen> {
       body: SafeArea(
         child: user == null || stats == null
             ? const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 800;
-                  final horizontalPadding = isWide
-                      ? AppSpacing.containerPaddingDesktop
-                      : AppSpacing.containerPaddingMobile;
-
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      AppSpacing.gutter,
-                      horizontalPadding,
-                      AppSpacing.stackLg,
-                    ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1200),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _CalendarHeader(user: user),
-                            const SizedBox(height: AppSpacing.stackLg),
-                            Row(
-                              children: [
-                                IconButton(
-                                  onPressed: () => _changeMonth(-1),
-                                  icon: const Icon(
-                                    Icons.chevron_left,
-                                    color: AppColors.ink,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Text(
-                                    '${stats.monthLabel} ${stats.year}',
-                                    textAlign: TextAlign.center,
-                                    style: isWide
-                                        ? AppTextStyles.headlineLg
-                                        : AppTextStyles.headlineLgMobile,
-                                  ),
-                                ),
-                                IconButton(
-                                  onPressed: _isCurrentMonth
-                                      ? null
-                                      : () => _changeMonth(1),
-                                  icon: Icon(
-                                    Icons.chevron_right,
-                                    color: _isCurrentMonth
-                                        ? AppColors.inkFaint
-                                        : AppColors.ink,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.unit),
-                            Text(
-                              'Stay consistent to level up your Nori!',
-                              textAlign: TextAlign.center,
-                              style: AppTextStyles.bodyMd.copyWith(
-                                color: AppColors.inkMuted,
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            GridView.count(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              crossAxisCount: isWide ? 4 : 2,
-                              crossAxisSpacing: AppSpacing.gutter,
-                              mainAxisSpacing: AppSpacing.gutter,
-                              childAspectRatio: isWide ? 1.35 : 1.15,
-                              children: [
-                                _CalendarStatCard(
-                                  icon: Icons.local_fire_department,
-                                  iconColor: AppColors.terracottaDark,
-                                  value: '${stats.currentStreak}',
-                                  label: 'Current Streak',
-                                ),
-                                _CalendarStatCard(
-                                  icon: Icons.star,
-                                  iconColor: AppColors.mustardDark,
-                                  value: '${stats.perfectDays}',
-                                  label: 'Perfect Days',
-                                ),
-                                _CalendarStatCard(
-                                  icon: Icons.check_circle,
-                                  iconColor: AppColors.mossDark,
-                                  value: '${stats.habitsDone}',
-                                  label: 'Habits Done',
-                                ),
-                                _CalendarStatCard(
-                                  icon: Icons.sentiment_dissatisfied,
-                                  iconColor: AppColors.inkMuted,
-                                  value: '${stats.missedDays}',
-                                  label: 'Missed Days',
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            _CalendarCard(days: stats.days, onDayTap: _openDayDetail),
-                          ],
+            : NoriScrollScaffold(
+                maxWidth: 1200,
+                children: [
+                  _CalendarHeader(user: user),
+                  const SizedBox(height: AppSpacing.stackLg),
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => _changeMonth(-1),
+                        icon: const Icon(
+                          Icons.chevron_left,
+                          color: AppColors.ink,
                         ),
                       ),
+                      Expanded(
+                        child: Text(
+                          '${stats.monthLabel} ${stats.year}',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.headlineLgMobile,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _isCurrentMonth
+                            ? null
+                            : () => _changeMonth(1),
+                        icon: Icon(
+                          Icons.chevron_right,
+                          color: _isCurrentMonth
+                              ? AppColors.inkFaint
+                              : AppColors.ink,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.unit),
+                  Text(
+                    'Stay consistent to level up your Nori!',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.bodyMd.copyWith(
+                      color: AppColors.inkMuted,
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 2,
+                    crossAxisSpacing: AppSpacing.gutter,
+                    mainAxisSpacing: AppSpacing.gutter,
+                    childAspectRatio: 1.7,
+                    children: [
+                      _CalendarStatCard(
+                        icon: Icons.local_fire_department,
+                        iconColor: AppColors.terracottaDark,
+                        value: '${stats.currentStreak}',
+                        label: 'Current Streak',
+                      ),
+                      _CalendarStatCard(
+                        icon: Icons.star,
+                        iconColor: AppColors.mustardDark,
+                        value: '${stats.perfectDays}',
+                        label: 'Perfect Days',
+                      ),
+                      _CalendarStatCard(
+                        icon: Icons.check_circle,
+                        iconColor: AppColors.mossDark,
+                        value: '${stats.habitsDone}',
+                        label: 'Habits Done',
+                      ),
+                      _CalendarStatCard(
+                        icon: Icons.sentiment_dissatisfied,
+                        iconColor: AppColors.inkMuted,
+                        value: '${stats.missedDays}',
+                        label: 'Missed Days',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  _CalendarCard(days: stats.days, onDayTap: _openDayDetail),
+                ],
               ),
       ),
     );
@@ -228,7 +207,7 @@ class _CalendarHeader extends StatelessWidget {
           const SizedBox(width: AppSpacing.stackSm),
         ],
       ),
-      title: 'Nori',
+      title: 'Calendar',
       titleStyle: AppTextStyles.headlineMd,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -259,23 +238,30 @@ class _CalendarStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.stackSm),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
+    return NoriCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.stackSm,
+        vertical: AppSpacing.unit,
       ),
-      child: Column(
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 30, color: iconColor),
-          const SizedBox(height: AppSpacing.unit),
-          Text(value, style: AppTextStyles.headlineMd),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: AppTextStyles.labelSm,
+          Icon(icon, size: 26, color: iconColor),
+          const SizedBox(width: AppSpacing.unit),
+          Flexible(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(value, style: AppTextStyles.headlineMd),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.labelSm,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -291,19 +277,18 @@ class _CalendarCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.all(AppSpacing.gutter),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              for (var weekday = DateTime.monday; weekday <= DateTime.sunday; weekday++)
+              for (
+                var weekday = DateTime.monday;
+                weekday <= DateTime.sunday;
+                weekday++
+              )
                 Expanded(
                   child: Text(
                     weekdayAbbr(weekday),
@@ -322,7 +307,8 @@ class _CalendarCard extends StatelessWidget {
             crossAxisSpacing: AppSpacing.unit,
             mainAxisSpacing: AppSpacing.unit,
             children: [
-              for (final day in days) _CalendarDayCell(day: day, onTap: onDayTap),
+              for (final day in days)
+                _CalendarDayCell(day: day, onTap: onDayTap),
             ],
           ),
           const SizedBox(height: AppSpacing.stackMd),
@@ -427,11 +413,7 @@ class _CalendarDayCell extends StatelessWidget {
             Positioned(
               top: 3,
               right: 3,
-              child: Icon(
-                Icons.star,
-                size: 13,
-                color: AppColors.mustardDark,
-              ),
+              child: Icon(Icons.star, size: 13, color: AppColors.mustardDark),
             ),
           Text(
             '${day.day}',
@@ -518,6 +500,7 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
 
   Future<void> _applyReward(HabitRewardResult reward) async {
     if (reward.xpDelta == 0 && reward.coinsDelta == 0) return;
+    final previousLevel = (await AppData.user.getCurrentUser()).level;
     if (reward.xpDelta != 0) await AppData.user.addXp(reward.xpDelta);
     if (reward.coinsDelta != 0) await AppData.user.addCoins(reward.coinsDelta);
     final user = await AppData.user.getCurrentUser();
@@ -525,8 +508,14 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
     await AppData.pet.syncEvolution(user.level);
     final pet = await AppData.pet.getPet();
     if (!mounted) return;
-    if (previousStage != pet.stage) {
-      await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
+    if (pet.stage.index > previousStage.index) {
+      await showEvolutionCelebration(
+        context,
+        petName: pet.name,
+        stage: pet.stage,
+      );
+    } else if (user.level > previousLevel) {
+      await showLevelUpCelebration(context, level: user.level, petName: pet.name);
     }
   }
 
@@ -546,7 +535,10 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
   }
 
   Future<void> _claim(Habit habit) async {
-    final reward = await AppData.habits.claimHabitForDate(habit.id, widget.date);
+    final reward = await AppData.habits.claimHabitForDate(
+      habit.id,
+      widget.date,
+    );
     await _applyReward(reward);
     await _reload();
   }
@@ -573,9 +565,9 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
   }
 
   Future<void> _editHabitDefinition(Habit habit) async {
-    await Navigator.of(
-      context,
-    ).push<bool>(MaterialPageRoute(builder: (_) => AddHabitScreen(habit: habit)));
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => AddHabitScreen(habit: habit)),
+    );
     await _reload();
   }
 
@@ -618,7 +610,9 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
                       child: Container(
                         width: 40,
                         height: 4,
-                        margin: const EdgeInsets.only(bottom: AppSpacing.stackMd),
+                        margin: const EdgeInsets.only(
+                          bottom: AppSpacing.stackMd,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.linenAlt,
                           borderRadius: BorderRadius.circular(2),
@@ -653,11 +647,13 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
                           habit: habit,
                           onToggleBinary: (completed) =>
                               _toggleBinary(habit, completed),
-                          onLogProgress: (amount) => _logProgress(habit, amount),
+                          onLogProgress: (amount) =>
+                              _logProgress(habit, amount),
                           onClaim: () => _claim(habit),
                           onUnclaim: () => _unclaim(habit),
                           onEditHabit: () => _editHabitDefinition(habit),
-                          onEditProgress: (value) => _editProgress(habit, value),
+                          onEditProgress: (value) =>
+                              _editProgress(habit, value),
                         ),
                         const SizedBox(height: AppSpacing.stackSm),
                       ],

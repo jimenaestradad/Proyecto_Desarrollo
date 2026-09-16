@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/screens/premium/nori_plus_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/widgets/future_feature_banner.dart';
+import 'package:nori/widgets/nori_card.dart';
+import 'package:nori/widgets/nori_list_row.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
+import 'package:nori/widgets/nori_scroll_scaffold.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -34,6 +39,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _categories = categories);
   }
 
+  void _openNoriPlus() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NoriPlusScreen()),
+    );
+  }
+
   Future<void> _toggleVacationMode() async {
     final user = _user;
     if (user == null) return;
@@ -42,7 +54,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _addCategory() async {
-    final name = await _promptForText(title: 'New Category', hint: 'e.g. Finance');
+    final name = await _promptForText(
+      title: 'New Category',
+      hint: 'e.g. Finance',
+    );
     if (name == null || name.trim().isEmpty) return;
     await AppData.habitCategories.addCategory(name.trim());
     await _loadCategories();
@@ -110,62 +125,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: SafeArea(
         child: user == null || categories == null
             ? const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final horizontalPadding = constraints.maxWidth >= 800
-                      ? AppSpacing.containerPaddingDesktop
-                      : AppSpacing.containerPaddingMobile;
-
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      AppSpacing.gutter,
-                      horizontalPadding,
-                      AppSpacing.stackLg,
+            : NoriScrollScaffold(
+                maxWidth: 800,
+                children: [
+                  NoriScreenHeader(
+                    leading: NoriScreenHeader.backButton(context),
+                    title: 'Settings',
+                    titleStyle: AppTextStyles.headlineLgMobile,
+                  ),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  Text(
+                    'Habits',
+                    style: AppTextStyles.labelLg.copyWith(
+                      color: AppColors.inkMuted,
                     ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 800),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            NoriScreenHeader(
-                              leading: NoriScreenHeader.backButton(context),
-                              title: 'Settings',
-                              titleStyle: AppTextStyles.headlineLgMobile,
-                            ),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            Text(
-                              'Habits',
-                              style: AppTextStyles.labelLg.copyWith(
-                                color: AppColors.inkMuted,
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.unit),
-                            VacationModeCard(
-                              enabled: user.vacationModeEnabled,
-                              onToggle: _toggleVacationMode,
-                            ),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            Text(
-                              'Habit Categories',
-                              style: AppTextStyles.labelLg.copyWith(
-                                color: AppColors.inkMuted,
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.unit),
-                            _CategoriesCard(
-                              categories: categories,
-                              onAdd: _addCategory,
-                              onRename: _renameCategory,
-                              onDelete: _deleteCategory,
-                            ),
-                          ],
-                        ),
-                      ),
+                  ),
+                  const SizedBox(height: AppSpacing.unit),
+                  VacationModeCard(
+                    enabled: user.vacationModeEnabled,
+                    onToggle: _toggleVacationMode,
+                  ),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  Text(
+                    'Habit Categories',
+                    style: AppTextStyles.labelLg.copyWith(
+                      color: AppColors.inkMuted,
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: AppSpacing.unit),
+                  _CategoriesCard(
+                    categories: categories,
+                    onAdd: _addCategory,
+                    onRename: _renameCategory,
+                    onDelete: _deleteCategory,
+                  ),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  Text(
+                    'Plan',
+                    style: AppTextStyles.labelLg.copyWith(
+                      color: AppColors.inkMuted,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.unit),
+                  _PlanCard(onUpgrade: _openNoriPlus),
+                ],
               ),
       ),
     );
@@ -174,12 +177,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 /// Moved here from the Habits tab — vacation mode is an account-level
 /// setting, not something that should compete for space on the daily list.
-/// Its effect is currently limited to persisting the flag on [NoriUser]:
-/// there's no real day-rollover/streak-freeze engine yet, since streaks are
-/// still just a static int (see docs/OPEN_DECISIONS.md "Technical rules /
-/// edge cases" — timezone/day-rollover handling is undecided).
+/// Toggling this also logs the on/off transition to `VacationLog`
+/// (`lib/data/vacation_log.dart`), which `MockCalendarRepository` reads so
+/// days it was active on are treated as neutral (frozen) rather than missed
+/// in the streak walk and calendar grid — see FEATURES.md §2. Pet stat decay
+/// is not paused by this yet (a separate, smaller follow-up).
 class VacationModeCard extends StatelessWidget {
-  const VacationModeCard({super.key, required this.enabled, required this.onToggle});
+  const VacationModeCard({
+    super.key,
+    required this.enabled,
+    required this.onToggle,
+  });
 
   final bool enabled;
   final VoidCallback onToggle;
@@ -262,8 +270,12 @@ class VacationModeCard extends StatelessWidget {
           OutlinedButton(
             onPressed: onToggle,
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+              side: const BorderSide(
+                color: AppColors.ink,
+                width: AppBorder.thin,
+              ),
               foregroundColor: AppColors.ink,
+              minimumSize: const Size(0, 48),
             ),
             child: Text(enabled ? 'Disable' : 'Enable'),
           ),
@@ -291,13 +303,9 @@ class _CategoriesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.all(AppSpacing.stackSm),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
+      borderWidth: AppBorder.thin,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -308,11 +316,17 @@ class _CategoriesCard extends StatelessWidget {
                 IconButton(
                   tooltip: 'Rename',
                   onPressed: () => onRename(category),
-                  icon: const Icon(Icons.edit, size: 18, color: AppColors.inkMuted),
+                  icon: const Icon(
+                    Icons.edit,
+                    size: 18,
+                    color: AppColors.inkMuted,
+                  ),
                 ),
                 IconButton(
                   tooltip: 'Delete',
-                  onPressed: categories.length > 1 ? () => onDelete(category) : null,
+                  onPressed: categories.length > 1
+                      ? () => onDelete(category)
+                      : null,
                   icon: const Icon(Icons.delete_outline, size: 18),
                 ),
               ],
@@ -324,11 +338,48 @@ class _CategoriesCard extends StatelessWidget {
           OutlinedButton.icon(
             onPressed: onAdd,
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+              side: const BorderSide(
+                color: AppColors.ink,
+                width: AppBorder.thin,
+              ),
               foregroundColor: AppColors.ink,
             ),
             icon: const Icon(Icons.add, size: 18),
             label: const Text('Add Category'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// No real subscription/billing yet (see CLAUDE.md — no backend), so this
+/// always reads "Free Plan"; the row just opens the [NoriPlusScreen] preview.
+class _PlanCard extends StatelessWidget {
+  const _PlanCard({required this.onUpgrade});
+
+  final VoidCallback onUpgrade;
+
+  @override
+  Widget build(BuildContext context) {
+    return NoriCard(
+      padding: const EdgeInsets.all(AppSpacing.stackSm),
+      borderWidth: AppBorder.thin,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Free Plan', style: AppTextStyles.labelLg),
+          const SizedBox(height: 2),
+          Text(
+            'Upgrade for more customization and pet features.',
+            style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
+          ),
+          const SizedBox(height: AppSpacing.stackSm),
+          NoriListRow(
+            icon: Icons.diamond,
+            label: 'Nori Plus',
+            onTap: onUpgrade,
+            trailing: const SoonBadge(),
           ),
         ],
       ),

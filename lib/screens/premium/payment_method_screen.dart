@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
+import 'package:nori/widgets/nori_card.dart';
+import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 enum _PaymentMethod { card, paypal, express }
@@ -35,117 +37,89 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
         title: Text('Payment Method', style: AppTextStyles.headlineLgMobile),
         actions: const [SizedBox(width: 48)],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final horizontalPadding = constraints.maxWidth >= 760
-              ? AppSpacing.containerPaddingDesktop
-              : AppSpacing.containerPaddingMobile;
-
-          return SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              AppSpacing.gutter,
-              horizontalPadding,
-              AppSpacing.stackLg,
-            ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 680),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const FutureFeatureBanner(
-                      message:
-                          "Payments aren't implemented — nothing here is sent or stored.",
+      body: NoriScrollScaffold(
+        maxWidth: 680,
+        children: [
+          const FutureFeatureBanner(
+            message:
+                "Payments aren't implemented — nothing here is sent or stored.",
+          ),
+          const SizedBox(height: AppSpacing.stackMd),
+          const _PlanSummaryCard(),
+          const SizedBox(height: AppSpacing.stackMd),
+          _PaymentOptionCard(
+            selected: _selectedMethod == _PaymentMethod.card,
+            onTap: () => setState(() => _selectedMethod = _PaymentMethod.card),
+            icon: Icons.credit_card,
+            title: 'Credit / Debit Card',
+            child: _selectedMethod == _PaymentMethod.card
+                ? const _CardPreviewFields()
+                : null,
+          ),
+          const SizedBox(height: AppSpacing.gutter),
+          _PaymentOptionCard(
+            selected: _selectedMethod == _PaymentMethod.paypal,
+            onTap: () =>
+                setState(() => _selectedMethod = _PaymentMethod.paypal),
+            icon: Icons.account_balance_wallet,
+            title: 'PayPal',
+            child: _selectedMethod == _PaymentMethod.paypal
+                ? Align(
+                    alignment: Alignment.centerRight,
+                    child: TactileButton(
+                      label: 'Connect',
+                      onPressed: _showUnavailable,
+                      backgroundColor: AppColors.white,
+                      expand: false,
                     ),
-                    const SizedBox(height: AppSpacing.stackMd),
-                    const _PlanSummaryCard(),
-                    const SizedBox(height: AppSpacing.stackMd),
-                    _PaymentOptionCard(
-                      selected: _selectedMethod == _PaymentMethod.card,
-                      onTap: () =>
-                          setState(() => _selectedMethod = _PaymentMethod.card),
-                      icon: Icons.credit_card,
-                      title: 'Credit / Debit Card',
-                      child: _selectedMethod == _PaymentMethod.card
-                          ? const _CardPreviewFields()
-                          : null,
-                    ),
-                    const SizedBox(height: AppSpacing.gutter),
-                    _PaymentOptionCard(
-                      selected: _selectedMethod == _PaymentMethod.paypal,
-                      onTap: () => setState(
-                        () => _selectedMethod = _PaymentMethod.paypal,
-                      ),
-                      icon: Icons.account_balance_wallet,
-                      title: 'PayPal',
-                      child: _selectedMethod == _PaymentMethod.paypal
-                          ? Align(
-                              alignment: Alignment.centerRight,
-                              child: TactileButton(
-                                label: 'Connect',
-                                onPressed: _showUnavailable,
-                                backgroundColor: AppColors.white,
-                                expand: false,
-                              ),
-                            )
-                          : null,
-                    ),
-                    const SizedBox(height: AppSpacing.gutter),
-                    _PaymentOptionCard(
-                      selected: _selectedMethod == _PaymentMethod.express,
-                      onTap: () => setState(
-                        () => _selectedMethod = _PaymentMethod.express,
-                      ),
-                      icon: Icons.phone_iphone,
-                      title: 'Express Checkout',
-                      child: _selectedMethod == _PaymentMethod.express
-                          ? Row(
-                              children: [
-                                Expanded(
-                                  child: TactileButton(
-                                    label: 'Pay',
-                                    onPressed: _showUnavailable,
-                                    backgroundColor: AppColors.terracotta,
-                                  ),
-                                ),
-                                const SizedBox(width: AppSpacing.stackSm),
-                                Expanded(
-                                  child: TactileButton(
-                                    label: 'G Pay',
-                                    onPressed: _showUnavailable,
-                                    backgroundColor: AppColors.white,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : null,
-                    ),
-                    const SizedBox(height: AppSpacing.stackMd),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.lock,
-                          size: 20,
-                          color: AppColors.terracottaDark,
+                  )
+                : null,
+          ),
+          const SizedBox(height: AppSpacing.gutter),
+          _PaymentOptionCard(
+            selected: _selectedMethod == _PaymentMethod.express,
+            onTap: () =>
+                setState(() => _selectedMethod = _PaymentMethod.express),
+            icon: Icons.phone_iphone,
+            title: 'Express Checkout',
+            child: _selectedMethod == _PaymentMethod.express
+                ? Row(
+                    children: [
+                      Expanded(
+                        child: TactileButton(
+                          label: 'Pay',
+                          onPressed: _showUnavailable,
+                          backgroundColor: AppColors.terracotta,
                         ),
-                        const SizedBox(width: AppSpacing.unit),
-                        Text(
-                          'Secure & Encrypted',
-                          style: AppTextStyles.labelSm.copyWith(
-                            color: AppColors.terracottaDark,
-                            letterSpacing: 0.7,
-                          ),
+                      ),
+                      const SizedBox(width: AppSpacing.stackSm),
+                      Expanded(
+                        child: TactileButton(
+                          label: 'G Pay',
+                          onPressed: _showUnavailable,
+                          backgroundColor: AppColors.white,
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  )
+                : null,
+          ),
+          const SizedBox(height: AppSpacing.stackMd),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock, size: 20, color: AppColors.terracottaDark),
+              const SizedBox(width: AppSpacing.unit),
+              Text(
+                'Secure & Encrypted',
+                style: AppTextStyles.labelSm.copyWith(
+                  color: AppColors.terracottaDark,
+                  letterSpacing: 0.7,
                 ),
               ),
-            ),
-          );
-        },
+            ],
+          ),
+        ],
       ),
       bottomNavigationBar: _CheckoutBar(onConfirm: _showUnavailable),
     );
@@ -157,14 +131,8 @@ class _PlanSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.containerPaddingMobile),
+    return NoriCard(
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
-      ),
       child: Row(
         children: [
           Expanded(

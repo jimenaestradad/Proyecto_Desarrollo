@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:nori/data/accessory_catalog.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/care_item_catalog.dart';
 import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/inventory.dart';
@@ -10,6 +11,7 @@ import 'package:nori/models/nori_user.dart';
 import 'package:nori/models/pet.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
 import 'package:nori/screens/pet/evolution_screen.dart';
+import 'package:nori/screens/pet/level_up_screen.dart';
 import 'package:nori/screens/shop/shop_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/formatting.dart';
@@ -69,6 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // claim made on another tab while Home was last loaded — still gets its
     // celebration on switching back, not just one earned via a Home action.
     final previousStage = _pet?.stage;
+    final previousLevel = _user?.level;
     final user = await AppData.user.getCurrentUser();
     final habits = await AppData.habits.getTodayHabits();
     await AppData.pet.syncEvolution(user.level);
@@ -81,8 +84,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _pet = pet;
       _inventory = inventory;
     });
-    if (previousStage != null && previousStage != pet.stage) {
+    if (previousStage != null && pet.stage.index > previousStage.index) {
       await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
+    } else if (previousLevel != null && user.level > previousLevel) {
+      await showLevelUpCelebration(context, level: user.level, petName: pet.name);
     }
   }
 
@@ -100,6 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _reloadUserAndPet() async {
     final previousStage = _pet?.stage;
+    final previousLevel = _user?.level;
     final user = await AppData.user.getCurrentUser();
     await AppData.pet.syncEvolution(user.level);
     final pet = await AppData.pet.getPet();
@@ -110,13 +116,16 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     // previousStage == null only on the very first load (no prior pet to
     // compare against) — skip the celebration then so it only ever fires
-    // for a real, in-session evolution, not on app open.
-    if (previousStage != null && previousStage != pet.stage) {
+    // for a real, in-session evolution, not on app open. Same reasoning
+    // applies to previousLevel below.
+    if (previousStage != null && pet.stage.index > previousStage.index) {
       await showEvolutionCelebration(
         context,
         petName: pet.name,
         stage: pet.stage,
       );
+    } else if (previousLevel != null && user.level > previousLevel) {
+      await showLevelUpCelebration(context, level: user.level, petName: pet.name);
     }
   }
 
@@ -166,17 +175,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _careAction({
-    required Future<bool> Function() consume,
-    required Future<void> Function() act,
-  }) async {
-    final ok = await consume();
+  Future<void> _useCareItem(CareItem item) async {
+    final ok = await AppData.inventory.consumeCareItem(item.id);
     if (!mounted) return;
     if (!ok) {
       _showSnack('Out of stock — buy more in the Shop.');
       return;
     }
-    await act();
+    switch (item.category) {
+      case CareCategory.hunger:
+        await AppData.pet.feed(amount: item.restoreAmount);
+      case CareCategory.hygiene:
+        await AppData.pet.groom(amount: item.restoreAmount);
+      case CareCategory.love:
+        await AppData.pet.play(amount: item.restoreAmount);
+    }
     final inventory = await AppData.inventory.getInventory();
     final pet = await AppData.pet.getPet();
     if (!mounted) return;
@@ -272,18 +285,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         user: user,
                         pet: pet,
                         inventory: inventory,
-                        onFeed: () => _careAction(
-                          consume: AppData.inventory.consumeSnack,
-                          act: AppData.pet.feed,
-                        ),
-                        onGroom: () => _careAction(
-                          consume: AppData.inventory.consumeSoap,
-                          act: AppData.pet.groom,
-                        ),
-                        onPlay: () => _careAction(
-                          consume: AppData.inventory.consumeToy,
-                          act: AppData.pet.play,
-                        ),
+                        onUseCareItem: _useCareItem,
                         onShop: _openShop,
                       ),
                     ),
@@ -321,18 +323,14 @@ class _RoomHud extends StatefulWidget {
     required this.user,
     required this.pet,
     required this.inventory,
-    required this.onFeed,
-    required this.onGroom,
-    required this.onPlay,
+    required this.onUseCareItem,
     required this.onShop,
   });
 
   final NoriUser user;
   final Pet pet;
   final Inventory inventory;
-  final VoidCallback onFeed;
-  final VoidCallback onGroom;
-  final VoidCallback onPlay;
+  final ValueChanged<CareItem> onUseCareItem;
   final VoidCallback onShop;
 
   @override
@@ -348,9 +346,7 @@ class _RoomHudState extends State<_RoomHud> {
     required String vitalLabel,
     required double vitalValue,
     required Color vitalColor,
-    required String actionLabel,
-    required int usesLeft,
-    required VoidCallback onConfirm,
+    required CareCategory category,
   }) {
     showModalBottomSheet<void>(
       context: context,
@@ -361,11 +357,15 @@ class _RoomHudState extends State<_RoomHud> {
         vitalLabel: vitalLabel,
         vitalValue: vitalValue,
         vitalColor: vitalColor,
-        actionLabel: actionLabel,
-        usesLeft: usesLeft,
-        onConfirm: () {
+        items: careItemsForCategory(category),
+        inventory: widget.inventory,
+        onUseItem: (item) {
           Navigator.of(sheetContext).pop();
-          onConfirm();
+          widget.onUseCareItem(item);
+        },
+        onShop: () {
+          Navigator.of(sheetContext).pop();
+          widget.onShop();
         },
       ),
     );
@@ -375,7 +375,6 @@ class _RoomHudState extends State<_RoomHud> {
   Widget build(BuildContext context) {
     final user = widget.user;
     final pet = widget.pet;
-    final inventory = widget.inventory;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -466,7 +465,7 @@ class _RoomHudState extends State<_RoomHud> {
             _CoinPill(coins: user.coins),
             const SizedBox(width: AppSpacing.unit),
             CircularIconButton(
-              icon: Icons.storefront,
+              icon: Icons.shopping_bag,
               tooltip: 'Shop',
               onPressed: widget.onShop,
             ),
@@ -487,9 +486,7 @@ class _RoomHudState extends State<_RoomHud> {
                 vitalLabel: 'Happiness',
                 vitalValue: pet.happiness,
                 vitalColor: AppColors.moss,
-                actionLabel: 'Play',
-                usesLeft: inventory.toys,
-                onConfirm: widget.onPlay,
+                category: CareCategory.love,
               ),
             ),
             const SizedBox(width: 14),
@@ -504,9 +501,7 @@ class _RoomHudState extends State<_RoomHud> {
                 vitalLabel: 'Hunger',
                 vitalValue: pet.hunger,
                 vitalColor: AppColors.terracotta,
-                actionLabel: 'Feed',
-                usesLeft: inventory.snacks,
-                onConfirm: widget.onFeed,
+                category: CareCategory.hunger,
               ),
             ),
             const SizedBox(width: 14),
@@ -521,9 +516,7 @@ class _RoomHudState extends State<_RoomHud> {
                 vitalLabel: 'Hygiene',
                 vitalValue: pet.hygiene,
                 vitalColor: AppColors.skyBlue,
-                actionLabel: 'Groom',
-                usesLeft: inventory.soap,
-                onConfirm: widget.onGroom,
+                category: CareCategory.hygiene,
               ),
             ),
           ],
@@ -597,8 +590,10 @@ class _EvolutionDetails extends StatelessWidget {
   }
 }
 
-/// Bottom sheet opened by tapping a vital ring: shows that stat and the one
-/// action that cares for it.
+/// Bottom sheet opened by tapping a vital ring: shows that stat and lets the
+/// user pick which owned item to use on it — different items restore
+/// different amounts (see care_item_catalog.dart), so this is a choice
+/// rather than a single auto-applied action.
 class _CareActionSheet extends StatelessWidget {
   const _CareActionSheet({
     required this.icon,
@@ -606,9 +601,10 @@ class _CareActionSheet extends StatelessWidget {
     required this.vitalLabel,
     required this.vitalValue,
     required this.vitalColor,
-    required this.actionLabel,
-    required this.usesLeft,
-    required this.onConfirm,
+    required this.items,
+    required this.inventory,
+    required this.onUseItem,
+    required this.onShop,
   });
 
   final IconData icon;
@@ -616,13 +612,17 @@ class _CareActionSheet extends StatelessWidget {
   final String vitalLabel;
   final double vitalValue;
   final Color vitalColor;
-  final String actionLabel;
-  final int usesLeft;
-  final VoidCallback onConfirm;
+
+  /// Every catalog item for this vital's category — filtered to what's
+  /// actually owned ([Inventory.countOf] > 0) before rendering.
+  final List<CareItem> items;
+  final Inventory inventory;
+  final ValueChanged<CareItem> onUseItem;
+  final VoidCallback onShop;
 
   @override
   Widget build(BuildContext context) {
-    final available = usesLeft > 0;
+    final owned = items.where((item) => inventory.countOf(item.id) > 0).toList();
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.gutter),
@@ -664,11 +664,97 @@ class _CareActionSheet extends StatelessWidget {
               const SizedBox(height: AppSpacing.stackSm),
               ProgressBarPill(progress: vitalValue / 100, color: vitalColor),
               const SizedBox(height: AppSpacing.stackMd),
-              TactileButton(
-                label: available ? '$actionLabel (x$usesLeft left)' : 'Out of stock — visit the Shop',
-                icon: icon,
-                onPressed: available ? onConfirm : null,
+              if (owned.isEmpty) ...[
+                Text(
+                  'Out of stock — visit the Shop to buy more.',
+                  style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
+                ),
+                const SizedBox(height: AppSpacing.stackMd),
+                TactileButton(
+                  label: 'Go to Shop',
+                  icon: Icons.shopping_bag,
+                  onPressed: onShop,
+                ),
+              ] else
+                for (final item in owned) ...[
+                  _CareItemChoiceRow(
+                    item: item,
+                    usesLeft: inventory.countOf(item.id),
+                    onTap: () => onUseItem(item),
+                  ),
+                  if (item != owned.last) const SizedBox(height: AppSpacing.stackSm),
+                ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One tappable row in [_CareActionSheet] — the item's art, name, how much
+/// it restores, and how many uses are left.
+class _CareItemChoiceRow extends StatelessWidget {
+  const _CareItemChoiceRow({
+    required this.item,
+    required this.usesLeft,
+    required this.onTap,
+  });
+
+  final CareItem item;
+  final int usesLeft;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.stackSm),
+          decoration: BoxDecoration(
+            color: item.color,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                padding: item.image != null
+                    ? const EdgeInsets.all(4)
+                    : EdgeInsets.zero,
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+                ),
+                child: item.image != null
+                    ? Image.asset(item.image!, fit: BoxFit.contain)
+                    : Icon(item.icon, size: 20, color: AppColors.ink),
               ),
+              const SizedBox(width: AppSpacing.stackSm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item.name, style: AppTextStyles.labelLg),
+                    Text(
+                      'x$usesLeft left',
+                      style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '+${item.restoreAmount.round()}',
+                style: AppTextStyles.labelLg.copyWith(color: AppColors.mossDark),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, color: AppColors.inkMuted),
             ],
           ),
         ),
@@ -933,4 +1019,3 @@ class _HabitPanelState extends State<_HabitPanel> {
       );
   }
 }
-

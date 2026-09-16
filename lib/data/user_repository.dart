@@ -1,11 +1,12 @@
 import '../models/nori_user.dart';
 import 'calendar_repository.dart';
+import 'vacation_log.dart';
 
 const kDemoUser = NoriUser(
   id: 'mock-user',
-  name: 'Alex Walker',
-  username: 'alex_habits',
-  email: 'alex@example.com',
+  name: 'Hannah Walker',
+  username: 'hannah_habits',
+  email: 'hannah@example.com',
   // Level 5, not 1 or 18+: the breathing sprite (see nori_breathing_sprite.dart)
   // reads visually as a toddler, not a newborn baby or an already-evolved
   // pet — level 5 is the mock's best current guess at where that art
@@ -35,12 +36,15 @@ abstract class UserRepository {
   Future<void> addCoins(int amount);
 
   Future<void> setVacationMode(bool enabled);
+
+  Future<void> updateProfile({String? name, String? username, String? email});
 }
 
 class MockUserRepository implements UserRepository {
-  MockUserRepository(this._calendar);
+  MockUserRepository(this._calendar, this._vacationLog);
 
   final CalendarRepository _calendar;
+  final VacationLog _vacationLog;
 
   NoriUser _user = kDemoUser;
 
@@ -86,6 +90,21 @@ class MockUserRepository implements UserRepository {
 
   @override
   Future<void> setVacationMode(bool enabled) async {
+    final now = DateTime.now();
+    if (enabled) {
+      _vacationLog.startFreeze(now);
+    } else {
+      _vacationLog.endFreeze(now);
+    }
     _user = _user.copyWith(vacationModeEnabled: enabled);
+  }
+
+  @override
+  Future<void> updateProfile({
+    String? name,
+    String? username,
+    String? email,
+  }) async {
+    _user = _user.copyWith(name: name, username: username, email: email);
   }
 }

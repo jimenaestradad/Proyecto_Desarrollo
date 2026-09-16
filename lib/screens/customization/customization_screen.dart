@@ -42,14 +42,6 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
     setState(() => _draftEquippedId = null);
   }
 
-  void _promptBuyInShop() {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: Text('Buy this in the Shop to equip it.')),
-      );
-  }
-
   Future<void> _saveLook() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
@@ -119,7 +111,6 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
                                 inventory: inventory,
                                 draftEquippedId: _draftEquippedId,
                                 onSelectOwned: _selectOwned,
-                                onSelectLocked: _promptBuyInShop,
                                 onClearEquipped: _clearEquipped,
                                 onSave: _saveLook,
                               ),
@@ -225,7 +216,6 @@ class _InventoryPanel extends StatelessWidget {
     required this.inventory,
     required this.draftEquippedId,
     required this.onSelectOwned,
-    required this.onSelectLocked,
     required this.onClearEquipped,
     required this.onSave,
   });
@@ -233,7 +223,6 @@ class _InventoryPanel extends StatelessWidget {
   final Inventory inventory;
   final String? draftEquippedId;
   final ValueChanged<String> onSelectOwned;
-  final VoidCallback onSelectLocked;
   final VoidCallback onClearEquipped;
   final VoidCallback onSave;
 
@@ -284,20 +273,19 @@ class _InventoryPanel extends StatelessWidget {
                   crossAxisSpacing: AppSpacing.gutter,
                   mainAxisSpacing: AppSpacing.gutter,
                   children: [
-                    for (final item in kAccessoryCatalog)
-                      if (inventory.ownedAccessoryIds.contains(item.id))
-                        _AccessorySlot(
-                          icon: item.icon,
-                          color: item.color,
-                          selected: draftEquippedId == item.id,
-                          onTap: () => onSelectOwned(item.id),
-                        )
-                      else
-                        _LockedAccessorySlot(onTap: onSelectLocked),
                     _EmptyAccessorySlot(
                       selected: draftEquippedId == null,
                       onTap: onClearEquipped,
                     ),
+                    for (final item in kAccessoryCatalog)
+                      if (inventory.ownedAccessoryIds.contains(item.id))
+                        _AccessorySlot(
+                          icon: item.icon,
+                          image: item.image,
+                          color: item.color,
+                          selected: draftEquippedId == item.id,
+                          onTap: () => onSelectOwned(item.id),
+                        ),
                   ],
                 );
               },
@@ -324,9 +312,11 @@ class _AccessorySlot extends StatelessWidget {
     required this.color,
     required this.selected,
     required this.onTap,
+    this.image,
   });
 
   final IconData icon;
+  final String? image;
   final Color color;
   final bool selected;
   final VoidCallback onTap;
@@ -350,7 +340,14 @@ class _AccessorySlot extends StatelessWidget {
             ),
             child: Stack(
               children: [
-                Center(child: Icon(icon, size: 44, color: AppColors.mossDark)),
+                Center(
+                  child: image != null
+                      ? Padding(
+                          padding: const EdgeInsets.all(AppSpacing.unit),
+                          child: Image.asset(image!, fit: BoxFit.contain),
+                        )
+                      : Icon(icon, size: 44, color: AppColors.mossDark),
+                ),
                 if (selected)
                   Positioned(
                     top: 7,
@@ -382,53 +379,6 @@ class _AccessorySlot extends StatelessWidget {
   }
 }
 
-/// A catalog accessory the user doesn't own yet — tapping points to the Shop
-/// rather than opening a purchase flow in-context (see plan: this screen's
-/// scope is "equip what you own", not a second place to buy).
-class _LockedAccessorySlot extends StatelessWidget {
-  const _LockedAccessorySlot({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: 'Locked accessory — buy in Shop',
-      button: true,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        onTap: onTap,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Opacity(
-              opacity: 0.5,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.linen,
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                  border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-                ),
-                child: const Icon(
-                  Icons.shopping_bag,
-                  size: 40,
-                  color: AppColors.inkMuted,
-                ),
-              ),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                color: AppColors.linen.withValues(alpha: 0.42),
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-              ),
-              child: const Icon(Icons.lock, color: AppColors.ink),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _EmptyAccessorySlot extends StatelessWidget {
   const _EmptyAccessorySlot({required this.selected, required this.onTap});

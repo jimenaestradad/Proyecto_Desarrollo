@@ -3,6 +3,7 @@ import '../models/habit.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatting.dart';
 import 'habit_tile.dart';
+import 'nori_card.dart';
 import 'nori_icon_badge.dart';
 import 'progress_bar_pill.dart';
 import 'reward_pill.dart';
@@ -43,7 +44,11 @@ class HabitProgressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (habit.type == HabitType.binary) {
-      return HabitTile(habit: habit, onToggle: onToggleBinary, onEdit: onEditHabit);
+      return HabitTile(
+        habit: habit,
+        onToggle: onToggleBinary,
+        onEdit: onEditHabit,
+      );
     }
     if (habit.type == HabitType.limit) {
       return _LimitCard(
@@ -66,7 +71,8 @@ class HabitProgressCard extends StatelessWidget {
   }
 }
 
-String _mmss(double minutes) => '${minutes.floor().toString().padLeft(2, '0')}:00';
+String _mmss(double minutes) =>
+    '${minutes.floor().toString().padLeft(2, '0')}:00';
 
 String _formatValue(Habit habit) {
   final target = habit.targetValue;
@@ -74,7 +80,8 @@ String _formatValue(Habit habit) {
   if (habit.type == HabitType.duration) {
     return '${_mmss(habit.currentValue)} / ${_mmss(target)}';
   }
-  final unit = habit.unit ?? (habit.type == HabitType.multipleCompletion ? 'times' : '');
+  final unit =
+      habit.unit ?? (habit.type == HabitType.multipleCompletion ? 'times' : '');
   return '${habit.currentValue.round()} / ${target.round()} $unit'.trim();
 }
 
@@ -84,7 +91,9 @@ String _formatValue(Habit habit) {
 /// tier — not whatever the current partial value would earn on its own.
 ({int xp, int coins}) _previewReward(Habit habit) {
   final target = habit.targetValue;
-  if (target == null || habit.currentValue >= target) return habit.computeReward();
+  if (target == null || habit.currentValue >= target) {
+    return habit.computeReward();
+  }
   return habit.copyWith(currentValue: target).computeReward();
 }
 
@@ -136,13 +145,10 @@ class _CardShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: claimed ? AppColors.white : AppColors.linenAlt,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
+      color: claimed ? AppColors.white : AppColors.linenAlt,
+      borderWidth: AppBorder.thin,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -177,6 +183,8 @@ class _CardShell extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.labelSm.copyWith(
                         color: AppColors.inkFaint,
                       ),
@@ -219,6 +227,7 @@ class _CardShell extends StatelessWidget {
                       ),
                       foregroundColor: AppColors.ink,
                       padding: const EdgeInsets.symmetric(vertical: 10),
+                      minimumSize: const Size(0, 48),
                     ),
                     child: Text(quickLogLabel, style: AppTextStyles.labelLg),
                   ),
@@ -242,6 +251,7 @@ class _CardShell extends StatelessWidget {
                       width: AppBorder.thin,
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 10),
+                    minimumSize: const Size(0, 48),
                     textStyle: AppTextStyles.labelLg,
                   ),
                   child: Text(claimed ? 'Undo' : claimLabel),
@@ -256,7 +266,11 @@ class _CardShell extends StatelessWidget {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.color, required this.textColor});
+  const _Chip({
+    required this.label,
+    required this.color,
+    required this.textColor,
+  });
 
   final String label;
   final Color color;
@@ -271,7 +285,10 @@ class _Chip extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.full),
         border: Border.all(color: AppColors.ink, width: AppBorder.thin),
       ),
-      child: Text(label, style: AppTextStyles.labelSm.copyWith(color: textColor)),
+      child: Text(
+        label,
+        style: AppTextStyles.labelSm.copyWith(color: textColor),
+      ),
     );
   }
 }
@@ -304,9 +321,17 @@ class _ProgressCard extends StatelessWidget {
     // reward rather than whatever the current partial value would earn.
     final reward = _previewReward(habit);
 
-    final (String chipLabel, Color chipColor, Color chipTextColor) = switch (true) {
+    final (
+      String chipLabel,
+      Color chipColor,
+      Color chipTextColor,
+    ) = switch (true) {
       _ when claimed => ('Claimed', AppColors.mossLight, AppColors.mossDark),
-      _ when habit.isTargetMet => ('Target Reached!', AppColors.mossLight, AppColors.mossDark),
+      _ when habit.isTargetMet => (
+        'Target Reached!',
+        AppColors.mossLight,
+        AppColors.mossDark,
+      ),
       _ => ('In Progress', AppColors.linen, AppColors.inkFaint),
     };
 
@@ -322,10 +347,7 @@ class _ProgressCard extends StatelessWidget {
         children: [
           RewardPill(xp: reward.xp, coins: reward.coins),
           const SizedBox(height: 4),
-          _EditableValue(
-            habit: habit,
-            onEditProgress: onEditProgress,
-          ),
+          _EditableValue(habit: habit, onEditProgress: onEditProgress),
         ],
       ),
       progress: ProgressBarPill(
@@ -380,9 +402,21 @@ class _LimitCard extends StatelessWidget {
         ? AppColors.moss
         : (exceeded ? AppColors.terracottaDark : AppColors.mustard);
 
-    final (String chipLabel, Color chipColor, Color chipTextColor) = switch (true) {
-      _ when claimed => ('Marked Safe', AppColors.mossLight, AppColors.mossDark),
-      _ when exceeded => ('Limit Exceeded', AppColors.blush, AppColors.terracottaDark),
+    final (
+      String chipLabel,
+      Color chipColor,
+      Color chipTextColor,
+    ) = switch (true) {
+      _ when claimed => (
+        'Marked Safe',
+        AppColors.mossLight,
+        AppColors.mossDark,
+      ),
+      _ when exceeded => (
+        'Limit Exceeded',
+        AppColors.blush,
+        AppColors.terracottaDark,
+      ),
       _ => ('Within Limit', AppColors.mossLight, AppColors.mossDark),
     };
 

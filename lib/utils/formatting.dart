@@ -6,5 +6,6 @@ String formatThousands(int value) =>
 
 /// Renders a [double] without a trailing `.0` when it has no fractional part,
 /// e.g. `3.0` → `'3'`, `2.5` → `'2.5'`.
-String formatTrimmedNumber(double value) =>
-    value == value.roundToDouble() ? value.round().toString() : value.toString();
+String formatTrimmedNumber(double value) => value == value.roundToDouble()
+    ? value.round().toString()
+    : value.toString();

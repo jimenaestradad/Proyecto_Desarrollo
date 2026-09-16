@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/loading_overlay.dart';
+import 'package:nori/widgets/nori_text_field.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -71,6 +72,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
         email: email,
         password: password,
       );
+      await AppData.user.updateProfile(
+        name: name,
+        username: username,
+        email: email,
+      );
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
     } catch (_) {
@@ -116,7 +122,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             children: [
                               const _SignUpHeader(),
                               const SizedBox(height: AppSpacing.stackMd),
-                              _buildField(
+                              NoriTextField(
                                 controller: _nameController,
                                 label: 'Full Name',
                                 hint: 'Alex Human',
@@ -124,7 +130,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 textInputAction: TextInputAction.next,
                                 autofillHints: const [AutofillHints.name],
                               ),
-                              _buildField(
+                              NoriTextField(
                                 controller: _usernameController,
                                 label: 'Username',
                                 hint: 'alex_habits',
@@ -132,7 +138,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 textInputAction: TextInputAction.next,
                                 autofillHints: const [AutofillHints.username],
                               ),
-                              _buildField(
+                              NoriTextField(
                                 controller: _emailController,
                                 label: 'Email',
                                 hint: 'alex@example.com',
@@ -141,7 +147,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 textInputAction: TextInputAction.next,
                                 autofillHints: const [AutofillHints.email],
                               ),
-                              _buildField(
+                              NoriTextField(
                                 controller: _passwordController,
                                 label: 'Password',
                                 hint: '••••••••',
@@ -152,7 +158,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   AutofillHints.newPassword,
                                 ],
                               ),
-                              _buildField(
+                              NoriTextField(
                                 controller: _confirmPasswordController,
                                 label: 'Confirm Password',
                                 hint: '••••••••',
@@ -205,72 +211,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-    bool obscureText = false,
-    TextInputType? keyboardType,
-    TextInputAction? textInputAction,
-    Iterable<String>? autofillHints,
-    ValueChanged<String>? onSubmitted,
-  }) {
-    const border = OutlineInputBorder(
-      borderRadius: BorderRadius.all(Radius.circular(AppRadius.full)),
-      borderSide: BorderSide(
-        color: AppColors.ink,
-        width: AppBorder.standard,
-      ),
-    );
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.gutter),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: AppSpacing.gutter),
-            child: Text(label, style: AppTextStyles.labelSm),
-          ),
-          const SizedBox(height: AppSpacing.unit),
-          TextField(
-            controller: controller,
-            obscureText: obscureText,
-            enableSuggestions: !obscureText,
-            autocorrect: !obscureText,
-            keyboardType: keyboardType,
-            textInputAction: textInputAction,
-            autofillHints: autofillHints,
-            onSubmitted: onSubmitted,
-            style: AppTextStyles.bodyMd,
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: AppTextStyles.bodyMd.copyWith(
-                color: AppColors.inkFaint,
-              ),
-              prefixIcon: Icon(icon, color: AppColors.ink),
-              filled: true,
-              fillColor: AppColors.linenAlt,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.gutter,
-                vertical: AppSpacing.stackSm,
-              ),
-              border: border,
-              enabledBorder: border,
-              focusedBorder: const OutlineInputBorder(
-                borderRadius: BorderRadius.all(Radius.circular(AppRadius.full)),
-                borderSide: BorderSide(
-                  color: AppColors.ink,
-                  width: AppBorder.thick,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _SignUpHeader extends StatelessWidget {
@@ -284,11 +224,17 @@ class _SignUpHeader extends StatelessWidget {
           width: 64,
           height: 64,
           decoration: BoxDecoration(
-            color: AppColors.mossLight,
             shape: BoxShape.circle,
             border: Border.all(color: AppColors.ink, width: AppBorder.thick),
           ),
-          child: const Icon(Icons.pets, color: AppColors.mossDark, size: 32),
+          child: ClipOval(
+            child: Image.asset(
+              'assets/images/nori_closeup.png',
+              width: 64,
+              height: 64,
+              fit: BoxFit.cover,
+            ),
+          ),
         ),
         const SizedBox(height: AppSpacing.stackSm),
         Text('Join Nori', style: AppTextStyles.headlineLgMobile),
@@ -304,4 +250,3 @@ class _SignUpHeader extends StatelessWidget {
     );
   }
 }
-

@@ -10,7 +10,7 @@ class AppColors {
   // Ink — borders, headings, primary text.
   static const ink = Color(0xFF3A2E22);
   static const inkMuted = Color(0xFF7A6B4F);
-  static const inkFaint = Color(0xFF9A8B6E);
+  static const inkFaint = Color(0xFF6E634F);
 
   // Paper — base surfaces.
   static const linen = Color(0xFFF3ECDD);

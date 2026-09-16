@@ -4,7 +4,9 @@ import 'package:nori/models/nori_user.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
 import 'package:nori/widgets/nori_avatar.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
+import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
 import 'package:nori/widgets/section_header.dart';
 import 'package:nori/widgets/xp_pill.dart';
@@ -50,147 +52,133 @@ class _SocialScreenState extends State<SocialScreen> {
       body: SafeArea(
         child: user == null
             ? const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 800;
-                  final horizontalPadding = isWide
-                      ? AppSpacing.containerPaddingDesktop
-                      : AppSpacing.containerPaddingMobile;
-
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      AppSpacing.gutter,
-                      horizontalPadding,
-                      AppSpacing.stackLg,
+            : NoriScrollScaffold(
+                maxWidth: 900,
+                children: [
+                  NoriScreenHeader(
+                    leading: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        NoriAvatar(imageUrl: user.avatarUrl),
+                        const SizedBox(width: AppSpacing.stackSm),
+                      ],
                     ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 900),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            NoriScreenHeader(
-                              leading: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  NoriAvatar(imageUrl: user.avatarUrl),
-                                  const SizedBox(width: AppSpacing.stackSm),
-                                ],
-                              ),
-                              title: 'Social',
-                              titleStyle: AppTextStyles.headlineMd,
-                              trailing: XpPill(xp: user.totalXp),
-                            ),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            const FutureFeatureBanner(
-                              message:
-                                  "Preview only — friends, feeds & competitions aren't built yet.",
-                            ),
-                            const SizedBox(height: AppSpacing.stackLg),
-                            SectionHeader(
-                              icon: Icons.dynamic_feed,
-                              title: 'Activity Feed',
-                              trailing: TextButton(
-                                onPressed: _showComingSoon,
-                                style: TextButton.styleFrom(foregroundColor: AppColors.mossDark),
-                                child: const Text('Post proof'),
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.stackSm),
-                            const _FeedCard(
-                              name: 'Jimena',
-                              habit: 'Gym Session',
-                              timeAgo: '12m ago',
-                              caption: 'Upper body day, done 💪 (proof photo)',
-                              reactions: 4,
-                            ),
-                            const SizedBox(height: AppSpacing.stackSm),
-                            const _FeedCard(
-                              name: 'AlexH',
-                              habit: 'Read 10 mins',
-                              timeAgo: '1h ago',
-                              caption: 'Finished another chapter of Atomic Habits.',
-                              reactions: 2,
-                            ),
-                            const SizedBox(height: AppSpacing.stackLg),
-                            SectionHeader(
-                              icon: Icons.leaderboard,
-                              title: 'Leaderboard',
-                              trailing: TextButton(
-                                onPressed: _showComingSoon,
-                                style: TextButton.styleFrom(foregroundColor: AppColors.mossDark),
-                                child: const Text('View all'),
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.stackSm),
-                            const _LeaderboardPreview(),
-                            const SizedBox(height: AppSpacing.stackLg),
-                            SectionHeader(
-                              icon: Icons.emoji_events,
-                              title: 'Active Competitions',
-                              trailing: TextButton(
-                                onPressed: _showComingSoon,
-                                style: TextButton.styleFrom(foregroundColor: AppColors.mossDark),
-                                child: const Text('Start one'),
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.stackSm),
-                            const _CompetitionCard(
-                              title: '7-Day Water Streak',
-                              participants: 6,
-                              progress: 0.6,
-                              daysLeft: 3,
-                              color: AppColors.sky,
-                            ),
-                            const SizedBox(height: AppSpacing.stackSm),
-                            const _CompetitionCard(
-                              title: 'No Social Media Weekend',
-                              participants: 3,
-                              progress: 0.3,
-                              daysLeft: 2,
-                              color: AppColors.blushPink,
-                            ),
-                            const SizedBox(height: AppSpacing.stackLg),
-                            SectionHeader(
-                              icon: Icons.groups,
-                              title: 'My Circles',
-                              trailing: TextButton(
-                                onPressed: _showComingSoon,
-                                style: TextButton.styleFrom(foregroundColor: AppColors.mossDark),
-                                child: const Text('New circle'),
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.stackSm),
-                            SizedBox(
-                              height: 104,
-                              child: ListView(
-                                scrollDirection: Axis.horizontal,
-                                children: [
-                                  _CircleChip(
-                                    label: 'Roommates',
-                                    memberCount: 3,
-                                    color: AppColors.mossLight,
-                                    onTap: _showComingSoon,
-                                  ),
-                                  const SizedBox(width: AppSpacing.stackSm),
-                                  _CircleChip(
-                                    label: 'Gym Buddies',
-                                    memberCount: 5,
-                                    color: AppColors.mustardLight,
-                                    onTap: _showComingSoon,
-                                  ),
-                                  const SizedBox(width: AppSpacing.stackSm),
-                                  _NewCircleChip(onTap: _showComingSoon),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+                    title: 'Social',
+                    titleStyle: AppTextStyles.headlineMd,
+                    trailing: XpPill(xp: user.totalXp),
+                  ),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  const FutureFeatureBanner(
+                    message:
+                        "Preview only — friends, feeds & competitions aren't built yet.",
+                  ),
+                  const SizedBox(height: AppSpacing.stackLg),
+                  SectionHeader(
+                    icon: Icons.dynamic_feed,
+                    title: 'Activity Feed',
+                    trailing: TextButton(
+                      onPressed: _showComingSoon,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.mossDark,
                       ),
+                      child: const Text('Post proof'),
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: AppSpacing.stackSm),
+                  const _FeedCard(
+                    name: 'Jimena',
+                    habit: 'Gym Session',
+                    timeAgo: '12m ago',
+                    caption: 'Upper body day, done (proof photo)',
+                    reactions: 4,
+                  ),
+                  const SizedBox(height: AppSpacing.stackSm),
+                  const _FeedCard(
+                    name: 'AlexH',
+                    habit: 'Read 10 mins',
+                    timeAgo: '1h ago',
+                    caption: 'Finished another chapter of Atomic Habits.',
+                    reactions: 2,
+                  ),
+                  const SizedBox(height: AppSpacing.stackLg),
+                  SectionHeader(
+                    icon: Icons.leaderboard,
+                    title: 'Leaderboard',
+                    trailing: TextButton(
+                      onPressed: _showComingSoon,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.mossDark,
+                      ),
+                      child: const Text('View all'),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.stackSm),
+                  const _LeaderboardPreview(),
+                  const SizedBox(height: AppSpacing.stackLg),
+                  SectionHeader(
+                    icon: Icons.emoji_events,
+                    title: 'Active Competitions',
+                    trailing: TextButton(
+                      onPressed: _showComingSoon,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.mossDark,
+                      ),
+                      child: const Text('Start one'),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.stackSm),
+                  const _CompetitionCard(
+                    title: '7-Day Water Streak',
+                    participants: 6,
+                    progress: 0.6,
+                    daysLeft: 3,
+                    color: AppColors.sky,
+                  ),
+                  const SizedBox(height: AppSpacing.stackSm),
+                  const _CompetitionCard(
+                    title: 'No Social Media Weekend',
+                    participants: 3,
+                    progress: 0.3,
+                    daysLeft: 2,
+                    color: AppColors.blushPink,
+                  ),
+                  const SizedBox(height: AppSpacing.stackLg),
+                  SectionHeader(
+                    icon: Icons.groups,
+                    title: 'My Circles',
+                    trailing: TextButton(
+                      onPressed: _showComingSoon,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.mossDark,
+                      ),
+                      child: const Text('New circle'),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.stackSm),
+                  SizedBox(
+                    height: 104,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        _CircleChip(
+                          label: 'Roommates',
+                          memberCount: 3,
+                          color: AppColors.mossLight,
+                          onTap: _showComingSoon,
+                        ),
+                        const SizedBox(width: AppSpacing.stackSm),
+                        _CircleChip(
+                          label: 'Gym Buddies',
+                          memberCount: 5,
+                          color: AppColors.mustardLight,
+                          onTap: _showComingSoon,
+                        ),
+                        const SizedBox(width: AppSpacing.stackSm),
+                        _NewCircleChip(onTap: _showComingSoon),
+                      ],
+                    ),
+                  ),
+                ],
               ),
       ),
     );
@@ -214,28 +202,31 @@ class _FeedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.all(AppSpacing.stackSm),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
+      borderWidth: AppBorder.thin,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              const NoriAvatar(size: 36),
+              NoriAvatar(size: 36, name: name),
               const SizedBox(width: AppSpacing.unit),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name, style: AppTextStyles.labelLg.copyWith(fontWeight: FontWeight.w700)),
+                    Text(
+                      name,
+                      style: AppTextStyles.labelLg.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     Text(
                       '$habit · $timeAgo',
-                      style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
+                      style: AppTextStyles.labelSm.copyWith(
+                        color: AppColors.inkFaint,
+                      ),
                     ),
                   ],
                 ),
@@ -248,11 +239,24 @@ class _FeedCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.unit),
           Row(
             children: [
-              const Icon(Icons.favorite_border, size: 16, color: AppColors.inkFaint),
+              const Icon(
+                Icons.favorite_border,
+                size: 16,
+                color: AppColors.inkFaint,
+              ),
               const SizedBox(width: 4),
-              Text('$reactions', style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint)),
+              Text(
+                '$reactions',
+                style: AppTextStyles.labelSm.copyWith(
+                  color: AppColors.inkFaint,
+                ),
+              ),
               const SizedBox(width: AppSpacing.stackSm),
-              const Icon(Icons.chat_bubble_outline, size: 16, color: AppColors.inkFaint),
+              const Icon(
+                Icons.chat_bubble_outline,
+                size: 16,
+                color: AppColors.inkFaint,
+              ),
             ],
           ),
         ],
@@ -272,13 +276,9 @@ class _LeaderboardPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.all(AppSpacing.stackSm),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
+      borderWidth: AppBorder.thin,
       child: Column(
         children: [
           for (final row in _rows) ...[
@@ -288,7 +288,9 @@ class _LeaderboardPreview extends StatelessWidget {
                 vertical: AppSpacing.unit,
               ),
               decoration: BoxDecoration(
-                color: row.highlighted ? AppColors.mossLight : Colors.transparent,
+                color: row.highlighted
+                    ? AppColors.mossLight
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(AppRadius.sm * 0.6),
               ),
               child: Row(
@@ -297,14 +299,24 @@ class _LeaderboardPreview extends StatelessWidget {
                     width: 22,
                     child: Text(
                       '${row.rank}',
-                      style: AppTextStyles.labelLg.copyWith(color: AppColors.ink),
+                      style: AppTextStyles.labelLg.copyWith(
+                        color: AppColors.ink,
+                      ),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.unit),
-                  const NoriAvatar(size: 32),
+                  NoriAvatar(
+                    size: 32,
+                    name: row.highlighted ? null : row.name,
+                  ),
                   const SizedBox(width: AppSpacing.unit),
                   Expanded(child: Text(row.name, style: AppTextStyles.labelLg)),
-                  Text('${row.xp} XP', style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted)),
+                  Text(
+                    '${row.xp} XP',
+                    style: AppTextStyles.labelSm.copyWith(
+                      color: AppColors.inkMuted,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -333,24 +345,28 @@ class _CompetitionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.all(AppSpacing.stackSm),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
+      color: color,
+      borderWidth: AppBorder.thin,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               Expanded(
-                child: Text(title, style: AppTextStyles.labelLg.copyWith(fontWeight: FontWeight.w700)),
+                child: Text(
+                  title,
+                  style: AppTextStyles.labelLg.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
               Text(
                 '$daysLeft d left',
-                style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted),
+                style: AppTextStyles.labelSm.copyWith(
+                  color: AppColors.inkMuted,
+                ),
               ),
             ],
           ),
@@ -403,11 +419,16 @@ class _CircleChip extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: AppTextStyles.labelSm.copyWith(fontWeight: FontWeight.w700),
+              style: AppTextStyles.labelSm.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
             Text(
               '$memberCount friends',
-              style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted, fontSize: 10),
+              style: AppTextStyles.labelSm.copyWith(
+                color: AppColors.inkMuted,
+                fontSize: 10,
+              ),
             ),
           ],
         ),
@@ -438,7 +459,11 @@ class _NewCircleChip extends StatelessWidget {
           children: [
             const Icon(Icons.add, color: AppColors.inkFaint),
             const SizedBox(height: 6),
-            Text('New Circle', style: AppTextStyles.labelSm, textAlign: TextAlign.center),
+            Text(
+              'New Circle',
+              style: AppTextStyles.labelSm,
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),

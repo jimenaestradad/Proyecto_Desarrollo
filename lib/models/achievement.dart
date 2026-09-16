@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
-enum AchievementStatus { unlocked, inProgress, locked }
+/// [comingSoon] is for achievements whose underlying feature isn't built yet
+/// (no per-day pet-care history, no social backend, no multi-pet support) —
+/// distinct from [locked], which means the feature exists and is tracked,
+/// just not yet met.
+enum AchievementStatus { unlocked, inProgress, locked, comingSoon }
 
 class Achievement {
   const Achievement({
@@ -13,6 +17,7 @@ class Achievement {
     required this.progressCurrent,
     required this.progressTarget,
     required this.status,
+    this.imageAsset,
   });
 
   final String id;
@@ -24,6 +29,11 @@ class Achievement {
   final int progressCurrent;
   final int progressTarget;
   final AchievementStatus status;
+
+  /// Custom crest art (see `assets/source/README.md`'s achievements/ section)
+  /// for the handful of achievements that have it — falls back to [icon] in
+  /// a flat badge when null, since only some of the 18 have art so far.
+  final String? imageAsset;
 
   double get progress =>
       progressTarget == 0 ? 0 : progressCurrent / progressTarget;

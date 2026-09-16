@@ -270,14 +270,16 @@ class _LoginHeader extends StatelessWidget {
           width: 64,
           height: 64,
           decoration: BoxDecoration(
-            color: AppColors.mossLight,
             shape: BoxShape.circle,
             border: Border.all(color: AppColors.ink, width: AppBorder.thick),
           ),
-          child: const Icon(
-            Icons.pets,
-            color: AppColors.mossDark,
-            size: 36,
+          child: ClipOval(
+            child: Image.asset(
+              'assets/images/nori_closeup.png',
+              width: 64,
+              height: 64,
+              fit: BoxFit.cover,
+            ),
           ),
         ),
         const SizedBox(height: AppSpacing.gutter),
