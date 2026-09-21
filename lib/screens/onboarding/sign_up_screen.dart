@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/auth_repository.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/loading_overlay.dart';
 import 'package:nori/widgets/nori_text_field.dart';
@@ -79,6 +80,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage(e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);

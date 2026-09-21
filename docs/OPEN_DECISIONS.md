@@ -92,6 +92,9 @@ progress, rewards moment, pet care screen, shop, profile.
 - Data history retention
 
 ## Infrastructure
-- Auth provider/strategy
 - Database choice and schema
 - Specific GCP services for hosting/deploy
+
+(Auth provider/strategy resolved 2026-09-21: Firebase Auth, email/password only for now — see
+FirebaseAuthRepository in lib/data/firebase_auth_repository.dart. Google Sign-In is tracked as
+its own separate task, not covered by this.)
