@@ -1,5 +1,6 @@
 import 'achievement_repository.dart';
 import 'auth_repository.dart';
+import 'firebase_auth_repository.dart';
 import 'bucket_list_repository.dart';
 import 'calendar_repository.dart';
 import 'habit_category_repository.dart';
@@ -17,7 +18,7 @@ import 'vacation_log.dart';
 class AppData {
   AppData._();
 
-  static AuthRepository auth = MockAuthRepository();
+  static AuthRepository auth = FirebaseAuthRepository();
   static HabitRepository habits = MockHabitRepository();
   static VacationLog vacationLog = VacationLog();
   static CalendarRepository calendar = MockCalendarRepository(

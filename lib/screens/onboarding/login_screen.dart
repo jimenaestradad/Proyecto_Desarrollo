@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/auth_repository.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/loading_overlay.dart';
 import 'package:nori/widgets/tactile_button.dart';
@@ -49,10 +50,60 @@ class _LoginScreenState extends State<LoginScreen> {
       await AppData.auth.logIn(email: email, password: password);
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage(e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
       _showMessage('Unable to sign in. Please try again.');
+    }
+  }
+
+  Future<void> _forgotPassword() async {
+    if (_loading) return;
+    final emailController = TextEditingController(
+      text: _emailController.text.trim(),
+    );
+    final email = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Reset your password'),
+          content: TextField(
+            controller: emailController,
+            autofocus: true,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(hintText: 'Email address'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(context, emailController.text.trim()),
+              child: const Text('Send link'),
+            ),
+          ],
+        );
+      },
+    );
+    emailController.dispose();
+    if (email == null || email.isEmpty || !mounted) return;
+
+    try {
+      await AppData.auth.sendPasswordResetEmail(email);
+      if (!mounted) return;
+      _showMessage('Password reset email sent to $email.');
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      _showMessage(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      _showMessage('Unable to send the reset email. Please try again.');
     }
   }
 
@@ -106,7 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: TextButton(
-                                  onPressed: () => _showMessage('Coming soon'),
+                                  onPressed: _loading ? null : _forgotPassword,
                                   child: const Text('Forgot Password?'),
                                 ),
                               ),

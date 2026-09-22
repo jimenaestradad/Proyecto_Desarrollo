@@ -107,5 +107,8 @@ progress, rewards moment, pet care screen, shop, profile.
 ## Infrastructure
 - Resolved 2026-09-16: Firebase (Auth + Firestore + Cloud Functions, Node.js/TypeScript) — see
   [BACKEND.md](BACKEND.md) for schema, security-rules approach, and the Cloud Functions list.
+- Resolved 2026-09-21: Auth provider/strategy — Firebase Auth, email/password only for now — see
+  `FirebaseAuthRepository` in `lib/data/firebase_auth_repository.dart`. Google Sign-In is tracked
+  as its own separate task, not covered by this.
 - Still open: specific GCP services beyond Firebase itself for hosting/deploy (the GCP phase in
   ROADMAP.md, not yet started).
