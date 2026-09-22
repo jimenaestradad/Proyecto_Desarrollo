@@ -1,0 +1,91 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- /users/{uid} -------------------------------------------------
+    // Every collection below lives under this doc. Firestore rules do NOT
+    // cascade from a parent match to its subcollections — each match block
+    // below is independently responsible for its own auth check.
+    match /users/{uid} {
+      allow read: if request.auth.uid == uid;
+
+      // Progression fields (level/XP/coins) are Cloud-Function-only — only
+      // reachable via the Admin SDK inside claimHabit etc., which bypasses
+      // rules entirely. Client writes may only touch profile + vacation
+      // fields. See docs/BACKEND.md:296-299.
+      allow update: if request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly([
+               'name', 'username', 'email', 'avatarUrl',
+               'vacationModeEnabled', 'vacationRanges', 'habitCategories',
+             ]);
+
+      // --- /users/{uid}/habits/{habitId} -------------------------------
+      match /habits/{habitId} {
+        allow read: if request.auth.uid == uid; //Allow this data to be read only if the logged-in person’s UID matches the UID in the data’s path
+
+        // New habit: the Cloud-Function-only fields must start at their
+        // untouched defaults — a client can't hand itself credit for a
+        // habit it just created.
+        allow create: if request.auth.uid == uid
+          && request.resource.data.isCompletedToday == false
+          && request.resource.data.lastAwardedXp == 0
+          && request.resource.data.lastAwardedCoins == 0;
+
+        // Editing an existing habit (name, schedule, etc.) may never touch
+        // the fields only claimHabit/unclaimHabit/setHabitCompleted are
+        // allowed to write. See docs/BACKEND.md:300-302.
+        allow update: if request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly([
+                 'name', 'subtitle', 'iconKey', 'colorKey',
+                 'xpReward', 'coinReward', 'repeat', 'type', 'difficulty',
+                 'targetValue', 'unit', 'minThreshold', 'quickLogAmount',
+                 'currentValue', 'adaptiveMultiplier', 'customDays',
+                 'allowVacationFreeze', 'startDate', 'endDate', 'order',
+                 'archived',
+               ]);
+
+        // Deleting a habit archives it (sets archived = true via the
+        // update rule above) instead of removing the doc — habitLogs must
+        // survive for history/streaks. See docs/BACKEND.md:64.
+        allow delete: if false;
+      }
+
+      // --- /users/{uid}/habitLogs/{logId} ------------------------------
+      // logId is '{dayKey}_{habitId}', e.g. '2026-09-21_abc123' — flat
+      // collection, not nested under habits/, so calendar views can range-
+      // query by date across every habit in one query. See
+      // docs/BACKEND.md:129-134.
+      match /habitLogs/{logId} {
+        allow read: if request.auth.uid == uid;
+
+        allow create: if request.auth.uid == uid
+          && request.resource.data.claimed == false
+          && request.resource.data.awardedXp == 0
+          && request.resource.data.awardedCoins == 0;
+
+        // Logging progress during the day (quick-log amount, manual entry)
+        // may only touch `value` — claiming/unclaiming XP payout is
+        // Cloud-Function-only. See docs/BACKEND.md:300-302.
+        allow update: if request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['value']);
+
+        allow delete: if false;
+      }
+
+      // TODO(Jimena): pet/main, inventory/main — field-level rules
+      // sketched at docs/BACKEND.md:303-328, not written yet.
+    }
+
+    // TODO(Jimena): /usernames/{usernameLower} — global index collection,
+    // sketched at docs/BACKEND.md:329-332, not written yet.
+
+    // Anything not explicitly matched above stays denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../models/habit.dart';
 import '../models/habit_day_state.dart';
@@ -482,4 +484,194 @@ class MockHabitRepository implements HabitRepository {
         : value.clamp(0.0, definition.isInverted ? target * 2 : target);
     history.write(habitId, day, previous.copyWith(value: clamped));
   }
+}
+
+/// Real Firestore-backed implementation of the "today" subset of
+/// [HabitRepository] — create/update/reorder + today's progress logging.
+/// See docs/BACKEND.md "Data sprint" for what's in scope here vs. deferred:
+///
+/// - The `*ForDate` methods (editing a *past* day) need the same
+///   `habitLogs`/history design [HabitHistoryStore] represents for the mock
+///   — a separate, bigger piece of work, not covered by this class yet.
+/// - [setHabitCompleted], [claimHabit], [unclaimHabit] (and their `*ForDate`
+///   twins) mint/burn XP and coins — `firestore.rules` denies clients from
+///   writing those fields directly on purpose (see the rules file), so
+///   these become Cloud Function calls in the Backend sprint, not plain
+///   Firestore writes. Left as [UnimplementedError] here on purpose, so a
+///   call site that isn't updated yet fails loudly instead of silently
+///   doing nothing.
+class FirestoreHabitRepository implements HabitRepository {
+  /// Every document lives under the signed-in user — see
+  /// docs/BACKEND.md "Firestore schema". Throws if nobody's signed in,
+  /// which today means always (Auth isn't wired up yet) — this class isn't
+  /// swapped into `AppData` until it is.
+  String get _uid {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw StateError('FirestoreHabitRepository used with no signed-in user');
+    }
+    return user.uid;
+  }
+
+  /// A `CollectionReference` is just a *pointer* to a path — it does no
+  /// network call by itself. The actual read/write happens on `.get()`,
+  /// `.set()`, `.update()` etc. below.
+  CollectionReference<Map<String, dynamic>> get _habits => FirebaseFirestore
+      .instance
+      .collection('users')
+      .doc(_uid)
+      .collection('habits');
+
+  @override
+  Future<List<Habit>> getTodayHabits() async {
+    // .get() returns a QuerySnapshot: a list of DocumentSnapshots. Ordering
+    // by a single field needs no composite index (unlike filtering +
+    // ordering on two different fields), which is why this doesn't also
+    // filter out archived habits yet — nothing sets archived=true today, so
+    // there's no behavior to gain from it, only an index requirement.
+    final snapshot = await _habits.orderBy('order').get();
+    return [
+      for (final doc in snapshot.docs) Habit.fromJson(doc.id, doc.data()),
+    ];
+  }
+
+  @override
+  Future<void> addHabit(Habit habit) async {
+    // New habits sort after everything existing. A millisecond timestamp is
+    // a simpler source of "always bigger than what's there" than counting
+    // existing docs first — reorderHabits below overwrites it with plain
+    // 0..n indices the moment a user actually drags to reorder.
+    final data = habit.toJson()
+      ..['order'] = DateTime.now().millisecondsSinceEpoch;
+    // .doc(habit.id).set(data) writes (or overwrites) the document at that
+    // exact id — habit.id already comes from IdGenerator client-side (see
+    // add_habit_screen.dart), so there's no server-assigned id to wait on.
+    await _habits.doc(habit.id).set(data);
+  }
+
+  @override
+  Future<void> updateHabit(Habit habit) async {
+    final json = habit.toJson();
+    // .update() only touches the keys you give it — everything else on the
+    // stored document is left alone. That's what makes this safe to call
+    // without also clobbering currentValue/isCompletedToday/lastAwarded* —
+    // deliberately excluded below, exactly like MockHabitRepository does
+    // with copyWith. This list is also exactly what firestore.rules allows
+    // a client update to touch (minus currentValue, which logProgress/
+    // setProgress below write instead) — keep the two in sync.
+    await _habits.doc(habit.id).update({
+      'name': json['name'],
+      'subtitle': json['subtitle'],
+      'iconKey': json['iconKey'],
+      'colorKey': json['colorKey'],
+      'xpReward': json['xpReward'],
+      'coinReward': json['coinReward'],
+      'repeat': json['repeat'],
+      'type': json['type'],
+      'difficulty': json['difficulty'],
+      'targetValue': json['targetValue'],
+      'unit': json['unit'],
+      'minThreshold': json['minThreshold'],
+      'quickLogAmount': json['quickLogAmount'],
+      'adaptiveMultiplier': json['adaptiveMultiplier'],
+      'customDays': json['customDays'],
+      'allowVacationFreeze': json['allowVacationFreeze'],
+      'startDate': json['startDate'],
+      'endDate': json['endDate'],
+      'order': json['order'],
+      'archived': json['archived'],
+    });
+  }
+
+  @override
+  Future<void> reorderHabits(List<String> orderedIds) async {
+    // A WriteBatch groups several writes into one atomic unit, like a
+    // transaction, but without a read step first — right for this, since
+    // reordering doesn't need to know any doc's current contents.
+    final batch = FirebaseFirestore.instance.batch();
+    for (var i = 0; i < orderedIds.length; i++) {
+      batch.update(_habits.doc(orderedIds[i]), {'order': i});
+    }
+    await batch.commit();
+  }
+
+  @override
+  Future<void> logProgress(String habitId, double amount) async {
+    final ref = _habits.doc(habitId);
+    // runTransaction does an atomic read-modify-write: the read inside sees
+    // a consistent snapshot, and the write only commits if nothing else
+    // changed that document in between. Needed here because the new value
+    // depends on the old one (currentValue + amount) — without a
+    // transaction, two near-simultaneous calls could both read the same
+    // starting value and one update would silently overwrite the other.
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final snapshot = await tx.get(ref);
+      if (!snapshot.exists) return;
+      final habit = Habit.fromJson(snapshot.id, snapshot.data()!);
+      if (habit.isCompletedToday) return;
+      final target = habit.targetValue;
+      final nextValue = target == null
+          ? habit.currentValue + amount
+          : (habit.currentValue + amount).clamp(
+              0,
+              habit.isInverted ? target * 2 : target,
+            );
+      tx.update(ref, {'currentValue': nextValue.toDouble()});
+    });
+  }
+
+  @override
+  Future<void> setProgress(String habitId, double value) async {
+    final ref = _habits.doc(habitId);
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final snapshot = await tx.get(ref);
+      if (!snapshot.exists) return;
+      final habit = Habit.fromJson(snapshot.id, snapshot.data()!);
+      if (habit.isCompletedToday) return;
+      final target = habit.targetValue;
+      final clamped = target == null
+          ? value.clamp(0.0, double.infinity)
+          : value.clamp(0.0, habit.isInverted ? target * 2 : target);
+      tx.update(ref, {'currentValue': clamped});
+    });
+  }
+
+  @override
+  Future<HabitRewardResult> setHabitCompleted(String habitId, bool completed) =>
+      throw UnimplementedError('claimHabit Cloud Function not wired up yet');
+
+  @override
+  Future<HabitRewardResult> claimHabit(String habitId) =>
+      throw UnimplementedError('claimHabit Cloud Function not wired up yet');
+
+  @override
+  Future<HabitRewardResult> unclaimHabit(String habitId) =>
+      throw UnimplementedError('unclaimHabit Cloud Function not wired up yet');
+
+  @override
+  Future<List<Habit>> getHabitsForDate(DateTime date) =>
+      throw UnimplementedError('habitLogs history design not built yet');
+
+  @override
+  Future<HabitRewardResult> setHabitCompletedForDate(
+    String habitId,
+    DateTime date,
+    bool completed,
+  ) => throw UnimplementedError('habitLogs history design not built yet');
+
+  @override
+  Future<void> logProgressForDate(String habitId, DateTime date, double amount) =>
+      throw UnimplementedError('habitLogs history design not built yet');
+
+  @override
+  Future<HabitRewardResult> claimHabitForDate(String habitId, DateTime date) =>
+      throw UnimplementedError('habitLogs history design not built yet');
+
+  @override
+  Future<HabitRewardResult> unclaimHabitForDate(String habitId, DateTime date) =>
+      throw UnimplementedError('habitLogs history design not built yet');
+
+  @override
+  Future<void> setProgressForDate(String habitId, DateTime date, double value) =>
+      throw UnimplementedError('habitLogs history design not built yet');
 }
