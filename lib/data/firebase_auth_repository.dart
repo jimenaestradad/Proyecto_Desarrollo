@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../models/nori_user.dart';
 import 'auth_repository.dart';
@@ -15,10 +16,12 @@ import 'auth_repository.dart';
 /// shell so the rest of the app (which expects a NoriUser back from auth)
 /// keeps working unchanged.
 class FirebaseAuthRepository implements AuthRepository {
-  FirebaseAuthRepository({FirebaseAuth? auth})
-    : _auth = auth ?? FirebaseAuth.instance;
+  FirebaseAuthRepository({FirebaseAuth? auth, GoogleSignIn? googleSignIn})
+    : _auth = auth ?? FirebaseAuth.instance,
+      _googleSignIn = googleSignIn ?? GoogleSignIn();
 
   final FirebaseAuth _auth;
+  final GoogleSignIn _googleSignIn;
 
   @override
   String? get currentUserId => _auth.currentUser?.uid;
@@ -71,7 +74,45 @@ class FirebaseAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> logOut() => _auth.signOut();
+  Future<NoriUser> logInWithGoogle() async {
+    try {
+      final googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) {
+        // Person closed the account picker — not a real error, just no
+        // sign-in to complete.
+        throw const AuthException('Sign-in was canceled.');
+      }
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user!;
+      final fallbackName = googleUser.email.contains('@')
+          ? googleUser.email.split('@').first
+          : googleUser.email;
+      return _starterUser(
+        id: user.uid,
+        name: user.displayName ?? googleUser.displayName ?? fallbackName,
+        username: user.displayName ?? googleUser.displayName ?? fallbackName,
+        email: user.email ?? googleUser.email,
+      );
+    } on FirebaseAuthException catch (e) {
+      throw AuthException(_logInMessage(e.code));
+    }
+  }
+
+  @override
+  Future<void> logOut() async {
+    // Also sign out of the Google account picker, otherwise a later
+    // "Continue with Google" silently re-signs-in the same account instead
+    // of letting the person choose (or pick a different one).
+    if (await _googleSignIn.isSignedIn()) {
+      await _googleSignIn.signOut();
+    }
+    await _auth.signOut();
+  }
 
   @override
   Future<void> sendPasswordResetEmail(String email) async {

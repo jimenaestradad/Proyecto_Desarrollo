@@ -61,6 +61,26 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _handleGoogleSignIn() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+
+    try {
+      await AppData.auth.logInWithGoogle();
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      // A canceled picker isn't worth a scary error message.
+      if (e.message != 'Sign-in was canceled.') _showMessage(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage('Unable to sign in with Google. Please try again.');
+    }
+  }
+
   Future<void> _forgotPassword() async {
     if (_loading) return;
     final emailController = TextEditingController(
@@ -146,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               _socialButton(
                                 label: 'Continue with Google',
                                 icon: Icons.g_mobiledata,
-                                onPressed: () => _showMessage('Coming soon'),
+                                onPressed: _loading ? null : _handleGoogleSignIn,
                               ),
                               const SizedBox(height: AppSpacing.stackMd),
                               const _Divider(),
@@ -208,7 +228,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _socialButton({
     required String label,
     required IconData icon,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
   }) {
     return SizedBox(
       width: double.infinity,
