@@ -47,7 +47,17 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
 
     try {
-      await AppData.auth.logIn(email: email, password: password);
+      final user = await AppData.auth.logIn(email: email, password: password);
+      // The mock UserRepository always starts at the same demo profile —
+      // without this, Profile would show "Hannah Walker" no matter who
+      // actually signed in. Real per-account data (level/XP/streak) is a
+      // separate, bigger backend task; this just makes the name/email
+      // honest.
+      await AppData.user.updateProfile(
+        name: user.name,
+        username: user.username,
+        email: user.email,
+      );
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
     } on AuthException catch (e) {
@@ -66,7 +76,12 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
 
     try {
-      await AppData.auth.logInWithGoogle();
+      final user = await AppData.auth.logInWithGoogle();
+      await AppData.user.updateProfile(
+        name: user.name,
+        username: user.username,
+        email: user.email,
+      );
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
     } on AuthException catch (e) {
