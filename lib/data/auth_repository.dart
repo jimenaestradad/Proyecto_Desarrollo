@@ -15,6 +15,11 @@ abstract class AuthRepository {
 
   Future<NoriUser> logIn({required String email, required String password});
 
+  /// Signs in (or, the first time, creates an account) with a Google
+  /// account. Throws [AuthException] with a user-facing message if the
+  /// person cancels the picker or the sign-in otherwise fails.
+  Future<NoriUser> logInWithGoogle();
+
   /// Signs the current user out. Screens should call this (not just
   /// navigate to `/welcome`) so a real backend actually ends the session —
   /// otherwise relaunching the app would just log the user back in.
@@ -87,5 +92,12 @@ class MockAuthRepository implements AuthRepository {
   @override
   Future<void> sendPasswordResetEmail(String email) async {
     await Future.delayed(const Duration(milliseconds: 300));
+  }
+
+  @override
+  Future<NoriUser> logInWithGoogle() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    _currentUserId = kDemoUser.id;
+    return kDemoUser;
   }
 }

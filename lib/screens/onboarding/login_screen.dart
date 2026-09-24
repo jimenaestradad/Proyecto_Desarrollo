@@ -47,7 +47,17 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
 
     try {
-      await AppData.auth.logIn(email: email, password: password);
+      final user = await AppData.auth.logIn(email: email, password: password);
+      // The mock UserRepository always starts at the same demo profile —
+      // without this, Profile would show "Hannah Walker" no matter who
+      // actually signed in. Real per-account data (level/XP/streak) is a
+      // separate, bigger backend task; this just makes the name/email
+      // honest.
+      await AppData.user.updateProfile(
+        name: user.name,
+        username: user.username,
+        email: user.email,
+      );
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
     } on AuthException catch (e) {
@@ -58,6 +68,31 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
       _showMessage('Unable to sign in. Please try again.');
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+
+    try {
+      final user = await AppData.auth.logInWithGoogle();
+      await AppData.user.updateProfile(
+        name: user.name,
+        username: user.username,
+        email: user.email,
+      );
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      // A canceled picker isn't worth a scary error message.
+      if (e.message != 'Sign-in was canceled.') _showMessage(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage('Unable to sign in with Google. Please try again.');
     }
   }
 
@@ -146,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               _socialButton(
                                 label: 'Continue with Google',
                                 icon: Icons.g_mobiledata,
-                                onPressed: () => _showMessage('Coming soon'),
+                                onPressed: _loading ? null : _handleGoogleSignIn,
                               ),
                               const SizedBox(height: AppSpacing.stackMd),
                               const _Divider(),
@@ -208,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _socialButton({
     required String label,
     required IconData icon,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
   }) {
     return SizedBox(
       width: double.infinity,

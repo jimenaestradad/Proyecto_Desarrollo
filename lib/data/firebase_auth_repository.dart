@@ -1,11 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../models/nori_user.dart';
 import 'auth_repository.dart';
 
-/// Real Firebase Authentication-backed [AuthRepository] (email/password
-/// only — Google Sign-In is a separate task on the board). Swapped in for
-/// [MockAuthRepository] in `app_data.dart`.
+/// Real Firebase Authentication-backed [AuthRepository]: email/password and
+/// Google Sign-In. Swapped in for [MockAuthRepository] in `app_data.dart`.
 ///
 /// This only proves *who* is signed in. The rest of that person's profile
 /// (level, XP, coins, streak, ...) still comes from [UserRepository]'s mock
@@ -15,10 +16,12 @@ import 'auth_repository.dart';
 /// shell so the rest of the app (which expects a NoriUser back from auth)
 /// keeps working unchanged.
 class FirebaseAuthRepository implements AuthRepository {
-  FirebaseAuthRepository({FirebaseAuth? auth})
-    : _auth = auth ?? FirebaseAuth.instance;
+  FirebaseAuthRepository({FirebaseAuth? auth, GoogleSignIn? googleSignIn})
+    : _auth = auth ?? FirebaseAuth.instance,
+      _googleSignIn = googleSignIn ?? GoogleSignIn();
 
   final FirebaseAuth _auth;
+  final GoogleSignIn _googleSignIn;
 
   @override
   String? get currentUserId => _auth.currentUser?.uid;
@@ -71,7 +74,56 @@ class FirebaseAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> logOut() => _auth.signOut();
+  Future<NoriUser> logInWithGoogle() async {
+    try {
+      final UserCredential userCredential;
+      if (kIsWeb) {
+        // On web, Firebase's own popup flow needs no native setup at all —
+        // no SHA-1, no Android SDK — which is what this machine can
+        // actually test today (`flutter run -d chrome`). This is the path
+        // exercised during dev; see the else-branch below for the native
+        // Android flow that ships to production (needs the SHA-1
+        // fingerprint registered in Firebase console — see
+        // docs/OPEN_DECISIONS.md).
+        userCredential = await _auth.signInWithPopup(GoogleAuthProvider());
+      } else {
+        final googleUser = await _googleSignIn.signIn();
+        if (googleUser == null) {
+          // Person closed the account picker — not a real error, just no
+          // sign-in to complete.
+          throw const AuthException('Sign-in was canceled.');
+        }
+        final googleAuth = await googleUser.authentication;
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        userCredential = await _auth.signInWithCredential(credential);
+      }
+      final user = userCredential.user!;
+      final email = user.email ?? '';
+      final fallbackName = email.contains('@') ? email.split('@').first : email;
+      return _starterUser(
+        id: user.uid,
+        name: user.displayName ?? fallbackName,
+        username: user.displayName ?? fallbackName,
+        email: email,
+      );
+    } on FirebaseAuthException catch (e) {
+      throw AuthException(_logInMessage(e.code));
+    }
+  }
+
+  @override
+  Future<void> logOut() async {
+    // Also sign out of the Google account picker, otherwise a later
+    // "Continue with Google" silently re-signs-in the same account instead
+    // of letting the person choose (or pick a different one).
+    if (await _googleSignIn.isSignedIn()) {
+      await _googleSignIn.signOut();
+    }
+    await _auth.signOut();
+  }
 
   @override
   Future<void> sendPasswordResetEmail(String email) async {
