@@ -20,7 +20,7 @@ class AppData {
 
   static AuthRepository auth = FirebaseAuthRepository();
   static HabitRepository habits = MockHabitRepository();
-  static VacationLog vacationLog = VacationLog();
+  static VacationLog vacationLog = MockVacationLog();
   static CalendarRepository calendar = MockCalendarRepository(
     habits,
     vacationLog,

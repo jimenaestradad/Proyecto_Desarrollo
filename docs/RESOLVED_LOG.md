@@ -2,6 +2,10 @@
 
 Trimmed historical fix log for Nori, split out of `docs/KNOWN_ISSUES.md` on 2026-09-16 to keep the working file scannable. Full narrative detail from before the split was intentionally condensed; this log favors terse entries going forward.
 
+### 2026-09-24 — Firestore habit state now rolls over correctly at midnight
+
+`FirestoreHabitRepository` previously stored today's live state (`currentValue`/`isCompletedToday`/`lastAwardedXp`/`lastAwardedCoins`) directly on the habit doc, so it didn't reset at the calendar boundary — logged 2026-09-23 as a 🔴 critical bug. Habit docs are now pure definitions; every day's state, today included, lives in `habitLogs`, keyed by date. Also fixed in the same pass: `Habit.createdAt` gives `isScheduledOn` an implicit lower bound so a brand-new habit no longer counts as "missed" on days before it existed, and habit-definition queries now filter `archived == false` in memory. `firestore.rules` updated to match — the habit doc's `create` rule no longer guards Cloud-Function-only fields that don't live on that doc anymore.
+
 ### 2026-09-16 — pet evolution didn't revert when a claim was undone
 
 `PetRepository.syncEvolution` only promoted at the evolution threshold, so undoing a claim could lower the level without demoting the pet. It now handles both directions; celebration checks at all call sites only fire for a forward stage change, so de-evolution remains silent.

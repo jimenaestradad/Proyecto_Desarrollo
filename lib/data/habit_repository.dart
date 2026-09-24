@@ -331,16 +331,6 @@ class MockHabitRepository implements HabitRepository {
       ..addAll(reordered);
   }
 
-  /// Applies a day's logged state onto a habit's definition, the same shape
-  /// [getTodayHabits] hands widgets today — so `HabitProgressCard` etc. don't
-  /// need to know they're looking at a past day.
-  Habit _hydrate(Habit definition, HabitDayState state) => definition.copyWith(
-    currentValue: state.value,
-    isCompletedToday: state.claimed,
-    lastAwardedXp: state.awardedXp,
-    lastAwardedCoins: state.awardedCoins,
-  );
-
   @override
   Future<List<Habit>> getHabitsForDate(DateTime date) async {
     if (_isToday(date)) return getTodayHabits();
@@ -348,7 +338,7 @@ class MockHabitRepository implements HabitRepository {
     return [
       for (final definition in _habits)
         if (definition.isScheduledOn(day))
-          _hydrate(definition, history.stateFor(definition.id, day)),
+          definition.hydrate(history.stateFor(definition.id, day)),
     ];
   }
 
@@ -486,13 +476,14 @@ class MockHabitRepository implements HabitRepository {
   }
 }
 
-/// Real Firestore-backed implementation of the "today" subset of
-/// [HabitRepository] — create/update/reorder + today's progress logging.
-/// See docs/BACKEND.md "Data sprint" for what's in scope here vs. deferred:
+/// Real Firestore-backed implementation of the plain-CRUD subset of
+/// [HabitRepository] — create/update/reorder, and progress logging for any
+/// day, today included. A habit doc holds only its *definition*; a day's
+/// logged progress (`currentValue`/`isCompletedToday`/`lastAwardedXp`/
+/// `lastAwardedCoins`) always lives in `habitLogs`, keyed by date — there is
+/// no separate "today" storage to fall out of sync at midnight. See
+/// docs/BACKEND.md "Data sprint" for what's in scope here vs. deferred:
 ///
-/// - The `*ForDate` methods (editing a *past* day) need the same
-///   `habitLogs`/history design [HabitHistoryStore] represents for the mock
-///   — a separate, bigger piece of work, not covered by this class yet.
 /// - [setHabitCompleted], [claimHabit], [unclaimHabit] (and their `*ForDate`
 ///   twins) mint/burn XP and coins — `firestore.rules` denies clients from
 ///   writing those fields directly on purpose (see the rules file), so
@@ -502,9 +493,7 @@ class MockHabitRepository implements HabitRepository {
 ///   doing nothing.
 class FirestoreHabitRepository implements HabitRepository {
   /// Every document lives under the signed-in user — see
-  /// docs/BACKEND.md "Firestore schema". Throws if nobody's signed in,
-  /// which today means always (Auth isn't wired up yet) — this class isn't
-  /// swapped into `AppData` until it is.
+  /// docs/BACKEND.md "Firestore schema". Throws if nobody's signed in.
   String get _uid {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -522,65 +511,137 @@ class FirestoreHabitRepository implements HabitRepository {
       .doc(_uid)
       .collection('habits');
 
-  @override
-  Future<List<Habit>> getTodayHabits() async {
-    // .get() returns a QuerySnapshot: a list of DocumentSnapshots. Ordering
-    // by a single field needs no composite index (unlike filtering +
-    // ordering on two different fields), which is why this doesn't also
-    // filter out archived habits yet — nothing sets archived=true today, so
-    // there's no behavior to gain from it, only an index requirement.
+  /// Flat, not nested under `_habits` — see docs/BACKEND.md's "Why
+  /// `habitLogs` is a flat collection" for why: it's what makes [logsInRange]
+  /// below a single range query instead of one query per habit.
+  CollectionReference<Map<String, dynamic>> get _habitLogs => FirebaseFirestore
+      .instance
+      .collection('users')
+      .doc(_uid)
+      .collection('habitLogs');
+
+  /// Every `habitLogs` entry with `date` in [start, end] (inclusive), keyed
+  /// by its document id (`{dayKey}_{habitId}`) — **one** query, not one per
+  /// day. [FirestoreCalendarRepository] in `calendar_repository.dart` is
+  /// built entirely on this: fetch the whole visible range once, then derive
+  /// day statuses/streaks/stats in memory, instead of the N+1 query pattern
+  /// [MockCalendarRepository] gets away with only because its "queries" are
+  /// free in-memory map lookups.
+  ///
+  /// Public (not `_`-prefixed) specifically so a different file can call it
+  /// — `HabitRepository` itself has no "batch fetch a range" concept, since
+  /// that's a Firestore-specific optimization, not something every backend
+  /// needs to expose the same way.
+  Future<Map<String, HabitDayState>> logsInRange(
+    DateTime start,
+    DateTime end,
+  ) async {
+    final snapshot = await _habitLogs
+        .where('date', isGreaterThanOrEqualTo: dateOnly(start))
+        .where('date', isLessThanOrEqualTo: dateOnly(end))
+        .get();
+    return {
+      for (final doc in snapshot.docs) doc.id: HabitDayState.fromJson(doc.data()),
+    };
+  }
+
+  /// A single habit's definition, or `null` if it doesn't exist — used by
+  /// [logProgressForDate]/[setProgressForDate], which only need one habit's
+  /// `targetValue`/`isInverted` to clamp against, not the whole collection.
+  Future<Habit?> _fetchDefinition(String habitId) async {
+    final doc = await _habits.doc(habitId).get();
+    if (!doc.exists) return null;
+    return Habit.fromJson(doc.id, doc.data()!);
+  }
+
+  /// Every non-archived habit definition, ordered by `order` — the shared
+  /// base [getTodayHabits] and [getHabitsForDate] both hydrate. Filtering
+  /// `archived` here in Dart, instead of a Firestore `where`, avoids needing
+  /// a composite index (equality + orderBy on a different field) at a scale
+  /// — a handful of habits per user — where that index would buy nothing.
+  Future<List<Habit>> _fetchDefinitions() async {
     final snapshot = await _habits.orderBy('order').get();
     return [
       for (final doc in snapshot.docs) Habit.fromJson(doc.id, doc.data()),
+    ].where((habit) => !habit.archived).toList();
+  }
+
+  /// The subset of `Habit.toJson()` that actually lives on the habit doc.
+  /// `currentValue`/`isCompletedToday`/`lastAwardedXp`/`lastAwardedCoins`
+  /// live in `habitLogs` instead — for *every* day, including today, not
+  /// just past ones (that's the fix for the midnight-rollover bug: a habit
+  /// doc is now a pure, dateless definition, so there's nothing on it that
+  /// needs resetting when the calendar day changes). `order`/`archived`/
+  /// `createdAt` are each owned by a different write path — `reorderHabits`,
+  /// a future archive/delete flow, and [addHabit] respectively — not by
+  /// editing a habit's own definition, so [updateHabit] excludes them too.
+  Map<String, dynamic> _definitionFields(Map<String, dynamic> json) => {
+    'name': json['name'],
+    'subtitle': json['subtitle'],
+    'iconKey': json['iconKey'],
+    'colorKey': json['colorKey'],
+    'xpReward': json['xpReward'],
+    'coinReward': json['coinReward'],
+    'repeat': json['repeat'],
+    'type': json['type'],
+    'difficulty': json['difficulty'],
+    'targetValue': json['targetValue'],
+    'unit': json['unit'],
+    'minThreshold': json['minThreshold'],
+    'quickLogAmount': json['quickLogAmount'],
+    'adaptiveMultiplier': json['adaptiveMultiplier'],
+    'customDays': json['customDays'],
+    'allowVacationFreeze': json['allowVacationFreeze'],
+    'startDate': json['startDate'],
+    'endDate': json['endDate'],
+  };
+
+  @override
+  Future<List<Habit>> getTodayHabits() async {
+    // Structurally identical to getHabitsForDate(today), minus the schedule
+    // filter — getTodayHabits shows every non-archived habit regardless of
+    // whether it's "due" today (see the interface doc comment), while
+    // getHabitsForDate below only returns what's actually scheduled.
+    final definitions = await _fetchDefinitions();
+    final today = dateOnly(DateTime.now());
+    final logs = await logsInRange(today, today);
+    return [
+      for (final definition in definitions)
+        definition.hydrate(
+          logs['${dayKey(today)}_${definition.id}'] ?? HabitDayState.empty,
+        ),
     ];
   }
 
   @override
   Future<void> addHabit(Habit habit) async {
-    // New habits sort after everything existing. A millisecond timestamp is
-    // a simpler source of "always bigger than what's there" than counting
-    // existing docs first — reorderHabits below overwrites it with plain
-    // 0..n indices the moment a user actually drags to reorder.
-    final data = habit.toJson()
-      ..['order'] = DateTime.now().millisecondsSinceEpoch;
     // .doc(habit.id).set(data) writes (or overwrites) the document at that
     // exact id — habit.id already comes from IdGenerator client-side (see
     // add_habit_screen.dart), so there's no server-assigned id to wait on.
-    await _habits.doc(habit.id).set(data);
+    await _habits.doc(habit.id).set({
+      ..._definitionFields(habit.toJson()),
+      // New habits sort after everything existing. A millisecond timestamp
+      // is a simpler source of "always bigger than what's there" than
+      // counting existing docs first — reorderHabits overwrites it with
+      // plain 0..n indices the moment a user actually drags to reorder.
+      'order': DateTime.now().millisecondsSinceEpoch,
+      'archived': false,
+      // Read by Habit.isScheduledOn as an implicit lower bound, so a
+      // brand-new habit doesn't retroactively count as "missed" on
+      // calendar days before it existed.
+      'createdAt': DateTime.now(),
+    });
   }
 
   @override
   Future<void> updateHabit(Habit habit) async {
-    final json = habit.toJson();
-    // .update() only touches the keys you give it — everything else on the
-    // stored document is left alone. That's what makes this safe to call
-    // without also clobbering currentValue/isCompletedToday/lastAwarded* —
-    // deliberately excluded below, exactly like MockHabitRepository does
-    // with copyWith. This list is also exactly what firestore.rules allows
-    // a client update to touch (minus currentValue, which logProgress/
-    // setProgress below write instead) — keep the two in sync.
-    await _habits.doc(habit.id).update({
-      'name': json['name'],
-      'subtitle': json['subtitle'],
-      'iconKey': json['iconKey'],
-      'colorKey': json['colorKey'],
-      'xpReward': json['xpReward'],
-      'coinReward': json['coinReward'],
-      'repeat': json['repeat'],
-      'type': json['type'],
-      'difficulty': json['difficulty'],
-      'targetValue': json['targetValue'],
-      'unit': json['unit'],
-      'minThreshold': json['minThreshold'],
-      'quickLogAmount': json['quickLogAmount'],
-      'adaptiveMultiplier': json['adaptiveMultiplier'],
-      'customDays': json['customDays'],
-      'allowVacationFreeze': json['allowVacationFreeze'],
-      'startDate': json['startDate'],
-      'endDate': json['endDate'],
-      'order': json['order'],
-      'archived': json['archived'],
-    });
+    // .update() only touches the keys given — everything else on the
+    // stored document is left alone, which is what makes this safe to call
+    // without needing to preserve anything: there's no currentValue/
+    // isCompletedToday/lastAwarded* on the habit doc to clobber anymore
+    // (see _definitionFields), and order/archived/createdAt are each owned
+    // by a different write path than "edit this habit's definition".
+    await _habits.doc(habit.id).update(_definitionFields(habit.toJson()));
   }
 
   @override
@@ -595,46 +656,17 @@ class FirestoreHabitRepository implements HabitRepository {
     await batch.commit();
   }
 
+  // logProgress/setProgress are just logProgressForDate/setProgressForDate
+  // for today — there's no separate "today" storage anymore (that was the
+  // midnight-rollover bug: see docs/KNOWN_ISSUES.md), so today needs no
+  // special-cased transaction of its own.
   @override
-  Future<void> logProgress(String habitId, double amount) async {
-    final ref = _habits.doc(habitId);
-    // runTransaction does an atomic read-modify-write: the read inside sees
-    // a consistent snapshot, and the write only commits if nothing else
-    // changed that document in between. Needed here because the new value
-    // depends on the old one (currentValue + amount) — without a
-    // transaction, two near-simultaneous calls could both read the same
-    // starting value and one update would silently overwrite the other.
-    await FirebaseFirestore.instance.runTransaction((tx) async {
-      final snapshot = await tx.get(ref);
-      if (!snapshot.exists) return;
-      final habit = Habit.fromJson(snapshot.id, snapshot.data()!);
-      if (habit.isCompletedToday) return;
-      final target = habit.targetValue;
-      final nextValue = target == null
-          ? habit.currentValue + amount
-          : (habit.currentValue + amount).clamp(
-              0,
-              habit.isInverted ? target * 2 : target,
-            );
-      tx.update(ref, {'currentValue': nextValue.toDouble()});
-    });
-  }
+  Future<void> logProgress(String habitId, double amount) =>
+      logProgressForDate(habitId, DateTime.now(), amount);
 
   @override
-  Future<void> setProgress(String habitId, double value) async {
-    final ref = _habits.doc(habitId);
-    await FirebaseFirestore.instance.runTransaction((tx) async {
-      final snapshot = await tx.get(ref);
-      if (!snapshot.exists) return;
-      final habit = Habit.fromJson(snapshot.id, snapshot.data()!);
-      if (habit.isCompletedToday) return;
-      final target = habit.targetValue;
-      final clamped = target == null
-          ? value.clamp(0.0, double.infinity)
-          : value.clamp(0.0, habit.isInverted ? target * 2 : target);
-      tx.update(ref, {'currentValue': clamped});
-    });
-  }
+  Future<void> setProgress(String habitId, double value) =>
+      setProgressForDate(habitId, DateTime.now(), value);
 
   @override
   Future<HabitRewardResult> setHabitCompleted(String habitId, bool completed) =>
@@ -649,29 +681,98 @@ class FirestoreHabitRepository implements HabitRepository {
       throw UnimplementedError('unclaimHabit Cloud Function not wired up yet');
 
   @override
-  Future<List<Habit>> getHabitsForDate(DateTime date) =>
-      throw UnimplementedError('habitLogs history design not built yet');
+  Future<List<Habit>> getHabitsForDate(DateTime date) async {
+    final day = dateOnly(date);
+    final definitions = await _fetchDefinitions();
+    final scheduled = [
+      for (final definition in definitions)
+        if (definition.isScheduledOn(day)) definition,
+    ];
+    if (scheduled.isEmpty) return const [];
+
+    final logs = await logsInRange(day, day);
+    return [
+      for (final definition in scheduled)
+        definition.hydrate(logs['${dayKey(day)}_${definition.id}'] ?? HabitDayState.empty),
+    ];
+  }
 
   @override
   Future<HabitRewardResult> setHabitCompletedForDate(
     String habitId,
     DateTime date,
     bool completed,
-  ) => throw UnimplementedError('habitLogs history design not built yet');
+  ) => throw UnimplementedError('claimHabit Cloud Function not wired up yet');
 
   @override
-  Future<void> logProgressForDate(String habitId, DateTime date, double amount) =>
-      throw UnimplementedError('habitLogs history design not built yet');
+  Future<void> logProgressForDate(String habitId, DateTime date, double amount) async {
+    // A single doc read, not the whole collection — MockHabitRepository's
+    // equivalent (`_habits.indexWhere`) is a free in-memory scan, but that's
+    // not true here, and unlike firstWhere this also matches the mock's
+    // no-op-if-the-habit-doesn't-exist behavior instead of throwing.
+    final definition = await _fetchDefinition(habitId);
+    if (definition == null) return;
+    final day = dateOnly(date);
+    final ref = _habitLogs.doc('${dayKey(day)}_$habitId');
+
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final snapshot = await tx.get(ref);
+      final previous = snapshot.exists
+          ? HabitDayState.fromJson(snapshot.data()!)
+          : HabitDayState.empty;
+      if (previous.claimed) return;
+      final target = definition.targetValue;
+      final nextValue = target == null
+          ? previous.value + amount
+          : (previous.value + amount).clamp(
+              0,
+              definition.isInverted ? target * 2 : target,
+            );
+      // set(), not update() — the doc may not exist yet if this is the
+      // first time progress was logged on this past day. habitId/dayKey/
+      // date are re-sent every time alongside the changed value, but
+      // firestore.rules' hasOnly(['value']) still allows it: diff() only
+      // flags keys whose *value* actually changed, and those three don't.
+      tx.set(ref, {
+        ...previous.copyWith(value: nextValue.toDouble()).toJson(),
+        'habitId': habitId,
+        'dayKey': dayKey(day),
+        'date': day,
+      });
+    });
+  }
 
   @override
   Future<HabitRewardResult> claimHabitForDate(String habitId, DateTime date) =>
-      throw UnimplementedError('habitLogs history design not built yet');
+      throw UnimplementedError('claimHabit Cloud Function not wired up yet');
 
   @override
   Future<HabitRewardResult> unclaimHabitForDate(String habitId, DateTime date) =>
-      throw UnimplementedError('habitLogs history design not built yet');
+      throw UnimplementedError('unclaimHabit Cloud Function not wired up yet');
 
   @override
-  Future<void> setProgressForDate(String habitId, DateTime date, double value) =>
-      throw UnimplementedError('habitLogs history design not built yet');
+  Future<void> setProgressForDate(String habitId, DateTime date, double value) async {
+    final definition = await _fetchDefinition(habitId);
+    if (definition == null) return;
+    final day = dateOnly(date);
+    final ref = _habitLogs.doc('${dayKey(day)}_$habitId');
+
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final snapshot = await tx.get(ref);
+      final previous = snapshot.exists
+          ? HabitDayState.fromJson(snapshot.data()!)
+          : HabitDayState.empty;
+      if (previous.claimed) return;
+      final target = definition.targetValue;
+      final clamped = target == null
+          ? value.clamp(0.0, double.infinity)
+          : value.clamp(0.0, definition.isInverted ? target * 2 : target);
+      tx.set(ref, {
+        ...previous.copyWith(value: clamped).toJson(),
+        'habitId': habitId,
+        'dayKey': dayKey(day),
+        'date': day,
+      });
+    });
+  }
 }

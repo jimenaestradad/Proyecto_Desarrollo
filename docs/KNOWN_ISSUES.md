@@ -30,11 +30,27 @@ re-running the audit.
 
 ## 🔴 Critical
 
-(None open right now — see docs/RESOLVED_LOG.md for the four fixed 2026-09-11.)
+(None open right now — see docs/RESOLVED_LOG.md for the midnight-rollover fix, 2026-09-24.)
 
 ---
 
 ## 🟠 Important
+
+### FirestoreVacationLog can't actually persist yet (2026-09-23 audit)
+
+`FirestoreVacationLog` (`lib/data/vacation_log.dart`) reads and writes
+`vacationModeEnabled`/`vacationRanges` on `/users/{uid}`, but that document is never
+created for a new account. `FirebaseAuthRepository.signUp` does not create it,
+`firestore.rules` has no `allow create` for `/users/{uid}` (only read/update), and
+Jimena's `onUserCreate` account-provisioning Cloud Function described in
+`docs/BACKEND.md` does not exist yet.
+
+Consequently, a new user enabling Vacation Mode can update `startFreeze`'s in-memory
+cache and then gets a not-found error from the Firestore `.update()` call because the
+parent document is absent. This needs coordination with account creation, not a habit/
+calendar-only workaround: guessing at a partial user-document shape client-side risks
+conflicting with the eventual provisioning flow. It is not live yet because
+`AppData.vacationLog` still points at the mock.
 
 ### No error handling outside the two auth screens (2026-09-10 audit)
 
@@ -94,6 +110,34 @@ are toggled per-stat, not via tapping the pet itself. Not a bug.)
 ---
 
 ## 🟡 Minor / polish / backlog
+
+### FirestoreCalendarRepository re-runs its 400-day streak query on every getMonth call (2026-09-23 audit)
+
+`FirestoreCalendarRepository.getMonth()` (`lib/data/calendar_repository.dart`) calls
+`_currentStreak()`, which performs a fresh 400-day `logsInRange` query every time — even
+when browsing a past month where the current streak is irrelevant to the display. The
+three `getMonth` fetches (habit definitions, the month's log range, and the streak's
+400-day range) also run sequentially instead of concurrently with `Future.wait`, though
+none depends on the others.
+
+### FirestoreCalendarRepository duplicates MockCalendarRepository's status/streak logic (2026-09-23 audit)
+
+`FirestoreCalendarRepository._statusFor` and `_currentStreak` are copied nearly
+line-for-line from `MockCalendarRepository` rather than sharing one implementation. A
+future status or streak rule change — for example, respecting a per-habit
+`allowVacationFreeze` flag — must be made twice; missing one would make the mock and
+Firestore calendars silently disagree, undercutting the mock's doc-comment promise
+that a day's colour and habit list can never disagree.
+
+### Streak/stats day-walk skips a day across DST (2026-09-23 audit)
+
+`FirestoreCalendarRepository._currentStreak` and `MockCalendarRepository._currentStreak`,
+along with `getHabitStats` in both, walk backward by subtracting a fixed
+`Duration(days: 1)`/24 hours from a `DateTime` instead of constructing
+`DateTime(year, month, day - 1)`. On a daylight-saving spring-forward transition,
+local midnight minus 24 hours lands at 23:00 two calendar days back, silently skipping
+a day. This predates the Firestore work in the mock; it was found during this audit,
+not introduced by it.
 
 ### Notifications "Do it now" CTA doesn't take the user anywhere (2026-09-15 audit)
 

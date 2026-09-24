@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../data/color_registry.dart';
 import '../data/icon_registry.dart';
+import '../utils/firestore_date.dart';
+import 'habit_day_state.dart';
 
 enum HabitRepeat { daily, weekdays, weekends, custom }
 
@@ -99,6 +101,7 @@ class Habit {
     this.isCompletedToday = false,
     this.order = 0,
     this.archived = false,
+    this.createdAt,
   });
 
   final String id;
@@ -163,6 +166,13 @@ class Habit {
   /// the schema doesn't need a migration once one is.
   final bool archived;
 
+  /// When this habit was created. Null for the mock's seed habits (which
+  /// have always "existed"); always set for a real, Firestore-created
+  /// habit — see [isScheduledOn], which uses it as an implicit lower bound
+  /// so a brand-new habit doesn't retroactively count as "missed" on days
+  /// before it existed.
+  final DateTime? createdAt;
+
   bool get hasProgressTracking => type != HabitType.binary;
 
   /// The amount a single quick-log tap adds. [quickLogAmount] if the user
@@ -209,6 +219,12 @@ class Habit {
   /// docs/OPEN_DECISIONS.md.
   bool isScheduledOn(DateTime date) {
     final day = DateTime(date.year, date.month, date.day);
+
+    final created = createdAt;
+    if (created != null &&
+        day.isBefore(DateTime(created.year, created.month, created.day))) {
+      return false;
+    }
 
     final start = startDate;
     if (start != null &&
@@ -271,6 +287,19 @@ class Habit {
     );
   }
 
+  /// Applies a specific day's logged progress/claim state onto this
+  /// definition — the shape every screen expects a [Habit] in (see
+  /// [MockHabitRepository]'s own private version of this, which this
+  /// mirrors for the real Firestore-backed repositories in
+  /// `habit_repository.dart` and `calendar_repository.dart`, so both share
+  /// one implementation instead of three copies).
+  Habit hydrate(HabitDayState state) => copyWith(
+    currentValue: state.value,
+    isCompletedToday: state.claimed,
+    lastAwardedXp: state.awardedXp,
+    lastAwardedCoins: state.awardedCoins,
+  );
+
   Habit copyWith({
     bool? isCompletedToday,
     double? currentValue,
@@ -305,6 +334,7 @@ class Habit {
       isCompletedToday: isCompletedToday ?? this.isCompletedToday,
       order: order ?? this.order,
       archived: archived ?? this.archived,
+      createdAt: createdAt,
     );
   }
 
@@ -336,6 +366,7 @@ class Habit {
     'isCompletedToday': isCompletedToday,
     'order': order,
     'archived': archived,
+    'createdAt': createdAt,
   };
 
   /// [id] comes from the Firestore document snapshot's `.id`, not from
@@ -348,9 +379,13 @@ class Habit {
     color: ColorRegistry.colorFor(json['colorKey'] as String),
     xpReward: json['xpReward'] as int,
     coinReward: json['coinReward'] as int,
-    repeat: HabitRepeat.values.byName(json['repeat'] as String),
-    type: HabitType.values.byName(json['type'] as String),
-    difficulty: HabitDifficulty.values.byName(json['difficulty'] as String),
+    repeat: _enumFromName(HabitRepeat.values, json['repeat'], HabitRepeat.daily),
+    type: _enumFromName(HabitType.values, json['type'], HabitType.binary),
+    difficulty: _enumFromName(
+      HabitDifficulty.values,
+      json['difficulty'],
+      HabitDifficulty.medium,
+    ),
     targetValue: (json['targetValue'] as num?)?.toDouble(),
     unit: json['unit'] as String?,
     minThreshold: (json['minThreshold'] as num?)?.toDouble(),
@@ -363,21 +398,25 @@ class Habit {
     allowVacationFreeze: json['allowVacationFreeze'] as bool? ?? true,
     lastAwardedXp: json['lastAwardedXp'] as int? ?? 0,
     lastAwardedCoins: json['lastAwardedCoins'] as int? ?? 0,
-    startDate: _dateFrom(json['startDate']),
-    endDate: _dateFrom(json['endDate']),
+    startDate: dateFromFirestoreValue(json['startDate']),
+    endDate: dateFromFirestoreValue(json['endDate']),
     isCompletedToday: json['isCompletedToday'] as bool? ?? false,
     order: json['order'] as int? ?? 0,
     archived: json['archived'] as bool? ?? false,
+    createdAt: dateFromFirestoreValue(json['createdAt']),
   );
 }
 
-/// Reads a date field written by [Habit.toJson]. `cloud_firestore` accepts a
-/// raw [DateTime] on write but hands back its own `Timestamp` type on read —
-/// calling `.toDate()` dynamically (instead of importing `cloud_firestore`
-/// here just for that one type check) keeps this model file backend-agnostic
-/// like every other repository interface in `lib/data/`.
-DateTime? _dateFrom(dynamic value) {
-  if (value == null) return null;
-  if (value is DateTime) return value;
-  return (value as dynamic).toDate() as DateTime;
+/// Matches [value] against an enum's `.name` (see docs/BACKEND.md
+/// "Conventions" — enums are stored as `.name`, never index ints, since
+/// index order silently changes if someone adds a value later). Falls back
+/// to [fallback] instead of throwing on a value this build doesn't
+/// recognize — e.g. an older client reading a `HabitType` a newer client
+/// added — rather than crashing the whole habit list over one bad field.
+T _enumFromName<T extends Enum>(List<T> values, dynamic value, T fallback) {
+  if (value is! String) return fallback;
+  for (final entry in values) {
+    if (entry.name == value) return entry;
+  }
+  return fallback;
 }

@@ -85,17 +85,31 @@ users — see "Username uniqueness" below.
   name, username, email, avatarUrl, createdAt
   level, totalXp, xpIntoLevel, xpForNextLevel, coins
   vacationModeEnabled, vacationRanges: [{start, end}]   # small + always read with the user; array is fine
+  # Resolved 2026-09-23: a currently-open freeze is the last array entry with
+  # end == null; vacationModeEnabled mirrors that as a quick boolean so a
+  # settings toggle doesn't need to parse the array to render itself. See
+  # FirestoreVacationLog in lib/data/vacation_log.dart.
   habitCategories: [string]         # user-editable via Settings — NOT a static catalog, see below
   firstHabitCompletedAt: Timestamp? # null until first claim; gates the one-time sunglasses gift
   # NOTE: currentStreak is deliberately NOT stored — see "Derived, never stored" below
 
-/users/{uid}/habits/{habitId}
+/users/{uid}/habits/{habitId}      # a pure definition — no day-specific state, see below
   name, subtitle, iconKey (string), colorKey (string),   # see "Serialization" below — never store codePoints
   xpReward, coinReward, repeat, type, difficulty,        # enums stored as .name strings
   targetValue, unit, minThreshold,
-  quickLogAmount, currentValue, adaptiveMultiplier, customDays, allowVacationFreeze,
-  startDate, endDate, order, archived (bool, default false — new field, see deletion rule),
-  isCompletedToday, lastAwardedXp, lastAwardedCoins    # ← Cloud-Function-only fields, see rules
+  quickLogAmount, adaptiveMultiplier, customDays, allowVacationFreeze,
+  startDate, endDate, order, archived (bool, default false — see deletion rule),
+  createdAt   # implicit lower bound for isScheduledOn — see "Resolved 2026-09-24" below
+  # Resolved 2026-09-24 (supersedes the original plan): currentValue,
+  # isCompletedToday, lastAwardedXp, lastAwardedCoins do NOT live here.
+  # The original plan stored "today's" values directly on the habit doc,
+  # which turned out to have no way to roll over at midnight — see
+  # docs/KNOWN_ISSUES.md's 2026-09-23 entry for the bug this caused. Fixed
+  # by moving that state into habitLogs for *every* day, today included, so
+  # there's nothing on the habit doc that needs resetting when the date
+  # changes. A day's Habit is now always built by reading the definition +
+  # that day's habitLogs entry and merging them (Habit.hydrate) — never by
+  # reading stored "current" fields.
 
 /users/{uid}/habitLogs/{dayKey}_{habitId}     # flat, not nested under habits/ — see below
   habitId, dayKey (string 'yyyy-mm-dd'), date (Timestamp, local midnight), value,
@@ -474,11 +488,30 @@ Same idea — defaults so nothing stalls, most of them just describing what the 
 
 ## Local dev
 
-Use the **Firebase Local Emulator Suite** (Firestore + Auth + Functions emulators) for both of
-you during development — never point local `flutter run` at the production `nori-pet` project.
-Emulator config is GCP-sprint setup work; the seed-data script (replacing today's
-`HabitHistoryStore.seedHistory` demo generator) is Data-sprint work; how the two of you
-share/reset emulator state is worth agreeing on before either sprint starts coding.
+**Changed 2026-09-23 from the original plan below:** given this is a 2-person course project
+(not a production app with real users or real stakes), Valeria's side has been developing and
+testing directly against the live `nori-pet` project instead of the emulator — using a disposable
+test account (credentials in the gitignored `TEST_ACCOUNT.local.md`), verifying each repository
+method against real Firestore, then deleting the test documents afterward via
+`firebase firestore:delete`. No Java runtime was available locally, and the emulator's main
+value (cost control, blast-radius limits, instant resets) matters much less at this scale than the
+faster iteration loop of skipping it. `firebase.json`'s `emulators` config was removed since it
+was never actually used. Jimena can use either approach — this isn't a hard rule, just what
+happened in practice.
+
+The seed-data script (replacing `HabitHistoryStore.seedHistory`'s demo generator) turned out to
+be blocked by the same rule as claiming a habit: `firestore.rules` denies a plain client from
+writing `claimed: true`/`awardedXp`/`awardedCoins` on a habit log — on purpose, since that's
+exactly how someone would fake themselves free rewards — so a script running as a normal signed-in
+user can only ever seed *unclaimed* progress, never a believable "completed" history. A real
+version needs the Firebase Admin SDK (bypasses rules, same mechanism Cloud Functions use), which
+means it belongs with the Backend-sprint Cloud Functions work, not before it — not written yet.
+
+Original plan (superseded by the above for this project's actual scale, kept for context): use
+the **Firebase Local Emulator Suite** (Firestore + Auth + Functions emulators) for both of you
+during development — never point local `flutter run` at the production `nori-pet` project.
+Emulator config is GCP-sprint setup work; how the two of you share/reset emulator state is worth
+agreeing on before either sprint starts coding if you do end up using it.
 
 ## Phased rollout
 
@@ -511,10 +544,12 @@ just "design the DB," so it isn't a thin sprint sitting next to a heavy Backend 
    action and nothing to guard. Only its Data-sprint read-the-repositories code exists.
 
 ### GCP sprint
-`Setup Firebase project` ✅ done. Left: add `cloud_firestore`/`firebase_auth`/`cloud_functions`
-to `pubspec.yaml` + scaffold `functions/` (Node/TypeScript); Firebase Local Emulator Suite setup
-(see below); CI/CD básico; later, deploying Cloud Functions + rules to the live project; cost
-awareness (Cloud Functions require the Blaze plan, still free-tier-eligible at this scale).
+`Setup Firebase project` ✅ done. `cloud_firestore`/`firebase_auth`/`cloud_functions` added to
+`pubspec.yaml` ✅ done (2026-09-21). Left: scaffold `functions/` (Node/TypeScript); Firebase Local
+Emulator Suite setup, if used (see "Local dev" — not used so far this project); CI/CD básico;
+deploying Cloud Functions + rules to the live project (rules for the habits/habitLogs vertical
+already deployed manually via `firebase deploy --only firestore:rules`); cost awareness (Cloud
+Functions require the Blaze plan, still free-tier-eligible at this scale).
 
 Google Sign-In's console configuration (enabling the provider, OAuth client, SHA-1 fingerprints
 for the Android build) sits in this sprint by category but belongs to **Jimena**, since it's
@@ -572,16 +607,19 @@ first, since neither vertical can start without it. Order within a vertical is a
 whoever's building it will have a better sense of what unblocks what.
 
 ### Shared setup (do together, or one person while the other reads this doc)
-- [ ] Add `cloud_firestore`, `firebase_auth`, `cloud_functions` to `pubspec.yaml`; scaffold
-      `functions/` as a TypeScript Firebase Functions project.
-      **Done when:** `flutter analyze` is clean and `npm run build` in `functions/` compiles.
-- [ ] Firebase Local Emulator Suite running (Auth + Firestore + Functions), app pointed at it in
-      debug. **Done when:** both of you can run the app against the emulator with no prod writes.
-- [ ] `firestore.rules` with the field-level locks from "Security rules" above.
-      **Done when:** a client write to `coins` is rejected, and a normal habit edit is allowed.
-- [ ] `icon_registry.dart` + color-key registry (see Conventions).
-      **Done when:** every icon/color currently used by seed habits and bucket-list items has a
-      key, and a **release** build (`flutter build apk --release`) still renders them correctly.
+- [x] Add `cloud_firestore`, `firebase_auth`, `cloud_functions` to `pubspec.yaml` — done
+      2026-09-21, `flutter analyze` clean.
+      [ ] Scaffold `functions/` as a TypeScript Firebase Functions project — not started.
+- [ ] ~~Firebase Local Emulator Suite~~ — **skipped for this project**, see "Local dev" above.
+      Testing instead against the live `nori-pet` project with a disposable test account.
+- [x] `firestore.rules` field-level locks — **Valeria's vertical done** (`/users/{uid}` split,
+      `habits/{habitId}`, `habitLogs/{logId}`, deployed 2026-09-21). `pet/main`, `inventory/main`,
+      `/usernames` still open — marked `TODO(Jimena)` directly in `firestore.rules`.
+- [x] `icon_registry.dart` + color-key registry — done for every icon/color the habit vertical
+      actually uses (the closed add/edit-habit picker + the mock's seed-habit demo variety).
+      **Not yet verified:** a release build (`flutter build apk --release`) hasn't been run to
+      confirm `--tree-shake-icons` doesn't break them; bucket-list items are Jimena's vertical,
+      not covered here.
 
 ### Jimena — Account & virtual pet
 - [ ] `FirestoreUserRepository` — profile fields + `habitCategories` + vacation toggle only.
@@ -631,19 +669,40 @@ whoever's building it will have a better sense of what unblocks what.
       client cannot grant itself items by writing Firestore directly.
 
 ### Valeria — Core habit loop
-- [ ] `FirestoreHabitRepository` — create/update/delete/reorder, `logProgress`/`setProgress`, and
-      the `*ForDate` variants; `habitLogs` writes for progress (the non-claim half).
-- [ ] `FirestoreCalendarRepository` + streak derivation over `habitLogs` range queries; vacation
-      ranges read from the user doc.
+- [x] `FirestoreHabitRepository` — create/update/reorder, `logProgress`/`setProgress`, and the
+      `*ForDate` variants; `habitLogs` writes for progress (the non-claim half), for every day
+      including today. Smoke-tested against the live project.
+      **Fixed 2026-09-24:** the midnight-rollover bug (today's state was stored on the habit doc
+      instead of `habitLogs`) — see `docs/KNOWN_ISSUES.md`'s 2026-09-23 entry for the original bug
+      and `docs/RESOLVED_LOG.md` once it's logged there. Habit docs are now pure definitions;
+      `getTodayHabits()` is structurally `getHabitsForDate(today)` minus the schedule filter.
+      Also fixed in the same pass: `Habit.createdAt` gives `isScheduledOn` an implicit lower
+      bound (a new habit no longer counts as "missed" on days before it existed), and habit
+      definitions are filtered `archived == false` in memory.
+      **Still open:** `delete` unimplemented (no archive/delete UI exists yet either).
+- [x] `FirestoreCalendarRepository` + streak derivation over `habitLogs` range queries (one query
+      per range, not one per day — see `logsInRange`). Vacation ranges wired to read from
+      `FirestoreVacationLog`, but that class **can't actually persist yet** — see
+      `docs/KNOWN_ISSUES.md` 🟠 "FirestoreVacationLog can't actually persist yet" (blocked on
+      account creation, Jimena's vertical). Two 🟡 performance/duplication issues also logged
+      there, not yet fixed.
 - [ ] `claimHabit` / `unclaimHabit` / `setHabitCompleted` Cloud Functions — one transaction over
       habit + habitLog + user + pet. Port `Habit.computeReward()` and `MockUserRepository.addXp`'s
       level loop verbatim into TypeScript; the claim-value snap rule lives in
       `MockHabitRepository._claimValue`. **Done when:** claim → unclaim → claim leaves XP, coins,
-      level and pet stage exactly where they started.
+      level and pet stage exactly where they started. Not started — needs `functions/` scaffolded
+      first (see GCP sprint). The source-of-truth question is now settled (habitLogs, every day),
+      so these functions have a stable schema to write against.
 - [ ] Rewrite the call sites in `habits_list_screen.dart`, `home_screen.dart`,
       `calendar_screen.dart`, `bucket_list_screen.dart` to call the one callable instead of the
-      three-step repo sequence (see gap #1 below).
-- [ ] Seed script — real Firestore documents replacing `HabitHistoryStore.seedHistory`.
+      three-step repo sequence (see gap #1 below). Not started.
+- [ ] Seed script — real Firestore documents replacing `HabitHistoryStore.seedHistory`. Not
+      started. **Finding (2026-09-23):** this can't be plain Data-sprint client code after all —
+      `firestore.rules` blocks a normal client from writing `claimed: true`/`awardedXp`/
+      `awardedCoins`, the same guard that stops habit-claim cheating, so a script running as a
+      signed-in user can only seed *unclaimed* progress, never a believable "completed" history.
+      A real version needs the Firebase Admin SDK (bypasses rules) and belongs with the Cloud
+      Functions work above, not before it.
 
 ## Explicit non-goals this phase
 
@@ -663,3 +722,10 @@ epic, don't build it now), Apple Health/Fitbit/Duolingo integrations, analytics,
 2. **Notifications/FCM**: OPEN_DECISIONS.md says whether notifications exist at all is
    undecided. Treated as out-of-scope here (see non-goals) — resolve the product question
    before building any FCM wiring, whichever sprint it'd land in.
+3. **~~The habit schema originally stored `currentValue`/`isCompletedToday`/`lastAwardedXp`/
+   `lastAwardedCoins` on the habit doc, which didn't survive a day change~~ — found 2026-09-23,
+   fixed 2026-09-24.** Habit docs are now pure definitions; that state lives in `habitLogs` for
+   every day, today included. See `docs/KNOWN_ISSUES.md`'s 2026-09-23 entry for the original bug
+   and the schema block above for the current shape. This was worth resolving before writing
+   `claimHabit`, since that function needed to know which place is the real source of truth for
+   "today" before it could write to it — it now does.

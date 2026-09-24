@@ -92,9 +92,9 @@ class MockUserRepository implements UserRepository {
   Future<void> setVacationMode(bool enabled) async {
     final now = DateTime.now();
     if (enabled) {
-      _vacationLog.startFreeze(now);
+      await _vacationLog.startFreeze(now);
     } else {
-      _vacationLog.endFreeze(now);
+      await _vacationLog.endFreeze(now);
     }
     _user = _user.copyWith(vacationModeEnabled: enabled);
   }

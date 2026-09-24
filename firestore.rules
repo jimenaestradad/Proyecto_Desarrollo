@@ -25,24 +25,27 @@ service cloud.firestore {
       match /habits/{habitId} {
         allow read: if request.auth.uid == uid; //Allow this data to be read only if the logged-in person’s UID matches the UID in the data’s path
 
-        // New habit: the Cloud-Function-only fields must start at their
-        // untouched defaults — a client can't hand itself credit for a
-        // habit it just created.
-        allow create: if request.auth.uid == uid
-          && request.resource.data.isCompletedToday == false
-          && request.resource.data.lastAwardedXp == 0
-          && request.resource.data.lastAwardedCoins == 0;
+        // A habit doc is purely a definition — currentValue/isCompletedToday/
+        // lastAwardedXp/lastAwardedCoins live in habitLogs instead, for
+        // every day including today (2026-09-24: fixed the midnight-
+        // rollover bug logged in docs/KNOWN_ISSUES.md by moving "today" out
+        // of the habit doc entirely — see FirestoreHabitRepository). So
+        // there's no Cloud-Function-only field left on this doc to guard.
+        allow create: if request.auth.uid == uid;
 
-        // Editing an existing habit (name, schedule, etc.) may never touch
-        // the fields only claimHabit/unclaimHabit/setHabitCompleted are
-        // allowed to write. See docs/BACKEND.md:300-302.
+        // order (drag-reorder) and archived (future delete-as-archive) are
+        // legitimately client-writable, just not via editing a habit's own
+        // definition — FirestoreHabitRepository.updateHabit deliberately
+        // excludes them (reorderHabits/a future archive flow write them
+        // directly instead). createdAt is set once at creation and never
+        // touched by an edit.
         allow update: if request.auth.uid == uid
           && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly([
                  'name', 'subtitle', 'iconKey', 'colorKey',
                  'xpReward', 'coinReward', 'repeat', 'type', 'difficulty',
                  'targetValue', 'unit', 'minThreshold', 'quickLogAmount',
-                 'currentValue', 'adaptiveMultiplier', 'customDays',
+                 'adaptiveMultiplier', 'customDays',
                  'allowVacationFreeze', 'startDate', 'endDate', 'order',
                  'archived',
                ]);
