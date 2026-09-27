@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'data/app_data.dart';
 import 'firebase_options.dart';
 import 'navigation/nori_shell.dart';
 import 'screens/onboarding/login_screen.dart';
@@ -14,9 +15,14 @@ void main() async {
   // Firebase Auth restores a signed-in session from local storage on
   // startup — checking it here is what makes "stay logged in between app
   // launches" (Auth > Persistencia de sesión) work, instead of always
-  // dropping the person back on Welcome.
-  final isLoggedIn = FirebaseAuth.instance.currentUser != null;
-  runApp(NoriApp(initialRoute: isLoggedIn ? '/home' : '/welcome'));
+  // dropping the person back on Welcome. Also points AppData.user (etc.)
+  // at that uid's real Firestore data before any screen can read it —
+  // see AppData.bindToUser.
+  final currentUser = FirebaseAuth.instance.currentUser;
+  if (currentUser != null) {
+    AppData.bindToUser(currentUser.uid);
+  }
+  runApp(NoriApp(initialRoute: currentUser != null ? '/home' : '/welcome'));
 }
 
 class NoriApp extends StatelessWidget {

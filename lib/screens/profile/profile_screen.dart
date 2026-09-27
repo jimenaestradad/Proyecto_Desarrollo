@@ -117,6 +117,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // AuthRepository.logOut doc: otherwise relaunching the app would read
     // the still-signed-in Firebase user and skip straight back to Home.
     await AppData.auth.logOut();
+    // Un-point AppData.user (etc.) from this account's Firestore data so a
+    // different account signing in next doesn't start out reading it —
+    // see AppData.unbindUser.
+    AppData.unbindUser();
     if (!mounted) return;
     Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false);
   }
