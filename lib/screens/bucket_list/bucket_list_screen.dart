@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/models/bucket_list_item.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/id_generator.dart';
@@ -22,6 +23,7 @@ class BucketListScreen extends StatefulWidget {
 
 class _BucketListScreenState extends State<BucketListScreen> {
   List<BucketListItem>? _items;
+  bool _isSyncing = false;
 
   @override
   void initState() {
@@ -35,18 +37,47 @@ class _BucketListScreenState extends State<BucketListScreen> {
     setState(() => _items = items);
   }
 
-  Future<void> _applyReward(int xpDelta, int coinsDelta) async {
-    if (xpDelta == 0 && coinsDelta == 0) return;
-    if (xpDelta != 0) await AppData.user.addXp(xpDelta);
-    if (coinsDelta != 0) await AppData.user.addCoins(coinsDelta);
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  // completeBucketListItem/uncompleteBucketListItem are Cloud-Function-only
+  // (docs/BACKEND.md's Architecture table: completing an item mints XP/
+  // coins, exactly what the Cloud-Functions boundary guards) --
+  // AppData.bucketList.completeItem/uncompleteItem would just throw
+  // UnsupportedError against the real Firestore-backed repository now that
+  // AppData.bindToUser wires it up, so this calls the callable directly
+  // through cloud_functions_client.dart's shared helper instead of going
+  // through the repository interface for this one write. The Cloud
+  // Function updates the item + user (XP/coins/level) atomically server-
+  // side, so there's no local reward to apply afterward -- just reload.
   Future<void> _toggleComplete(BucketListItem item) async {
-    final reward = item.isCompleted
-        ? await AppData.bucketList.uncompleteItem(item.id)
-        : await AppData.bucketList.completeItem(item.id);
-    await _applyReward(reward.xpDelta, reward.coinsDelta);
-    await _loadItems();
+    if (_isSyncing) return;
+    _isSyncing = true;
+    try {
+      await callCloudFunction(
+        item.isCompleted
+            ? 'uncompleteBucketListItem'
+            : 'completeBucketListItem',
+        {'itemId': item.id},
+      );
+      await _loadItems();
+      // Mirrors home_screen.dart/calendar_screen.dart/habits_list_screen.dart's
+      // own post-reward call -- a bucket-list completion can cross a level
+      // the same way a habit claim can. Currently a no-op for the real
+      // Firestore-backed pet (see firestore_pet_repository.dart's
+      // syncEvolution doc comment); kept here so this call site already
+      // exists once that seam is revisited.
+      final user = await AppData.user.getCurrentUser();
+      await AppData.pet.syncEvolution(user.level);
+    } on CloudFunctionFailure catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+    } finally {
+      _isSyncing = false;
+    }
   }
 
   Future<void> _openAddDialog() async {

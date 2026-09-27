@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/accessory_catalog.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/care_item_catalog.dart';
+import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
@@ -112,6 +113,16 @@ class _ShopScreenState extends State<ShopScreen> {
 
   void _showUnavailable() => _showSnack('Not available yet');
 
+  // purchaseCareItem/purchaseAccessory are Cloud-Function-only (see
+  // docs/BACKEND.md's Architecture table: buying spends coins to mint an
+  // owned item, which is exactly the currency-affecting write the
+  // Cloud-Functions boundary exists to guard) -- AppData.user.addCoins and
+  // AppData.inventory.addCareItem/addAccessory would just throw
+  // UnsupportedError against the real Firestore-backed repositories now
+  // that AppData.bindToUser wires them up, so these call the callable
+  // directly through cloud_functions_client.dart's shared helper instead
+  // of going through the repository interfaces for this one write.
+
   Future<void> _buyCareItem(CareItem item) async {
     if (_isPurchasing) return;
     _isPurchasing = true;
@@ -122,8 +133,16 @@ class _ShopScreenState extends State<ShopScreen> {
         _showSnack('Not enough coins.');
         return;
       }
-      await AppData.user.addCoins(-item.price);
-      await AppData.inventory.addCareItem(item.id, item.grants);
+      try {
+        await callCloudFunction('purchaseCareItem', {
+          'itemId': item.id,
+          'quantity': 1,
+        });
+      } on CloudFunctionFailure catch (e) {
+        if (!mounted) return;
+        _showSnack(e.message);
+        return;
+      }
       await _reloadData();
       if (!mounted) return;
       _showSnack('Bought ${item.name} — head to Home to use it!');
@@ -142,8 +161,13 @@ class _ShopScreenState extends State<ShopScreen> {
         _showSnack('Not enough coins.');
         return;
       }
-      await AppData.user.addCoins(-item.price);
-      await AppData.inventory.addAccessory(item.id);
+      try {
+        await callCloudFunction('purchaseAccessory', {'accessoryId': item.id});
+      } on CloudFunctionFailure catch (e) {
+        if (!mounted) return;
+        _showSnack(e.message);
+        return;
+      }
       await _reloadData();
       if (!mounted) return;
       _showSnack('Bought ${item.name}!');
