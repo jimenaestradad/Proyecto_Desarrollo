@@ -21,6 +21,7 @@
  */
 
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import * as functionsV1 from "firebase-functions/v1";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 
@@ -86,7 +87,7 @@ const BUCKET_LIST_COIN_CAP = 250;
  */
 export const onUserCreate = functionsV1.auth.user().onCreate(async (user) => {
   const uid = user.uid;
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = FieldValue.serverTimestamp();
 
   const batch = db.batch();
 
@@ -257,7 +258,7 @@ export const purchaseAccessory = onCall(async (request) => {
 
     tx.update(userRef, { coins: newCoins });
     tx.update(inventoryRef, {
-      ownedAccessoryIds: admin.firestore.FieldValue.arrayUnion(accessoryId),
+      ownedAccessoryIds: FieldValue.arrayUnion(accessoryId),
     });
 
     return { coins: newCoins };
@@ -327,7 +328,7 @@ export const completeBucketListItem = onCall(async (request) => {
 
     tx.update(itemRef, {
       isCompleted: true,
-      completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      completedAt: FieldValue.serverTimestamp(),
       awardedXp: xpAwarded,
       awardedCoins: coinsAwarded,
     });

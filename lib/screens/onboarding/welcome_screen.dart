@@ -52,8 +52,13 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
-                      minHeight:
-                          constraints.maxHeight - (AppSpacing.stackMd * 2),
+                      // constraints.maxHeight can be 0 (or otherwise
+                      // smaller than the vertical padding below) on the
+                      // very first layout pass -- clamp so minHeight never
+                      // goes negative, which BoxConstraints asserts on.
+                      minHeight: (constraints.maxHeight -
+                              (AppSpacing.stackMd * 2))
+                          .clamp(0.0, double.infinity),
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
