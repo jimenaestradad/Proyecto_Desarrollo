@@ -76,10 +76,18 @@ class FirebaseAuthRepository implements AuthRepository {
       );
       final user = credential.user!;
       final fallbackName = email.contains('@') ? email.split('@').first : email;
+      // The real claimed username lives in /usernames, not on the Firebase
+      // Auth record (only displayName/email do) -- looking it up here
+      // mirrors _resultFor's Google-sign-in path below. Without this,
+      // updateProfile(username: ...) back in login_screen.dart would
+      // overwrite the real /users/{uid}.username with the display name on
+      // every single login (this was a real bug: username got clobbered
+      // back to the person's full name each time they signed back in).
+      final existingUsername = await _usernames.usernameForUid(user.uid);
       return _starterUser(
         id: user.uid,
         name: user.displayName ?? fallbackName,
-        username: user.displayName ?? fallbackName,
+        username: existingUsername ?? user.displayName ?? fallbackName,
         email: email,
       );
     } on FirebaseAuthException catch (e) {

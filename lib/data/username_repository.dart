@@ -32,6 +32,20 @@ abstract class UsernameRepository {
   /// account (route straight in) apart from one that still needs the
   /// username picker.
   Future<String?> usernameForUid(String uid);
+
+  /// Atomically moves [uid]'s claim from [oldUsername] to [newUsername] --
+  /// create-new + delete-old in one transaction, per firestore.rules's own
+  /// note that a username change is spec'd that way (delete is only
+  /// allowed for the owning uid so this is the one flow that can do it).
+  /// Throws [UsernameTakenException] if [newUsername] is already held by
+  /// someone else. A no-op when [newUsername] equals [oldUsername]
+  /// case-insensitively (nothing to move in this collection -- the
+  /// human-typed display casing lives on users/{uid}.username, not here).
+  Future<void> changeUsername({
+    required String uid,
+    required String oldUsername,
+    required String newUsername,
+  });
 }
 
 /// Turns an email address into a starting suggestion for the username
@@ -89,5 +103,31 @@ class FirestoreUsernameRepository implements UsernameRepository {
     final query = await _usernames.where('uid', isEqualTo: uid).limit(1).get();
     if (query.docs.isEmpty) return null;
     return query.docs.first.data()['username'] as String?;
+  }
+
+  @override
+  Future<void> changeUsername({
+    required String uid,
+    required String oldUsername,
+    required String newUsername,
+  }) async {
+    final oldKey = _key(oldUsername);
+    final newKey = _key(newUsername);
+    if (newKey == oldKey) return;
+    final oldRef = _usernames.doc(oldKey);
+    final newRef = _usernames.doc(newKey);
+    await _firestore.runTransaction((transaction) async {
+      // All reads before writes -- Firestore transaction rule.
+      final newSnapshot = await transaction.get(newRef);
+      if (newSnapshot.exists) {
+        throw UsernameTakenException(newUsername);
+      }
+      transaction.set(newRef, {
+        'uid': uid,
+        'username': newUsername.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      transaction.delete(oldRef);
+    });
   }
 }
