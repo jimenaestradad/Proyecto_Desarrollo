@@ -112,10 +112,18 @@ class FirestoreUserRepository implements UserRepository {
     await _updateWithRetry(updates);
   }
 
-  /// Writes to `/users/{uid}`, retrying on 'not-found' for the same
-  /// onUserCreate race described on [_getDataWithRetry] -- this is the
-  /// call sign-up/login make right after auth succeeds, so it's the one
-  /// most likely to land before the trigger has provisioned the doc.
+  /// Writes to `/users/{uid}`, retrying on the same onUserCreate race
+  /// described on [_getDataWithRetry] -- this is the call sign-up/login
+  /// make right after auth succeeds, so it's the one most likely to land
+  /// before the trigger has provisioned the doc.
+  ///
+  /// A doc-not-yet-provisioned write can surface as either 'not-found'
+  /// (backend rejects the update outright) or 'permission-denied' (the
+  /// security rule's `resource.data.diff(...)` check on the /users/{uid}
+  /// update rule can only be evaluated once `resource` exists; before that
+  /// it's cleanly denied rather than erroring, per firestore.rules). Both
+  /// mean the same thing here -- the doc isn't there yet -- so both are
+  /// retried the same way.
   Future<void> _updateWithRetry(
     Map<String, dynamic> updates, {
     int attempts = 5,
@@ -126,7 +134,9 @@ class FirestoreUserRepository implements UserRepository {
         await _doc.update(updates);
         return;
       } on FirebaseException catch (e) {
-        if (e.code != 'not-found' || attempt == attempts) rethrow;
+        final isMissingDocRace =
+            e.code == 'not-found' || e.code == 'permission-denied';
+        if (!isMissingDocRace || attempt == attempts) rethrow;
         await Future.delayed(delay);
       }
     }

@@ -37,6 +37,7 @@ service cloud.firestore {
       // rules entirely. Client writes may only touch profile + vacation
       // fields. See docs/BACKEND.md:296-299.
       allow update: if request.auth.uid == uid
+        && resource != null
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly([
                'name', 'username', 'email', 'avatarUrl',
