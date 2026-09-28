@@ -210,11 +210,42 @@ class _BucketListCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              NoriIconBadge(
-                icon: item.icon,
-                background: item.color,
-                size: 44,
-                iconSize: 22,
+              // A completed item only differed by a faint strikethrough and
+              // the button's label -- easy to miss at a glance. This adds
+              // an explicit checkmark badge, the same visual language
+              // customization_screen.dart already uses for "selected".
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  NoriIconBadge(
+                    icon: item.icon,
+                    background: item.color,
+                    size: 44,
+                    iconSize: 22,
+                  ),
+                  if (claimed)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.moss,
+                          border: Border.all(
+                            color: AppColors.ink,
+                            width: AppBorder.thin,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.check,
+                          size: 13,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(width: 12),
               Expanded(
