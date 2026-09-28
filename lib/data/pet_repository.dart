@@ -15,6 +15,14 @@ abstract class PetRepository {
   /// out of sync with the level it's derived from. Call after any action
   /// that might change the user's level.
   Future<void> syncEvolution(int userLevel);
+
+  /// Sets the pet's display name -- a direct client write, not
+  /// Cloud-Function-only (docs/BACKEND.md, "Onboarding answer (pet
+  /// name)": it's typed on a screen after sign-up, not currency, so an
+  /// auth trigger can't see it and it needs no Cloud Function). Called
+  /// once from the "name your pet" onboarding screen; skipping onboarding
+  /// just never calls this, leaving onUserCreate's default of 'Nori'.
+  Future<void> renamePet(String name);
 }
 
 class MockPetRepository implements PetRepository {
@@ -77,5 +85,12 @@ class MockPetRepository implements PetRepository {
     } else if (!shouldEvolve && _pet.stage == PetEvolutionStage.evolution1) {
       _pet = _pet.copyWith(stage: PetEvolutionStage.baby);
     }
+  }
+
+  @override
+  Future<void> renamePet(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    _pet = _pet.copyWith(name: trimmed);
   }
 }

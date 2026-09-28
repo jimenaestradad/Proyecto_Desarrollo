@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/auth_repository.dart';
 import 'package:nori/data/username_repository.dart';
+import 'package:nori/screens/onboarding/name_pet_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/loading_overlay.dart';
 import 'package:nori/widgets/nori_text_field.dart';
@@ -169,6 +170,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
         name: name,
         username: username,
         email: email,
+      );
+      if (!mounted) return;
+      // Last onboarding step: let them name their pet (or skip and keep
+      // 'Nori') before landing on Home -- see NamePetScreen's doc comment.
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const NamePetScreen()),
       );
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);

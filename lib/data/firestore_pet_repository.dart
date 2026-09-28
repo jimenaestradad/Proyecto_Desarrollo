@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart' show FirebaseException;
 
 import '../models/pet.dart';
 import 'pet_repository.dart';
@@ -139,5 +140,27 @@ class FirestorePetRepository implements PetRepository {
   Future<void> syncEvolution(int userLevel) async {
     // See class doc comment -- `stage` is Cloud-Function-only; this is a
     // deliberate no-op, not a missing feature.
+  }
+
+  @override
+  Future<void> renamePet(String name) async {
+    // `name` is a direct-client-write field on pet/main (firestore.rules'
+    // /pet/main update rule already allows it alongside the stat fields) --
+    // see PetRepository.renamePet's doc comment. Retries on the same
+    // onUserCreate race as FirestoreUserRepository._updateWithRetry: this
+    // fires right after sign-up, when pet/main might not exist yet.
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    for (var attempt = 1; attempt <= 5; attempt++) {
+      try {
+        await _doc.update({'name': trimmed});
+        return;
+      } on FirebaseException catch (e) {
+        final isMissingDocRace =
+            e.code == 'not-found' || e.code == 'permission-denied';
+        if (!isMissingDocRace || attempt == 5) rethrow;
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
+    }
   }
 }

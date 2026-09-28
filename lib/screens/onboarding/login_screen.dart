@@ -3,6 +3,7 @@ import 'package:nori/data/app_data.dart';
 import 'package:nori/data/auth_repository.dart';
 import 'package:nori/data/username_repository.dart';
 import 'package:nori/screens/onboarding/choose_username_screen.dart';
+import 'package:nori/screens/onboarding/name_pet_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/loading_overlay.dart';
 import 'package:nori/widgets/tactile_button.dart';
@@ -143,6 +144,17 @@ class _LoginScreenState extends State<LoginScreen> {
       email: result.user.email,
     );
     if (!mounted) return;
+    if (result.needsUsername) {
+      // Brand-new account (that's what routed it through the username
+      // picker above) -- also offer the last onboarding step, naming the
+      // pet. An existing Google account signing back in skips straight to
+      // Home, same as before.
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const NamePetScreen()),
+      );
+      if (!mounted) return;
+    }
     Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
   }
 
