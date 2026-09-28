@@ -339,4 +339,49 @@ class FirebaseAuthRepository implements AuthRepository {
         return 'Unable to send the verification email. Please try again.';
     }
   }
+
+  @override
+  Future<bool> hasPasswordProvider() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    return user.providerData.any((p) => p.providerId == 'password');
+  }
+
+  @override
+  Future<void> addPassword(String password) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw const AuthException('You need to be signed in to do that.');
+    }
+    final email = user.email;
+    if (email == null || email.isEmpty) {
+      throw const AuthException(
+        "Your account doesn't have an email on file.",
+      );
+    }
+    try {
+      await user.linkWithCredential(
+        EmailAuthProvider.credential(email: email, password: password),
+      );
+    } on FirebaseAuthException catch (e) {
+      throw AuthException(_addPasswordMessage(e.code));
+    }
+  }
+
+  String _addPasswordMessage(String code) {
+    switch (code) {
+      case 'weak-password':
+        return 'Choose a password with at least 6 characters.';
+      case 'provider-already-linked':
+      case 'credential-already-in-use':
+      case 'email-already-in-use':
+        return 'This account already has a password set.';
+      case 'requires-recent-login':
+        return 'Please sign out and back in, then try again.';
+      case 'network-request-failed':
+        return 'No internet connection. Please try again.';
+      default:
+        return 'Unable to set a password. Please try again.';
+    }
+  }
 }

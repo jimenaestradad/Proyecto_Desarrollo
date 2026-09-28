@@ -71,6 +71,21 @@ abstract class AuthRepository {
   /// at app startup (see main.dart) to decide whether to open straight to
   /// Home or to the Welcome screen.
   String? get currentUserId;
+
+  /// Whether the signed-in user can already log in with email+password --
+  /// false for a Google-only account. Used to decide whether account
+  /// settings should offer [addPassword] (the Google->password linking
+  /// direction -- see docs/BACKEND.md, "Account linking, both
+  /// directions"). Always true in [MockAuthRepository]/when signed out.
+  Future<bool> hasPasswordProvider();
+
+  /// Attaches a password sign-in method to the current (Google-only)
+  /// account, so the same uid can also log in with email+password from
+  /// then on -- the other half of account linking (password->Google is
+  /// [linkGoogleAccount]). Throws [AuthException] with a user-facing
+  /// message on failure (e.g. the account already has a password, or the
+  /// password is too weak).
+  Future<void> addPassword(String password);
 }
 
 /// A message already safe to show in the UI — screens display
@@ -185,5 +200,13 @@ class MockAuthRepository implements AuthRepository {
     await Future.delayed(const Duration(milliseconds: 300));
     _currentUserId = kDemoUser.id;
     return GoogleSignInResult(user: kDemoUser, needsUsername: false);
+  }
+
+  @override
+  Future<bool> hasPasswordProvider() async => true;
+
+  @override
+  Future<void> addPassword(String password) async {
+    await Future.delayed(const Duration(milliseconds: 300));
   }
 }
