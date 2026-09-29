@@ -2,6 +2,26 @@
 
 Trimmed historical fix log for Nori, split out of `docs/KNOWN_ISSUES.md` on 2026-09-16 to keep the working file scannable. Full narrative detail from before the split was intentionally condensed; this log favors terse entries going forward.
 
+### 2026-09-28 — shop items could be made free; bucket-list NaN; functions cleanup
+
+`purchaseCareItem`/`purchaseAccessory` looked items up with a plain `catalog[id]`, so an id like `"constructor"` matched an inherited key, its price was undefined, the coin check passed against NaN, and `coins` was saved as NaN — making every later purchase free. They now require an own catalog key. `completeBucketListItem` read client-writable `xpReward`/`coinReward` with `Number()`, which turned a string into NaN past both caps; it now uses `asNumber` and rounds. Both bucket-list functions now use the shared `readLevelState`/`levelFields` helpers instead of hand-built copies, `onUserCreate` uses `create()` so a duplicate trigger can't reset an account, and the server's dead 75% `min` reward tier was removed.
+
+### 2026-09-28 — minimum threshold now keeps streaks
+
+Complete always snaps to the target, so the minimum threshold could never pay a partial reward and did nothing. It now keeps the streak instead (FEATURES.md §3): new `Habit.keptStreak` (claimed, or logged to the minimum) drives both calendar streak walks, the "missed" calendar status ("perfect" still needs every habit claimed), and Rising Again's missed-day check. The Not All or Nothing achievement was unreachable for the same reason and now checks unclaimed days too. Partial reward after the day ends logged as a future idea.
+
+### 2026-09-28 — two separate functions/ folders were silently deleting each other's deploys
+
+Valeria's and Jimena's branches each scaffolded their own `functions/` directory, both deploying to the same Cloud Functions codebase on `nori-pet`. A plain `firebase deploy --only functions` from either one deletes any live function not present in that folder's `index.ts`, since Firebase treats a codebase's local source as the full desired state. This happened for real: Jimena's `onUserCreate` was deleted by a deploy run from Valeria's folder (surfaced as an interactive CLI prompt — "found in your project but not in your local source, delete?" — accidentally confirmed). Redeployed from Jimena's branch via a temporary worktree checkout. Fixed properly by merging both branches so `functions/src/index.ts` exports all 7 functions from one shared codebase; a future deploy from that shared folder can no longer drop the other side's functions. Until Jimena's branch and Valeria's are both merged into whatever branch actually gets deployed from, this risk returns — deploy with `--only functions:<name>,...` naming specific functions if working from an unmerged branch.
+
+### 2026-09-28 — claim Cloud Functions: impossible dayKeys, ended habits, duplicate endpoint
+
+Audit of `functions/`. `parseDayArgs` accepted impossible dates (`2025-13-01`, `2026-02-31`) because `Date.UTC` rolls them over, so one real day could be claimed again under every alias by calling the callable directly; it now requires an exact round-trip. `claimHabit` now rejects days outside the habit's `startDate`/`endDate`, and a new `Habit.isActiveOn` hides ended habits from today's list (mock + Firestore) — the window acts as archival, `archived` isn't flipped. The `setHabitCompleted` callable was removed as a pure dispatcher over claim/unclaim; BACKEND.md's result shape corrected (`changed`, not `alreadyClaimed`).
+
+### 2026-09-24 — Firestore habit state now rolls over correctly at midnight
+
+`FirestoreHabitRepository` previously stored today's live state (`currentValue`/`isCompletedToday`/`lastAwardedXp`/`lastAwardedCoins`) directly on the habit doc, so it didn't reset at the calendar boundary — logged 2026-09-23 as a 🔴 critical bug. Habit docs are now pure definitions; every day's state, today included, lives in `habitLogs`, keyed by date. Also fixed in the same pass: `Habit.createdAt` gives `isScheduledOn` an implicit lower bound so a brand-new habit no longer counts as "missed" on days before it existed, and habit-definition queries now filter `archived == false` in memory. `firestore.rules` updated to match — the habit doc's `create` rule no longer guards Cloud-Function-only fields that don't live on that doc anymore.
+
 ### 2026-09-16 — pet evolution didn't revert when a claim was undone
 
 `PetRepository.syncEvolution` only promoted at the evolution threshold, so undoing a claim could lower the level without demoting the pet. It now handles both directions; celebration checks at all call sites only fire for a forward stage change, so de-evolution remains silent.

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/accessory_catalog.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/care_item_catalog.dart';
+import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/widgets/accessory_art.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/formatting.dart';
@@ -112,6 +114,16 @@ class _ShopScreenState extends State<ShopScreen> {
 
   void _showUnavailable() => _showSnack('Not available yet');
 
+  // purchaseCareItem/purchaseAccessory are Cloud-Function-only (see
+  // docs/BACKEND.md's Architecture table: buying spends coins to mint an
+  // owned item, which is exactly the currency-affecting write the
+  // Cloud-Functions boundary exists to guard) -- AppData.user.addCoins and
+  // AppData.inventory.addCareItem/addAccessory would just throw
+  // UnsupportedError against the real Firestore-backed repositories now
+  // that AppData.bindToUser wires them up, so these call the callable
+  // directly through cloud_functions_client.dart's shared helper instead
+  // of going through the repository interfaces for this one write.
+
   Future<void> _buyCareItem(CareItem item) async {
     if (_isPurchasing) return;
     _isPurchasing = true;
@@ -122,8 +134,16 @@ class _ShopScreenState extends State<ShopScreen> {
         _showSnack('Not enough coins.');
         return;
       }
-      await AppData.user.addCoins(-item.price);
-      await AppData.inventory.addCareItem(item.id, item.grants);
+      try {
+        await callCloudFunction('purchaseCareItem', {
+          'itemId': item.id,
+          'quantity': 1,
+        });
+      } on CloudFunctionFailure catch (e) {
+        if (!mounted) return;
+        _showSnack(e.message);
+        return;
+      }
       await _reloadData();
       if (!mounted) return;
       _showSnack('Bought ${item.name} — head to Home to use it!');
@@ -142,8 +162,13 @@ class _ShopScreenState extends State<ShopScreen> {
         _showSnack('Not enough coins.');
         return;
       }
-      await AppData.user.addCoins(-item.price);
-      await AppData.inventory.addAccessory(item.id);
+      try {
+        await callCloudFunction('purchaseAccessory', {'accessoryId': item.id});
+      } on CloudFunctionFailure catch (e) {
+        if (!mounted) return;
+        _showSnack(e.message);
+        return;
+      }
       await _reloadData();
       if (!mounted) return;
       _showSnack('Bought ${item.name}!');
@@ -339,6 +364,7 @@ class _ItemCardShell extends StatelessWidget {
     required this.buttonLabel,
     required this.onPressed,
     this.image,
+    this.previewBuilder,
     this.badge,
     this.badgeColor = AppColors.linenAlt,
     this.badgeTextColor = AppColors.inkMuted,
@@ -356,6 +382,12 @@ class _ItemCardShell extends StatelessWidget {
   final Color badgeColor;
   final Color badgeTextColor;
   final bool dimmed;
+
+  /// When set, replaces the flat [image]/[icon] with a live render sized to
+  /// whatever height this card's image area actually gets (see
+  /// [NoriAccessoryPreview]) -- used by [_AccessoryCard] so the shopper
+  /// sees the item on Nori himself instead of a disconnected cutout icon.
+  final Widget Function(double height)? previewBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -379,7 +411,16 @@ class _ItemCardShell extends StatelessWidget {
                           width: AppBorder.thin,
                         ),
                       ),
-                      child: image != null
+                      child: previewBuilder != null
+                          ? Padding(
+                              padding: const EdgeInsets.all(AppSpacing.unit),
+                              child: LayoutBuilder(
+                                builder: (context, inner) => Center(
+                                  child: previewBuilder!(inner.maxHeight),
+                                ),
+                              ),
+                            )
+                          : image != null
                           ? Padding(
                               padding: const EdgeInsets.all(AppSpacing.stackSm),
                               child: Image.asset(image!, fit: BoxFit.contain),
@@ -492,10 +533,11 @@ class _AccessoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _ItemCardShell(
       icon: item.icon,
-      image: item.image,
       color: item.color,
       name: item.name,
       dimmed: owned,
+      previewBuilder: (height) =>
+          NoriAccessoryPreview(height: height, item: item),
       priceLabel: owned
           ? Text(
               'Owned',

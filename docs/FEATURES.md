@@ -47,10 +47,24 @@ level / evolve / collect / customize pets → stay motivated
   XP-farming via tiny repeated entries.)
 - A habit can define a **minimum success threshold** separate from its **ideal target**:
   - below minimum → no success
-  - minimum–target → partial XP/reward, streak preserved
+  - minimum–target → streak preserved, no XP/reward (see below)
   - ≥ target → full XP/reward, streak preserved
-  - above target → no extra XP (not unlimited farming)
-- Exact XP % for minimum-only completion is undecided (was discussed as ~70%, not final).
+  - above target → no extra XP; logging is capped at the target for now
+- **How rewards are paid (current default, 2026-09-28 — open to revisiting):** claiming is always
+  a manual button press. **Complete** snaps a progress habit to its target and pays full, even
+  from 30/100 — it's an honor-system "I did it", same as a binary checkbox. **Mark Day Safe**
+  (limit habits) claims the value as logged: full reward at or under the ceiling, nothing over it.
+  Logging alone never pays. So the minimum threshold's job is streaks, not XP: a day logged to
+  its minimum but never claimed still keeps the streak and isn't "missed" on the calendar
+  (`Habit.keptStreak`).
+- **Future idea — partial reward after the day ends.** Pay a reduced reward (e.g. ~70–75%) for a
+  day that reached its minimum but wasn't claimed, settled once the day is over — e.g. a callable
+  the app runs on open for past days, so no scheduled job or server-side timezone is needed.
+  Deferred because past days stay editable from the calendar, so a settled payout would have to
+  be re-checked and reversed whenever a past log changes. Paying the moment the minimum is
+  crossed was ruled out: undoing the log would have to claw it back, and every log would become
+  a Cloud Function call instead of a direct write.
+- **Future idea — logging beyond the target** (e.g. 120/100) as a tracked-but-unrewarded value.
 
 ## 4. XP
 
@@ -78,20 +92,40 @@ level / evolve / collect / customize pets → stay motivated
 
 ## 6. Pet progression
 
-- Levels and evolutions are separate: evolutions span level *ranges* (e.g. levels 1–X = Baby,
-  X–Y = Evolution 1), not one evolution per level. XP-per-level increases progressively (a curve).
-- Vision: ~3 evolution stages (Pokémon is the inspiration for staged evolution only, not gameplay).
-- MVP may ship with only **one** evolution implemented, while the fuller system stays documented
-  for later.
-- Exact XP requirements / level curve / evolution thresholds are undecided.
+- Levels and evolutions are separate: evolutions span level *ranges*, not one evolution per
+  level. XP-per-level increases progressively (a curve).
+- **XP curve (decided 2026-09-16):** `xpForNextLevel = 100 × currentLevel`. Level 1→2 costs 100
+  XP, 2→3 costs 200, 6→7 costs 600. Cumulative XP to reach level n is `50 × n × (n − 1)`.
+- **Evolution stages (decided 2026-09-16)** — three stages, spanning level ranges:
+
+  | Stage | Levels | Cumulative XP to enter | Roughly, at ~100 XP/day |
+  |---|---|---|---|
+  | Baby | 1–6 | 0 | from day one |
+  | Evolution 1 | 7–14 | 2,100 | ~3 weeks |
+  | Evolution 2 (final) | 15+ | 10,500 | ~3–4 months |
+
+  A "maxed out" pet means reaching Evolution 2. The pacing assumes a moderately consistent user
+  with ~5 habits earning 50–150 XP/day; adjust the thresholds, not the curve, if that turns out
+  wrong in practice.
+- **MVP ships only the first evolution** (Baby → Evolution 1 at level 7). Evolution 2 is
+  specified here so the art and thresholds are known, but is not built this semester.
+- Pokémon is the inspiration for staged evolution only, not for gameplay.
 
 ## 7. Multiple pets (vision, not MVP)
 
 Users can eventually own more than one pet (so reaching max evolution doesn't kill motivation):
 adopt → care/level/evolve → unlock more pets → maintain a collection; friends can visit pets.
-Mechanics almost entirely undecided — how pets unlock, whether XP belongs to the user or the
-active pet, whether only one pet progresses at a time, inactive-pet stat behavior, per-pet vs.
-shared inventory. See OPEN_DECISIONS.
+
+**Unlock mechanic (direction set 2026-09-16, still not MVP):** once a pet is maxed out —
+Evolution 2, level 15 per §6 — the user can **buy an egg with coins and hatch a new pet**. That
+ties the collection loop to the existing economy rather than inventing a separate unlock
+currency, and gives late-game coins somewhere to go once the shop is exhausted. Egg price,
+whether eggs are the *only* way to get a new pet, and whether species/appearance vary per egg
+are all still open.
+
+Still undecided: whether XP belongs to the user or the active pet, whether only one pet
+progresses at a time, inactive-pet stat behavior, per-pet vs. shared inventory. See
+OPEN_DECISIONS.
 
 ## 8. Pet care
 

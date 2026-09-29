@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/auth_repository.dart';
+import 'package:nori/data/username_repository.dart';
+import 'package:nori/screens/onboarding/choose_username_screen.dart';
+import 'package:nori/screens/onboarding/name_pet_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/loading_overlay.dart';
 import 'package:nori/widgets/tactile_button.dart';
@@ -46,13 +50,223 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
 
     try {
-      await AppData.auth.logIn(email: email, password: password);
+      final user = await AppData.auth.logIn(email: email, password: password);
+      // Point AppData.user (etc.) at this uid's real Firestore data before
+      // touching it below — see AppData.bindToUser.
+      AppData.bindToUser(user.id);
+      // Keeps the stored name/email in sync with whatever this account's
+      // Firebase Auth record actually has, in case it changed since the
+      // last sign-in.
+      await AppData.user.updateProfile(
+        name: user.name,
+        username: user.username,
+        email: user.email,
+      );
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage(e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
       _showMessage('Unable to sign in. Please try again.');
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+
+    try {
+      final result = await AppData.auth.logInWithGoogle();
+      await _completeGoogleSignIn(result);
+    } on GoogleAccountLinkingRequired catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      await _resolveAccountLinking(e);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      // A canceled picker isn't worth a scary error message.
+      if (e.message != 'Sign-in was canceled.') _showMessage(e.message);
+    } catch (error, stackTrace) {
+      // Anything here is *not* a FirebaseAuthException (those are already
+      // turned into AuthException with a real message above) — most
+      // likely Firestore rejecting/failing the needsUsername lookup
+      // (not enabled yet, or rules not deployed — see firestore.rules).
+      // Logged instead of silently swallowed so that case is diagnosable
+      // from the terminal/DevTools console instead of just this generic
+      // snackbar.
+      debugPrint('Google sign-in failed: $error');
+      debugPrint('$stackTrace');
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage('Unable to sign in with Google. Please try again.');
+    }
+  }
+
+  /// Finishes a Google sign-in/sign-up once we have a [GoogleSignInResult]
+  /// — either straight from [AppData.auth.logInWithGoogle], or after
+  /// [_resolveAccountLinking] connects an existing password account.
+  /// Routes through [ChooseUsernameScreen] first when the account doesn't
+  /// have a username claimed yet.
+  Future<void> _completeGoogleSignIn(GoogleSignInResult result) async {
+    // Point AppData.user (etc.) at this uid's real Firestore data before
+    // touching it anywhere below — see AppData.bindToUser.
+    AppData.bindToUser(result.user.id);
+    var username = result.user.username;
+    if (result.needsUsername) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      final chosenUsername = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChooseUsernameScreen(
+            uid: result.user.id,
+            email: result.user.email,
+            suggestedUsername: suggestUsernameFromEmail(result.user.email),
+          ),
+        ),
+      );
+      // No back button on that screen (see its class doc) — null here
+      // only means the widget was somehow torn down mid-flow, not a
+      // deliberate cancel. Either way there's no username to proceed with.
+      if (chosenUsername == null || !mounted) return;
+      username = chosenUsername;
+      setState(() => _loading = true);
+    }
+
+    await AppData.user.updateProfile(
+      name: result.user.name,
+      username: username,
+      email: result.user.email,
+    );
+    if (!mounted) return;
+    if (result.needsUsername) {
+      // Brand-new account (that's what routed it through the username
+      // picker above) -- also offer the last onboarding step, naming the
+      // pet. An existing Google account signing back in skips straight to
+      // Home, same as before.
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const NamePetScreen()),
+      );
+      if (!mounted) return;
+    }
+    Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+  }
+
+  /// Handles [GoogleAccountLinkingRequired]: that email already has a
+  /// password-based Nori account, so this asks for that password and
+  /// links the two via [AuthRepository.linkGoogleAccount] rather than
+  /// just showing the raw Firebase error.
+  Future<void> _resolveAccountLinking(GoogleAccountLinkingRequired e) async {
+    final passwordController = TextEditingController();
+    final password = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Account already exists'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${e.email} already has a Nori account with a password. '
+                'Enter that password to connect it to Google Sign-In.',
+              ),
+              const SizedBox(height: AppSpacing.gutter),
+              TextField(
+                controller: passwordController,
+                autofocus: true,
+                obscureText: true,
+                decoration: const InputDecoration(hintText: 'Password'),
+                onSubmitted: (value) => Navigator.pop(context, value),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, passwordController.text),
+              child: const Text('Connect'),
+            ),
+          ],
+        );
+      },
+    );
+    passwordController.dispose();
+    if (password == null || password.isEmpty || !mounted) return;
+
+    setState(() => _loading = true);
+    try {
+      final result = await AppData.auth.linkGoogleAccount(
+        email: e.email,
+        password: password,
+        pendingCredential: e.pendingCredential,
+      );
+      await _completeGoogleSignIn(result);
+    } on AuthException catch (err) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage(err.message);
+    } catch (error, stackTrace) {
+      debugPrint('Google account linking failed: $error');
+      debugPrint('$stackTrace');
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage('Unable to connect your account. Please try again.');
+    }
+  }
+
+  Future<void> _forgotPassword() async {
+    if (_loading) return;
+    final emailController = TextEditingController(
+      text: _emailController.text.trim(),
+    );
+    final email = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Reset your password'),
+          content: TextField(
+            controller: emailController,
+            autofocus: true,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(hintText: 'Email address'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(context, emailController.text.trim()),
+              child: const Text('Send link'),
+            ),
+          ],
+        );
+      },
+    );
+    emailController.dispose();
+    if (email == null || email.isEmpty || !mounted) return;
+
+    try {
+      await AppData.auth.sendPasswordResetEmail(email);
+      if (!mounted) return;
+      _showMessage('Password reset email sent to $email.');
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      _showMessage(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      _showMessage('Unable to send the reset email. Please try again.');
     }
   }
 
@@ -95,7 +309,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               _socialButton(
                                 label: 'Continue with Google',
                                 icon: Icons.g_mobiledata,
-                                onPressed: () => _showMessage('Coming soon'),
+                                onPressed: _loading ? null : _handleGoogleSignIn,
                               ),
                               const SizedBox(height: AppSpacing.stackMd),
                               const _Divider(),
@@ -106,7 +320,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: TextButton(
-                                  onPressed: () => _showMessage('Coming soon'),
+                                  onPressed: _loading ? null : _forgotPassword,
                                   child: const Text('Forgot Password?'),
                                 ),
                               ),
@@ -157,7 +371,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _socialButton({
     required String label,
     required IconData icon,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
   }) {
     return SizedBox(
       width: double.infinity,

@@ -30,11 +30,27 @@ re-running the audit.
 
 ## 🔴 Critical
 
-(None open right now — see docs/RESOLVED_LOG.md for the four fixed 2026-09-11.)
+(None open right now — see docs/RESOLVED_LOG.md for the midnight-rollover fix, 2026-09-24.)
 
 ---
 
 ## 🟠 Important
+
+### FirestoreVacationLog can't actually persist yet (2026-09-23 audit)
+
+`FirestoreVacationLog` (`lib/data/vacation_log.dart`) reads and writes
+`vacationModeEnabled`/`vacationRanges` on `/users/{uid}`, but that document is never
+created for a new account. `FirebaseAuthRepository.signUp` does not create it,
+`firestore.rules` has no `allow create` for `/users/{uid}` (only read/update), and
+Jimena's `onUserCreate` account-provisioning Cloud Function described in
+`docs/BACKEND.md` does not exist yet.
+
+Consequently, a new user enabling Vacation Mode can update `startFreeze`'s in-memory
+cache and then gets a not-found error from the Firestore `.update()` call because the
+parent document is absent. This needs coordination with account creation, not a habit/
+calendar-only workaround: guessing at a partial user-document shape client-side risks
+conflicting with the eventual provisioning flow. It is not live yet because
+`AppData.vacationLog` still points at the mock.
 
 ### No error handling outside the two auth screens (2026-09-10 audit)
 
@@ -94,6 +110,104 @@ are toggled per-stat, not via tapping the pet itself. Not a bug.)
 ---
 
 ## 🟡 Minor / polish / backlog
+
+### Bucket list can mint unlimited XP/coins through the normal UI (2026-09-28 audit)
+
+The 500 XP / 250 coin cap in `completeBucketListItem` is per item, but nothing limits how many
+items exist: anyone can use the add sheet to create any number of items at the cap and complete
+each one. Deleting a completed item is allowed and keeps the reward, so the list never even
+fills up. It needs no cheating, and pays ~10× a habit claim per tap. Needs a product call from
+valevasqc/Jimena — e.g. a cap on items completed per day/week, a much lower per-item cap, fixed
+server-side reward tiers instead of free-text amounts, or accept it as a self-reward feature.
+
+### Claim → spend → unclaim → re-claim mints coins (2026-09-24, found while implementing unclaimHabit)
+
+`unclaimHabit` clamps coins at 0, same as `MockUserRepository.addCoins`. So: claim a habit
+(+15 coins), spend them in the shop, unclaim (coins can't go below 0, so nothing is taken
+back), claim again (+15 again) — repeat for free shop items. Ported as-is rather than decided
+unilaterally, because both fixes change something users see: **(a)** let coins go negative
+(exact reversal, shop already blocks buying with too few coins, but the UI would show a
+negative balance), or **(b)** reject the unclaim with "you already spent those coins" (the
+user can't correct a mistaken claim after shopping). Needs a call from valevasqc/Jimena; the
+change itself is one line in `functions/src/unclaimHabit.ts`.
+
+The same loop works on the bucket list (2026-09-28 audit): `uncompleteBucketListItem` clamps
+coins at 0 too, so complete (+250), spend, uncomplete, complete again. Whichever fix is chosen
+should apply to both functions (`functions/src/index.ts`).
+
+### claimHabit still trusts two client-written habit fields (2026-09-24, found while implementing it)
+
+`claimHabit` no longer trusts the habit doc's `xpReward`/`coinReward`/`adaptiveMultiplier`
+(it derives base rewards from `difficulty` and clamps the multiplier — see docs/BACKEND.md's
+Cloud Functions list). Two smaller cheats are still possible, because `firestore.rules`' habit
+`allow create` accepts any payload: (1) a client can create a habit with a backdated
+`createdAt`, then claim it on every past day back to that date; (2) a client can create any
+number of habits and claim each one daily. Each claim is capped at 45 XP (hard × 1.5), so
+this stays the bounded "moderate" trust level docs/BACKEND.md chose, not an open mint. The fix,
+if it's ever worth doing: require `createdAt == request.time` in the create rule (the client
+would send `FieldValue.serverTimestamp()`, and `FirestoreHabitRepository.addHabit` would need
+to switch to that).
+
+### Pet vitals are a direct client write, so buying care items is optional (2026-09-28 audit)
+
+`firestore.rules` lets a client set `hunger`/`hygiene`/`happiness` on `pet/main` to any value,
+so a modified client can keep the pet at 100 without spending coins on food/care items. This is
+the trust level chosen for cosmetic stats (docs/BACKEND.md); logged only because the shop economy
+depends on it. Fix if it ever matters: allow only decreases from the client (like
+`careItemCounts`) and move restoring into a `consumeCareItem` Cloud Function.
+
+### Dart mock still has a 75% "min" reward tier (2026-09-28 audit)
+
+The server has no partial tier anymore (the minimum threshold keeps streaks but pays nothing —
+FEATURES.md §3), but `HabitRewardTier.min` (0.75×) and `Habit.rewardTier` in
+`lib/models/habit.dart` still exist and drive `MockHabitRepository`'s rewards. Since claims snap to
+the target it's rarely reached, but it's a second copy of the reward rule that now disagrees with
+`functions/src/rewards.ts`. Remove it once nothing in the UI reads the tier.
+
+### First-habit sunglasses gift has no in-app moment (2026-09-28 audit)
+
+`claimHabit` returns `giftedAccessoryId` when it grants the sunglasses, but
+`FirestoreHabitRepository._callRewardFunction` drops it — the accessory just appears (and is
+auto-equipped) in the inventory with no celebration or explanation.
+
+### functions/ has 8 moderate transitive npm audit findings (2026-09-24, scaffold)
+
+`npm install` in the newly-scaffolded `functions/` pulls in a vulnerable `uuid` (<11.1.1,
+missing buffer bounds check when a `buf` argument is supplied — GHSA-w5hq-g745-h8pq) several
+layers deep inside `firebase-admin`'s own Google Cloud dependencies (`google-gax` →
+`gaxios`/`teeny-request` → `uuid`). Cloud Functions code never calls `uuid` directly or passes
+it a `buf`, so this isn't attacker-reachable through anything Nori's functions do — flagging
+for hygiene, not urgency. `npm audit fix --force` would resolve it by bumping
+`firebase-admin` to a breaking major version (14.x); worth doing as a deliberate upgrade once
+there's real function code to regression-test against, not blind right after scaffolding.
+
+### FirestoreCalendarRepository re-runs its 400-day streak query on every getMonth call (2026-09-23 audit)
+
+`FirestoreCalendarRepository.getMonth()` (`lib/data/calendar_repository.dart`) calls
+`_currentStreak()`, which performs a fresh 400-day `logsInRange` query every time — even
+when browsing a past month where the current streak is irrelevant to the display. The
+three `getMonth` fetches (habit definitions, the month's log range, and the streak's
+400-day range) also run sequentially instead of concurrently with `Future.wait`, though
+none depends on the others.
+
+### FirestoreCalendarRepository duplicates MockCalendarRepository's status/streak logic (2026-09-23 audit)
+
+`FirestoreCalendarRepository._statusFor` and `_currentStreak` are copied nearly
+line-for-line from `MockCalendarRepository` rather than sharing one implementation. A
+future status or streak rule change — for example, respecting a per-habit
+`allowVacationFreeze` flag — must be made twice; missing one would make the mock and
+Firestore calendars silently disagree, undercutting the mock's doc-comment promise
+that a day's colour and habit list can never disagree.
+
+### Streak/stats day-walk skips a day across DST (2026-09-23 audit)
+
+`FirestoreCalendarRepository._currentStreak` and `MockCalendarRepository._currentStreak`,
+along with `getHabitStats` in both, walk backward by subtracting a fixed
+`Duration(days: 1)`/24 hours from a `DateTime` instead of constructing
+`DateTime(year, month, day - 1)`. On a daylight-saving spring-forward transition,
+local midnight minus 24 hours lands at 23:00 two calendar days back, silently skipping
+a day. This predates the Firestore work in the mock; it was found during this audit,
+not introduced by it.
 
 ### Notifications "Do it now" CTA doesn't take the user anywhere (2026-09-15 audit)
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/calendar_day.dart';
 import 'package:nori/models/habit.dart';
@@ -498,35 +499,41 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
     setState(() => _habits = habits);
   }
 
+  /// The claimHabit/unclaimHabit Cloud Function already applied this
+  /// server-side — [reward]'s own flags say whether to celebrate, so there's
+  /// no need to hold user/pet state here just to diff before vs. after.
   Future<void> _applyReward(HabitRewardResult reward) async {
-    if (reward.xpDelta == 0 && reward.coinsDelta == 0) return;
-    final previousLevel = (await AppData.user.getCurrentUser()).level;
-    if (reward.xpDelta != 0) await AppData.user.addXp(reward.xpDelta);
-    if (reward.coinsDelta != 0) await AppData.user.addCoins(reward.coinsDelta);
-    final user = await AppData.user.getCurrentUser();
-    final previousStage = (await AppData.pet.getPet()).stage;
-    await AppData.pet.syncEvolution(user.level);
+    if (!mounted || !(reward.leveledUp || reward.evolved)) return;
     final pet = await AppData.pet.getPet();
     if (!mounted) return;
-    if (pet.stage.index > previousStage.index) {
-      await showEvolutionCelebration(
-        context,
-        petName: pet.name,
-        stage: pet.stage,
-      );
-    } else if (user.level > previousLevel) {
+    if (reward.evolved) {
+      await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
+    } else {
+      final user = await AppData.user.getCurrentUser();
+      if (!mounted) return;
       await showLevelUpCelebration(context, level: user.level, petName: pet.name);
     }
   }
 
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _toggleBinary(Habit habit, bool completed) async {
-    final reward = await AppData.habits.setHabitCompletedForDate(
-      habit.id,
-      widget.date,
-      completed,
-    );
-    await _applyReward(reward);
-    await _reload();
+    try {
+      final reward = await AppData.habits.setHabitCompletedForDate(
+        habit.id,
+        widget.date,
+        completed,
+      );
+      await _applyReward(reward);
+      await _reload();
+    } on CloudFunctionFailure catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+    }
   }
 
   Future<void> _logProgress(Habit habit, double amount) async {
@@ -535,33 +542,48 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
   }
 
   Future<void> _claim(Habit habit) async {
-    final reward = await AppData.habits.claimHabitForDate(
-      habit.id,
-      widget.date,
-    );
-    await _applyReward(reward);
-    await _reload();
+    try {
+      final reward = await AppData.habits.claimHabitForDate(
+        habit.id,
+        widget.date,
+      );
+      await _applyReward(reward);
+      await _reload();
+    } on CloudFunctionFailure catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+    }
   }
 
   Future<void> _unclaim(Habit habit) async {
-    final reward = await AppData.habits.unclaimHabitForDate(
-      habit.id,
-      widget.date,
-    );
-    await _applyReward(reward);
-    await _reload();
-  }
-
-  Future<void> _editProgress(Habit habit, double value) async {
-    if (habit.isCompletedToday) {
+    try {
       final reward = await AppData.habits.unclaimHabitForDate(
         habit.id,
         widget.date,
       );
       await _applyReward(reward);
+      await _reload();
+    } on CloudFunctionFailure catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
     }
-    await AppData.habits.setProgressForDate(habit.id, widget.date, value);
-    await _reload();
+  }
+
+  Future<void> _editProgress(Habit habit, double value) async {
+    try {
+      if (habit.isCompletedToday) {
+        final reward = await AppData.habits.unclaimHabitForDate(
+          habit.id,
+          widget.date,
+        );
+        await _applyReward(reward);
+      }
+      await AppData.habits.setProgressForDate(habit.id, widget.date, value);
+      await _reload();
+    } on CloudFunctionFailure catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+    }
   }
 
   Future<void> _editHabitDefinition(Habit habit) async {

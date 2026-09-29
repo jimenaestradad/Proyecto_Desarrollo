@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/username_repository.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/nori_avatar.dart';
@@ -63,7 +64,42 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
 
+    if (username.length < 3) {
+      _showMessage('Username must be at least 3 characters.');
+      return;
+    }
+
     setState(() => _saving = true);
+
+    // Only touch the /usernames uniqueness index when the username
+    // actually changed -- changeUsername is a no-op for that case anyway,
+    // but skipping it avoids a needless transaction on every save (name-
+    // only or email-only edits are the common case). See
+    // UsernameRepository.changeUsername and firestore.rules's own note
+    // that a change is create-new + delete-old.
+    if (username.trim().toLowerCase() !=
+        widget.user.username.trim().toLowerCase()) {
+      try {
+        await AppData.usernames.changeUsername(
+          uid: widget.user.id,
+          oldUsername: widget.user.username,
+          newUsername: username,
+        );
+      } on UsernameTakenException {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        _showMessage(
+          'That username is already taken — please choose another.',
+        );
+        return;
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        _showMessage('Unable to save changes. Please try again.');
+        return;
+      }
+    }
+
     await AppData.user.updateProfile(
       name: name,
       username: username,

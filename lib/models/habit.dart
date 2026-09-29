@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import '../data/color_registry.dart';
+import '../data/icon_registry.dart';
+import '../utils/firestore_date.dart';
+import 'habit_day_state.dart';
 
 enum HabitRepeat { daily, weekdays, weekends, custom }
 
@@ -95,6 +99,9 @@ class Habit {
     this.startDate,
     this.endDate,
     this.isCompletedToday = false,
+    this.order = 0,
+    this.archived = false,
+    this.createdAt,
   });
 
   final String id;
@@ -138,13 +145,33 @@ class Habit {
   final int lastAwardedXp;
   final int lastAwardedCoins;
 
-  /// Optional habit lifespan. Stored for the "Set End Date" UI control, but
-  /// nothing currently reads these to auto-archive a habit — no archived-habit
-  /// view exists yet. Do not treat their presence as working archival.
+  /// Optional habit lifespan (the "Set End Date" control). Outside this
+  /// window a habit acts archived (FEATURES.md §2) — see [isActiveOn] — by
+  /// date check, not by flipping [archived]; no archived-habit view exists yet.
   final DateTime? startDate;
   final DateTime? endDate;
 
   final bool isCompletedToday;
+
+  /// Persisted list position — Firestore documents have no inherent order,
+  /// unlike the mock's in-memory `List`, so [reorderHabits] needs a real
+  /// field to write to. New habits default to insertion order (see
+  /// `FirestoreHabitRepository.addHabit`); manual drag-reorder overwrites it
+  /// with plain 0..n indices.
+  final int order;
+
+  /// Soft-delete flag — deleting a habit archives it instead of removing
+  /// the doc, so `habitLogs` (streak/calendar history) survives. No UI
+  /// calls this yet (there's no delete button built) — the field exists so
+  /// the schema doesn't need a migration once one is.
+  final bool archived;
+
+  /// When this habit was created. Null for the mock's seed habits (which
+  /// have always "existed"); always set for a real, Firestore-created
+  /// habit — see [isScheduledOn], which uses it as an implicit lower bound
+  /// so a brand-new habit doesn't retroactively count as "missed" on days
+  /// before it existed.
+  final DateTime? createdAt;
 
   bool get hasProgressTracking => type != HabitType.binary;
 
@@ -193,6 +220,28 @@ class Habit {
   bool isScheduledOn(DateTime date) {
     final day = DateTime(date.year, date.month, date.day);
 
+    final created = createdAt;
+    if (created != null &&
+        day.isBefore(DateTime(created.year, created.month, created.day))) {
+      return false;
+    }
+
+    if (!isActiveOn(day)) return false;
+
+    return switch (repeat) {
+      HabitRepeat.daily => true,
+      HabitRepeat.weekdays => day.weekday <= DateTime.friday,
+      HabitRepeat.weekends => day.weekday >= DateTime.saturday,
+      HabitRepeat.custom => customDays?.contains(day.weekday) ?? true,
+    };
+  }
+
+  /// Whether [date] falls inside the optional [startDate]/[endDate] window.
+  /// Unlike [isScheduledOn] this ignores the repeat schedule, so today's list
+  /// can hide an ended habit while still showing unscheduled ones. The
+  /// claimHabit Cloud Function enforces the same window.
+  bool isActiveOn(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
     final start = startDate;
     if (start != null &&
         day.isBefore(DateTime(start.year, start.month, start.day))) {
@@ -202,13 +251,7 @@ class Habit {
     if (end != null && day.isAfter(DateTime(end.year, end.month, end.day))) {
       return false;
     }
-
-    return switch (repeat) {
-      HabitRepeat.daily => true,
-      HabitRepeat.weekdays => day.weekday <= DateTime.friday,
-      HabitRepeat.weekends => day.weekday >= DateTime.saturday,
-      HabitRepeat.custom => customDays?.contains(day.weekday) ?? true,
-    };
+    return true;
   }
 
   /// "Stay under a max" instead of "reach a target".
@@ -237,6 +280,13 @@ class Habit {
   bool get isMinMet =>
       !isInverted && minThreshold != null && currentValue >= minThreshold!;
 
+  /// Whether this day counts toward streaks: claimed, or — even unclaimed —
+  /// logged up to [minThreshold]. Reaching the minimum pays nothing (Complete
+  /// always snaps to the full target, see MockHabitRepository._claimValue),
+  /// so this is its whole job: "didn't finish, but showed up" keeps the
+  /// streak, per FEATURES.md §3. Limit habits have no minimum.
+  bool get keptStreak => isCompletedToday || isMinMet;
+
   HabitRewardTier get rewardTier {
     if (isTargetMet) return HabitRewardTier.full;
     if (isInverted) return HabitRewardTier.none;
@@ -254,11 +304,26 @@ class Habit {
     );
   }
 
+  /// Applies a specific day's logged progress/claim state onto this
+  /// definition — the shape every screen expects a [Habit] in (see
+  /// [MockHabitRepository]'s own private version of this, which this
+  /// mirrors for the real Firestore-backed repositories in
+  /// `habit_repository.dart` and `calendar_repository.dart`, so both share
+  /// one implementation instead of three copies).
+  Habit hydrate(HabitDayState state) => copyWith(
+    currentValue: state.value,
+    isCompletedToday: state.claimed,
+    lastAwardedXp: state.awardedXp,
+    lastAwardedCoins: state.awardedCoins,
+  );
+
   Habit copyWith({
     bool? isCompletedToday,
     double? currentValue,
     int? lastAwardedXp,
     int? lastAwardedCoins,
+    int? order,
+    bool? archived,
   }) {
     return Habit(
       id: id,
@@ -284,6 +349,91 @@ class Habit {
       startDate: startDate,
       endDate: endDate,
       isCompletedToday: isCompletedToday ?? this.isCompletedToday,
+      order: order ?? this.order,
+      archived: archived ?? this.archived,
+      createdAt: createdAt,
     );
   }
+
+  /// The document body for `/users/{uid}/habits/{habitId}` — `id` is the
+  /// path segment, not a field, so it's deliberately left out here (see
+  /// [fromJson]). See docs/BACKEND.md "Firestore schema".
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'subtitle': subtitle,
+    'iconKey': IconRegistry.keyFor(icon),
+    'colorKey': ColorRegistry.keyFor(color),
+    'xpReward': xpReward,
+    'coinReward': coinReward,
+    'repeat': repeat.name,
+    'type': type.name,
+    'difficulty': difficulty.name,
+    'targetValue': targetValue,
+    'unit': unit,
+    'minThreshold': minThreshold,
+    'quickLogAmount': quickLogAmount,
+    'currentValue': currentValue,
+    'adaptiveMultiplier': adaptiveMultiplier,
+    'customDays': customDays?.toList(),
+    'allowVacationFreeze': allowVacationFreeze,
+    'lastAwardedXp': lastAwardedXp,
+    'lastAwardedCoins': lastAwardedCoins,
+    'startDate': startDate,
+    'endDate': endDate,
+    'isCompletedToday': isCompletedToday,
+    'order': order,
+    'archived': archived,
+    'createdAt': createdAt,
+  };
+
+  /// [id] comes from the Firestore document snapshot's `.id`, not from
+  /// [json] itself — mirrors [toJson] leaving it out of the map.
+  factory Habit.fromJson(String id, Map<String, dynamic> json) => Habit(
+    id: id,
+    name: json['name'] as String,
+    subtitle: json['subtitle'] as String,
+    icon: IconRegistry.iconFor(json['iconKey'] as String),
+    color: ColorRegistry.colorFor(json['colorKey'] as String),
+    xpReward: json['xpReward'] as int,
+    coinReward: json['coinReward'] as int,
+    repeat: _enumFromName(HabitRepeat.values, json['repeat'], HabitRepeat.daily),
+    type: _enumFromName(HabitType.values, json['type'], HabitType.binary),
+    difficulty: _enumFromName(
+      HabitDifficulty.values,
+      json['difficulty'],
+      HabitDifficulty.medium,
+    ),
+    targetValue: (json['targetValue'] as num?)?.toDouble(),
+    unit: json['unit'] as String?,
+    minThreshold: (json['minThreshold'] as num?)?.toDouble(),
+    quickLogAmount: (json['quickLogAmount'] as num?)?.toDouble(),
+    currentValue: (json['currentValue'] as num? ?? 0).toDouble(),
+    adaptiveMultiplier: (json['adaptiveMultiplier'] as num? ?? 1.0).toDouble(),
+    customDays: (json['customDays'] as List<dynamic>?)
+        ?.map((day) => day as int)
+        .toSet(),
+    allowVacationFreeze: json['allowVacationFreeze'] as bool? ?? true,
+    lastAwardedXp: json['lastAwardedXp'] as int? ?? 0,
+    lastAwardedCoins: json['lastAwardedCoins'] as int? ?? 0,
+    startDate: dateFromFirestoreValue(json['startDate']),
+    endDate: dateFromFirestoreValue(json['endDate']),
+    isCompletedToday: json['isCompletedToday'] as bool? ?? false,
+    order: json['order'] as int? ?? 0,
+    archived: json['archived'] as bool? ?? false,
+    createdAt: dateFromFirestoreValue(json['createdAt']),
+  );
+}
+
+/// Matches [value] against an enum's `.name` (see docs/BACKEND.md
+/// "Conventions" — enums are stored as `.name`, never index ints, since
+/// index order silently changes if someone adds a value later). Falls back
+/// to [fallback] instead of throwing on a value this build doesn't
+/// recognize — e.g. an older client reading a `HabitType` a newer client
+/// added — rather than crashing the whole habit list over one bad field.
+T _enumFromName<T extends Enum>(List<T> values, dynamic value, T fallback) {
+  if (value is! String) return fallback;
+  for (final entry in values) {
+    if (entry.name == value) return entry;
+  }
+  return fallback;
 }

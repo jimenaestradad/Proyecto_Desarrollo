@@ -112,6 +112,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _logOut() async {
+    // Actually end the Firebase session (not just navigate away) — see
+    // AuthRepository.logOut doc: otherwise relaunching the app would read
+    // the still-signed-in Firebase user and skip straight back to Home.
+    await AppData.auth.logOut();
+    // Un-point AppData.user (etc.) from this account's Firestore data so a
+    // different account signing in next doesn't start out reading it —
+    // see AppData.unbindUser.
+    AppData.unbindUser();
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _user;
@@ -154,11 +167,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     icon: Icons.logout,
                     backgroundColor: AppColors.errorContainer,
                     foregroundColor: AppColors.onErrorContainer,
-                    onPressed: () => Navigator.pushNamedAndRemoveUntil(
-                      context,
-                      '/welcome',
-                      (route) => false,
-                    ),
+                    onPressed: _logOut,
                   ),
                 ],
               ),

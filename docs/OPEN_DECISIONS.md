@@ -15,33 +15,40 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Negative/limit-habit implementation details
 
 ## XP balancing
-- Exact XP % awarded for minimum-threshold-only completion (~70% was an example, not final)
+- Exact XP % awarded for minimum-threshold-only completion (~70% was an example, not final) —
+  moot for now: as of 2026-09-28 the minimum keeps streaks but pays nothing; a partial reward is a
+  logged future idea (FEATURES.md §3)
 - Starting XP values per difficulty tier (Easy/Medium/Hard — 10/20/30 were examples)
 - Adaptive-XP formula and adjustment window (how much history, how fast it moves)
 - Adaptive-XP multiplier bounds (~0.5×–1.5× was an example)
 - Exact cadence multipliers (weekly vs. daily vs. other frequencies)
-- Full XP-per-level curve
+- Resolved 2026-09-16: **`xpForNextLevel = 100 × currentLevel`** (cumulative to reach level n is
+  `50 × n × (n − 1)`). New accounts start at level 1 / 0 XP / 100 to next. The formula lives only
+  in the Cloud Function, which writes level/xpIntoLevel/xpForNextLevel to the user doc — the
+  client displays stored values and never recomputes. See [BACKEND.md](BACKEND.md).
 
 ## Streaks
 - Exact behavior for flexible/any-day-in-period schedules ("5x any day this week")
 
 ## Pet mechanics
-- Evolution XP requirements / level thresholds per stage — still undecided overall, but one
-  anchor point is set (2026-09-10): the existing breathing-sprite art (see
-  `nori_breathing_sprite.dart`) reads visually as a toddler, not a newborn or an
-  already-evolved pet, so the mock user (`kDemoUser` in `lib/data/user_repository.dart`)
-  starts at **level 5** rather than level 1 or 18+ to match. `evolutionLevelThreshold`
-  (`lib/data/pet_repository.dart`) is a placeholder testing value, lowered 2026-09-11 from
-  20 to **7** (just above the level-5 starting point) purely so the evolution screen is
-  reachable in a normal test session — not a real balance decision, along with thresholds
-  for any stage beyond evolution1.
-- How additional pets are unlocked
+- Resolved 2026-09-16: the XP curve is `100 × currentLevel` and evolution stages are Baby 1–6,
+  Evolution 1 at **level 7**, Evolution 2 at **level 15** (MVP ships only the first evolution).
+  See [FEATURES.md](FEATURES.md) §6. The level-7 threshold that was a placeholder in
+  `pet_repository.dart` is now the real value; `kDemoUser`'s level 5 still matches the
+  breathing-sprite art reading as a toddler (2026-09-10 anchor), one level below evolving.
+- Resolved 2026-09-16 (direction only, still not MVP): additional pets are unlocked by **buying
+  an egg with coins once the current pet is maxed out** — see FEATURES.md §7. Egg pricing and
+  whether eggs are the only unlock path are still open.
 - Whether XP belongs to the user or to the currently active pet
 - Whether only one pet can progress at a time
 - How inactive pets' stats/needs behave
 - Pet-care stat decay rates
 
 ## Economy
+- Resolved 2026-09-16: new accounts start with **0 coins** and the care items
+  `{food: 3, shampoo: 2, plushie: 1}`. The `sunglasses` accessory is unlocked on the user's
+  **first habit completion** and is the **only** free accessory ever granted — everything else
+  is bought with coins. See [BACKEND.md](BACKEND.md).
 - Coins earned per habit completion
 - Shop item prices
 - Consumable vs. permanent items
@@ -84,14 +91,26 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 Not yet designed: onboarding, first-pet moment, habit creation, daily home screen, logging
 progress, rewards moment, pet care screen, shop, profile.
 
+- Decided 2026-09-16: the user **names their pet during onboarding** (default "Nori" if they
+  skip). The name is written client-side after sign-up, not by the auth trigger — see
+  [BACKEND.md](BACKEND.md). The surrounding first-pet flow is still undesigned.
+
 ## Technical rules / edge cases
-- Timezone / day-rollover handling
-- Deleting a habit (vs. archiving)
+- Timezone / day-rollover handling — partially resolved 2026-09-16 for backend purposes: the
+  canonical day key is computed **device-local** by `dayKey()` and passed explicitly to Cloud
+  Functions, which never derive the day from (UTC) server time. See [BACKEND.md](BACKEND.md).
+  Still open: what happens when a user travels across timezones, and DST edges.
+- Resolved 2026-09-16: **deleting a habit archives it** (new `archived` flag) and never deletes
+  its `habitLogs` — streaks, calendar days and achievements are all derived from those logs.
 - Missed-period handling
 - Cheating / duplicate-completion prevention
 - Data history retention
 
 ## Infrastructure
-- Auth provider/strategy
-- Database choice and schema
-- Specific GCP services for hosting/deploy
+- Resolved 2026-09-16: Firebase (Auth + Firestore + Cloud Functions, Node.js/TypeScript) — see
+  [BACKEND.md](BACKEND.md) for schema, security-rules approach, and the Cloud Functions list.
+- Resolved 2026-09-21: Auth provider/strategy — Firebase Auth, email/password only for now — see
+  `FirebaseAuthRepository` in `lib/data/firebase_auth_repository.dart`. Google Sign-In is tracked
+  as its own separate task, not covered by this.
+- Still open: specific GCP services beyond Firebase itself for hosting/deploy (the GCP phase in
+  ROADMAP.md, not yet started).

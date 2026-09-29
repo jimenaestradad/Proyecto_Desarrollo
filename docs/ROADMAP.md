@@ -7,9 +7,9 @@ a development focus, not a permanent silo — the app still converges into one p
 |---|---|---|
 | Release 0 | Vision, requirements, mockups, stack decisions, backlog, pricing docs | Done |
 | Frontend | Screens, nav, reusable components, pet visuals, habit UI — built so mock data can later swap for real data cleanly. Don't redesign arbitrarily where approved mockups (the Stitch export) already exist | **Near done** — all MVP-boundary screens/flows (see FEATURES.md) built against mock repositories and pre-release audited (2026-09-15/16: `docs/KNOWN_ISSUES.md`'s two pre-release audit passes); working tree has the fixes uncommitted |
-| Backend | API/contracts, auth, habit + completion/XP/pet-progression logic. Business rules live server-side, not scattered in UI | Not started — next phase |
-| Data | Data model, DB schema, persistence, migrations; replace mock data | Not started |
-| GCP | Deploy on Google Cloud Platform (not AWS) — hosting, env config, secrets, CI/CD, cost awareness | Not started |
+| Backend | Firebase Auth wiring, Cloud Functions (business logic — habit claim/unclaim, XP/level-up, evolution trigger, shop purchases), and the feature-level Firestore read/write code in each repository. Currency-affecting rules (XP/coins mint/burn) live in Cloud Functions, not scattered in UI. See [BACKEND.md](BACKEND.md) | **Near done** — all 7 Cloud Functions deployed to `nori-pet` (2026-09-29); habit claim/unclaim independently verified end-to-end. Open: seed script, and Jimena's side hasn't had the same independent re-verification (code looks complete, not separately exercised) |
+| Data | Firestore schema design (collections/fields for users, habits, habit logs, pet, inventory, ...) + security rules + indexes — a design pass that precedes most Backend-phase coding, per [BACKEND.md](BACKEND.md) | **Near done** — both verticals' `Firestore*Repository` implementations exist and rules are merged + deployed; see BACKEND.md's task checklist |
+| GCP | Firebase/GCP project + console config, CI/CD, secrets/env config, deploying Cloud Functions + rules to the live project, cost awareness (Cloud Functions need the Blaze plan) | **Mostly done** — functions + rules deployed 2026-09-29, Blaze plan active. Open: CI/CD |
 | QA | Test the critical flow: create/manage habit → complete → XP/pet progress reflected correctly | Not started |
 | Hardening / Demo Day | Bug fixes, remove leftover mock behavior, verify deploy, demo prep | Not started |
 

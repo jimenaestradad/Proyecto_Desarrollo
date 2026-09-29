@@ -1,0 +1,218 @@
+rules_version = '2';
+
+// Nori — Firestore security rules.
+//
+// This is now the real, complete, deployable ruleset — kept in sync BY
+// HAND with what's published in the Firebase console until firebase-tools
+// is set up for `firebase deploy --only firestore:rules` (see
+// docs/BACKEND.md, "Shared setup"). If you publish a change in the
+// console, mirror it here too, and vice versa — two copies that drift is
+// worse than one place with an extra step.
+service cloud.firestore {
+  // Shared by /inventory/main's `careItemCounts` update rule below --
+  // a client write may DECREASE any known item id, never add a new one
+  // or increase a count (that's purchaseCareItem-only). See
+  // docs/BACKEND.md:310-317.
+  function careItemCountsOnlyDecreased(oldCounts, newCounts) {
+    return newCounts.keys().hasOnly(oldCounts.keys())
+      && newCounts.food <= oldCounts.food
+      && newCounts.cake <= oldCounts.cake
+      && newCounts.shampoo <= oldCounts.shampoo
+      && newCounts['hair-brush'] <= oldCounts['hair-brush']
+      && newCounts.plushie <= oldCounts.plushie
+      && newCounts.blanket <= oldCounts.blanket;
+  }
+
+  match /databases/{database}/documents {
+
+    // --- /users/{uid} -------------------------------------------------
+    // Every collection below lives under this doc. Firestore rules do NOT
+    // cascade from a parent match to its subcollections — each match block
+    // below is independently responsible for its own auth check.
+    match /users/{uid} {
+      allow read: if request.auth.uid == uid;
+
+      // Progression fields (level/XP/coins) are Cloud-Function-only — only
+      // reachable via the Admin SDK inside claimHabit etc., which bypasses
+      // rules entirely. Client writes may only touch profile + vacation
+      // fields. See docs/BACKEND.md:296-299.
+      allow update: if request.auth.uid == uid
+        && resource != null
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly([
+               'name', 'username', 'email', 'avatarUrl',
+               'vacationModeEnabled', 'vacationRanges', 'habitCategories',
+             ]);
+
+      // --- /users/{uid}/habits/{habitId} -------------------------------
+      match /habits/{habitId} {
+        allow read: if request.auth.uid == uid; //Allow this data to be read only if the logged-in person’s UID matches the UID in the data’s path
+
+        // A habit doc is purely a definition — currentValue/isCompletedToday/
+        // lastAwardedXp/lastAwardedCoins live in habitLogs instead, for
+        // every day including today (2026-09-24: fixed the midnight-
+        // rollover bug logged in docs/KNOWN_ISSUES.md by moving "today" out
+        // of the habit doc entirely — see FirestoreHabitRepository). So
+        // there's no Cloud-Function-only field left on this doc to guard.
+        allow create: if request.auth.uid == uid;
+
+        // order (drag-reorder) and archived (future delete-as-archive) are
+        // legitimately client-writable, just not via editing a habit's own
+        // definition — FirestoreHabitRepository.updateHabit deliberately
+        // excludes them (reorderHabits/a future archive flow write them
+        // directly instead). createdAt is set once at creation and never
+        // touched by an edit.
+        allow update: if request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly([
+                 'name', 'subtitle', 'iconKey', 'colorKey',
+                 'xpReward', 'coinReward', 'repeat', 'type', 'difficulty',
+                 'targetValue', 'unit', 'minThreshold', 'quickLogAmount',
+                 'adaptiveMultiplier', 'customDays',
+                 'allowVacationFreeze', 'startDate', 'endDate', 'order',
+                 'archived',
+               ]);
+
+        // Deleting a habit archives it (sets archived = true via the
+        // update rule above) instead of removing the doc — habitLogs must
+        // survive for history/streaks. See docs/BACKEND.md:64.
+        allow delete: if false;
+      }
+
+      // --- /users/{uid}/habitLogs/{logId} ------------------------------
+      // logId is '{dayKey}_{habitId}', e.g. '2026-09-21_abc123' — flat
+      // collection, not nested under habits/, so calendar views can range-
+      // query by date across every habit in one query. See
+      // docs/BACKEND.md:129-134.
+      match /habitLogs/{logId} {
+        allow read: if request.auth.uid == uid;
+
+        allow create: if request.auth.uid == uid
+          && request.resource.data.claimed == false
+          && request.resource.data.awardedXp == 0
+          && request.resource.data.awardedCoins == 0;
+
+        // Logging progress during the day (quick-log amount, manual entry)
+        // may only touch `value` — claiming/unclaiming XP payout is
+        // Cloud-Function-only. See docs/BACKEND.md:300-302.
+        allow update: if request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['value']);
+
+        allow delete: if false;
+      }
+
+      // --- /users/{uid}/pet/main ----------------------------------
+      match /pet/main {
+        allow read: if request.auth.uid == uid;
+
+        // `stage`/`evolutionLevelThreshold` are Cloud-Function-only --
+        // only claimHabit's transaction (Admin SDK, bypasses these
+        // rules) may touch them. A client write may touch the
+        // remaining stat/decay fields only. See docs/BACKEND.md:303-309.
+        allow update: if request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['name', 'hunger', 'hygiene', 'happiness', 'lastDecayAt']);
+
+        // Created only by onUserCreate (Admin SDK, bypasses these rules).
+        allow create: if false;
+        allow delete: if false;
+      }
+
+      // --- /users/{uid}/inventory/main ----------------------------
+      // Three different fields, three different rules on the same doc
+      // -- see docs/BACKEND.md:310-328:
+      // - careItemCounts: a client write may only DECREASE a known item
+      //   id, never add a new key -- consumeCareItem stays direct while
+      //   purchaseCareItem stays the only way to increase a count.
+      // - ownedAccessoryIds: a client write must be a subset of the
+      //   existing list -- a client can never add an accessory it
+      //   doesn't own; only purchaseAccessory (and the sunglasses gift
+      //   inside claimHabit) add ids.
+      // - equippedAccessoryId: a client write must be null or already
+      //   present in the (old) ownedAccessoryIds -- equip-only-what-
+      //   you-own, enforced server-side rather than just by the UI
+      //   hiding the option.
+      match /inventory/main {
+        allow read: if request.auth.uid == uid;
+
+        allow update: if request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['careItemCounts', 'ownedAccessoryIds', 'equippedAccessoryId'])
+          && careItemCountsOnlyDecreased(
+               resource.data.careItemCounts,
+               request.resource.data.careItemCounts
+             )
+          && request.resource.data.ownedAccessoryIds.hasOnly(resource.data.ownedAccessoryIds)
+          && (request.resource.data.equippedAccessoryId == null
+              || resource.data.ownedAccessoryIds.hasAny([request.resource.data.equippedAccessoryId]));
+
+        // Created only by onUserCreate (Admin SDK, bypasses these rules).
+        allow create: if false;
+        allow delete: if false;
+      }
+
+      // --- /users/{uid}/bucketList/{itemId} -----------------------
+      match /bucketList/{itemId} {
+        allow read: if request.auth.uid == uid;
+
+        // New item: the Cloud-Function-only fields must start at their
+        // untouched defaults -- mirrors the habit doc's create rule
+        // above.
+        allow create: if request.auth.uid == uid
+          && request.resource.data.isCompleted == false
+          && request.resource.data.awardedXp == 0
+          && request.resource.data.awardedCoins == 0;
+
+        // Editing an item (title/description/icon/color/rewards) may
+        // never touch isCompleted/completedAt/awardedXp/awardedCoins --
+        // those are completeBucketListItem/uncompleteBucketListItem-
+        // only (Cloud Functions, Admin SDK, bypass these rules
+        // entirely). See docs/BACKEND.md's Cloud Functions list, #7/#8.
+        allow update: if request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly([
+                 'title', 'description', 'iconKey', 'colorKey',
+                 'xpReward', 'coinReward',
+               ]);
+
+        // Unlike habits, bucket list items have no archive-not-delete
+        // rule in FEATURES.md -- a straight delete is fine.
+        allow delete: if request.auth.uid == uid;
+      }
+    }
+
+    // /usernames/{usernameLower} -> { uid }
+    //
+    // The ONE global collection outside /users/{uid} (docs/BACKEND.md,
+    // "Username uniqueness"). Doc id is the username lowercased, so
+    // "Alex" and "alex" collide; the display casing lives on
+    // users/{uid}.username, not here.
+    //
+    // Read is public: the sign-up screen has to check availability
+    // *before* the person is signed in (email/password sign-up creates
+    // the Firebase Auth account only after a username is chosen), so
+    // there is no `request.auth` yet at that point. The `uid` field this
+    // exposes isn't sensitive on its own.
+    //
+    // "allow create" already fails if the document exists — Firestore
+    // evaluates that as an *update* instead, which is denied below — so
+    // that failure is atomic and no Cloud Function is needed to enforce
+    // uniqueness (per docs/BACKEND.md). Delete is allowed for the owning
+    // uid because changing a username later is spec'd as create-new +
+    // delete-old, even though that flow isn't built yet.
+    match /usernames/{usernameLower} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.auth.uid == request.resource.data.uid;
+      allow delete: if request.auth != null
+                    && request.auth.uid == resource.data.uid;
+      allow update: if false;
+    }
+
+    // Anything not explicitly matched above stays denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
