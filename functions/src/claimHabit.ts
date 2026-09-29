@@ -2,7 +2,7 @@ import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { claimValue, computeReward, parseHabitDefinition } from "./rewards";
 import { applyXpDelta } from "./xpCurve";
-import { DayArgs, parseDayArgs, parseHabitId, requireAuth } from "./requestArgs";
+import { DayArgs, localDayKeyOf, parseDayArgs, parseHabitId, requireAuth } from "./requestArgs";
 import {
   HabitRewardResult,
   asNumber,
@@ -47,6 +47,15 @@ export async function runClaimHabit(
     const createdAt = habitData.createdAt;
     if (createdAt instanceof Timestamp && day.dayStartMillis + LONGEST_DAY_MS <= createdAt.toMillis()) {
       throw new HttpsError("failed-precondition", "Habit didn't exist on that day.");
+    }
+    // Same window Habit.isActiveOn uses: outside it the habit counts as
+    // archived (FEATURES.md §2), so it can't be claimed. dayKeys compare as strings.
+    const { startDate, endDate } = habitData;
+    if (
+      (startDate instanceof Timestamp && day.dayKey < localDayKeyOf(startDate.toMillis(), day)) ||
+      (endDate instanceof Timestamp && day.dayKey > localDayKeyOf(endDate.toMillis(), day))
+    ) {
+      throw new HttpsError("failed-precondition", "Habit isn't active on that day.");
     }
 
     const previousState = readLevelState(userData);

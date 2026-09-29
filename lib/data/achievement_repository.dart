@@ -65,20 +65,15 @@ class MockAchievementRepository implements AchievementRepository {
       if (habitsForDay.isEmpty) {
         continue;
       }
-      if (!habitsForDay.any((h) => h.isCompletedToday)) anyMissedDay = true;
+      if (!habitsForDay.any((h) => h.keptStreak)) anyMissedDay = true;
       for (final habit in habitsForDay) {
+        // Checked on unclaimed days too: a claim snaps to the full target,
+        // so a between-min-and-target value only survives unclaimed.
+        if (habit.isMinMet && !habit.isTargetMet) reachedMinNotFull = true;
         if (habit.isCompletedToday) {
           totalCompletions++;
           perHabitCompletions[habit.id] =
               (perHabitCompletions[habit.id] ?? 0) + 1;
-          final target = habit.targetValue;
-          final min = habit.minThreshold;
-          if (target != null &&
-              min != null &&
-              habit.currentValue >= min &&
-              habit.currentValue < target) {
-            reachedMinNotFull = true;
-          }
         }
       }
     }

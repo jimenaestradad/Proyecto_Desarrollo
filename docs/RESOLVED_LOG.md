@@ -2,6 +2,14 @@
 
 Trimmed historical fix log for Nori, split out of `docs/KNOWN_ISSUES.md` on 2026-09-16 to keep the working file scannable. Full narrative detail from before the split was intentionally condensed; this log favors terse entries going forward.
 
+### 2026-09-28 — minimum threshold now keeps streaks
+
+Complete always snaps to the target, so the minimum threshold could never pay a partial reward and did nothing. It now keeps the streak instead (FEATURES.md §3): new `Habit.keptStreak` (claimed, or logged to the minimum) drives both calendar streak walks, the "missed" calendar status ("perfect" still needs every habit claimed), and Rising Again's missed-day check. The Not All or Nothing achievement was unreachable for the same reason and now checks unclaimed days too. Partial reward after the day ends logged as a future idea.
+
+### 2026-09-28 — claim Cloud Functions: impossible dayKeys, ended habits, duplicate endpoint
+
+Audit of `functions/`. `parseDayArgs` accepted impossible dates (`2025-13-01`, `2026-02-31`) because `Date.UTC` rolls them over, so one real day could be claimed again under every alias by calling the callable directly; it now requires an exact round-trip. `claimHabit` now rejects days outside the habit's `startDate`/`endDate`, and a new `Habit.isActiveOn` hides ended habits from today's list (mock + Firestore) — the window acts as archival, `archived` isn't flipped. The `setHabitCompleted` callable was removed as a pure dispatcher over claim/unclaim; BACKEND.md's result shape corrected (`changed`, not `alreadyClaimed`).
+
 ### 2026-09-24 — Firestore habit state now rolls over correctly at midnight
 
 `FirestoreHabitRepository` previously stored today's live state (`currentValue`/`isCompletedToday`/`lastAwardedXp`/`lastAwardedCoins`) directly on the habit doc, so it didn't reset at the calendar boundary — logged 2026-09-23 as a 🔴 critical bug. Habit docs are now pure definitions; every day's state, today included, lives in `habitLogs`, keyed by date. Also fixed in the same pass: `Habit.createdAt` gives `isScheduledOn` an implicit lower bound so a brand-new habit no longer counts as "missed" on days before it existed, and habit-definition queries now filter `archived == false` in memory. `firestore.rules` updated to match — the habit doc's `create` rule no longer guards Cloud-Function-only fields that don't live on that doc anymore.

@@ -47,10 +47,24 @@ level / evolve / collect / customize pets → stay motivated
   XP-farming via tiny repeated entries.)
 - A habit can define a **minimum success threshold** separate from its **ideal target**:
   - below minimum → no success
-  - minimum–target → partial XP/reward, streak preserved
+  - minimum–target → streak preserved, no XP/reward (see below)
   - ≥ target → full XP/reward, streak preserved
-  - above target → no extra XP (not unlimited farming)
-- Exact XP % for minimum-only completion is undecided (was discussed as ~70%, not final).
+  - above target → no extra XP; logging is capped at the target for now
+- **How rewards are paid (current default, 2026-09-28 — open to revisiting):** claiming is always
+  a manual button press. **Complete** snaps a progress habit to its target and pays full, even
+  from 30/100 — it's an honor-system "I did it", same as a binary checkbox. **Mark Day Safe**
+  (limit habits) claims the value as logged: full reward at or under the ceiling, nothing over it.
+  Logging alone never pays. So the minimum threshold's job is streaks, not XP: a day logged to
+  its minimum but never claimed still keeps the streak and isn't "missed" on the calendar
+  (`Habit.keptStreak`).
+- **Future idea — partial reward after the day ends.** Pay a reduced reward (e.g. ~70–75%) for a
+  day that reached its minimum but wasn't claimed, settled once the day is over — e.g. a callable
+  the app runs on open for past days, so no scheduled job or server-side timezone is needed.
+  Deferred because past days stay editable from the calendar, so a settled payout would have to
+  be re-checked and reversed whenever a past log changes. Paying the moment the minimum is
+  crossed was ruled out: undoing the log would have to claw it back, and every log would become
+  a Cloud Function call instead of a direct write.
+- **Future idea — logging beyond the target** (e.g. 120/100) as a tracked-but-unrewarded value.
 
 ## 4. XP
 

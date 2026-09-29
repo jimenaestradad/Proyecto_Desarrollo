@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/data/habit_history_store.dart' show dateOnly;
 import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/habit.dart';
@@ -90,36 +91,43 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
     setState(() => _user = user);
   }
 
+  /// The claimHabit/unclaimHabit Cloud Function already applied this
+  /// server-side — reload the user, then use [reward]'s own flags (not a
+  /// before/after snapshot) to decide whether to celebrate.
   Future<void> _applyReward(HabitRewardResult reward) async {
     if (reward.xpDelta == 0 && reward.coinsDelta == 0) return;
-    final previousLevel = (await AppData.user.getCurrentUser()).level;
-    if (reward.xpDelta != 0) await AppData.user.addXp(reward.xpDelta);
-    if (reward.coinsDelta != 0) await AppData.user.addCoins(reward.coinsDelta);
-    final user = await AppData.user.getCurrentUser();
-    final previousStage = (await AppData.pet.getPet()).stage;
-    await AppData.pet.syncEvolution(user.level);
     await _reloadUser();
+    if (!mounted || !(reward.leveledUp || reward.evolved)) return;
+    final user = _user;
+    if (user == null) return;
     final pet = await AppData.pet.getPet();
     if (!mounted) return;
-    if (pet.stage.index > previousStage.index) {
-      await showEvolutionCelebration(
-        context,
-        petName: pet.name,
-        stage: pet.stage,
-      );
-    } else if (user.level > previousLevel) {
+    if (reward.evolved) {
+      await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
+    } else {
       await showLevelUpCelebration(context, level: user.level, petName: pet.name);
     }
   }
 
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _toggleBinary(Habit habit, bool completed) async {
-    final reward = await AppData.habits.setHabitCompletedForDate(
-      habit.id,
-      _selectedDate,
-      completed,
-    );
-    await _applyReward(reward);
-    await _reloadHabits();
+    try {
+      final reward = await AppData.habits.setHabitCompletedForDate(
+        habit.id,
+        _selectedDate,
+        completed,
+      );
+      await _applyReward(reward);
+      await _reloadHabits();
+    } on CloudFunctionFailure catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+    }
   }
 
   Future<void> _logProgress(Habit habit, double amount) async {
@@ -128,39 +136,54 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
   }
 
   Future<void> _claim(Habit habit) async {
-    final reward = await AppData.habits.claimHabitForDate(
-      habit.id,
-      _selectedDate,
-    );
-    await _applyReward(reward);
-    await _reloadHabits();
+    try {
+      final reward = await AppData.habits.claimHabitForDate(
+        habit.id,
+        _selectedDate,
+      );
+      await _applyReward(reward);
+      await _reloadHabits();
+    } on CloudFunctionFailure catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+    }
   }
 
   /// Reverses the viewed day's claim (reward included) without touching the
   /// logged value — the claim button turns into this once a habit is
   /// completed.
   Future<void> _unclaim(Habit habit) async {
-    final reward = await AppData.habits.unclaimHabitForDate(
-      habit.id,
-      _selectedDate,
-    );
-    await _applyReward(reward);
-    await _reloadHabits();
+    try {
+      final reward = await AppData.habits.unclaimHabitForDate(
+        habit.id,
+        _selectedDate,
+      );
+      await _applyReward(reward);
+      await _reloadHabits();
+    } on CloudFunctionFailure catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+    }
   }
 
   /// Un-claims first (reversing the viewed day's reward) whenever the habit
   /// was already completed, then applies the new absolute value — powers the
   /// progress-card's tap-to-edit / undo / reset-to-0 dialog.
   Future<void> _editProgress(Habit habit, double value) async {
-    if (habit.isCompletedToday) {
-      final reward = await AppData.habits.unclaimHabitForDate(
-        habit.id,
-        _selectedDate,
-      );
-      await _applyReward(reward);
+    try {
+      if (habit.isCompletedToday) {
+        final reward = await AppData.habits.unclaimHabitForDate(
+          habit.id,
+          _selectedDate,
+        );
+        await _applyReward(reward);
+      }
+      await AppData.habits.setProgressForDate(habit.id, _selectedDate, value);
+      await _reloadHabits();
+    } on CloudFunctionFailure catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
     }
-    await AppData.habits.setProgressForDate(habit.id, _selectedDate, value);
-    await _reloadHabits();
   }
 
   Future<void> _openAddHabit() async {

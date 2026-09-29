@@ -102,17 +102,20 @@ class MockCalendarRepository implements CalendarRepository {
     if (scheduled.isEmpty || await _vacationLog.isFrozen(date)) {
       return CalendarDayStatus.done;
     }
-    final claimedCount = scheduled.where((h) => h.isCompletedToday).length;
-    if (claimedCount == 0) return CalendarDayStatus.missed;
-    if (claimedCount == scheduled.length) return CalendarDayStatus.perfect;
+    // Reaching a minimum saves the day from "missed"; "perfect" still means
+    // every habit was claimed.
+    if (!scheduled.any((h) => h.keptStreak)) return CalendarDayStatus.missed;
+    if (scheduled.every((h) => h.isCompletedToday)) {
+      return CalendarDayStatus.perfect;
+    }
     return CalendarDayStatus.done;
   }
 
-  /// Consecutive days (walking back from today) with at least one claimed
-  /// habit, skipping days nothing was scheduled — mirrors the "streaks
+  /// Consecutive days (walking back from today) with at least one habit that
+  /// [Habit.keptStreak] (claimed, or logged up to its minimum), skipping days nothing was scheduled — mirrors the "streaks
   /// aren't broken by off-schedule days" rule in FEATURES.md §5, applied
   /// across all habits together since this is a single aggregate number.
-  /// Today itself only counts once every scheduled habit is claimed; until
+  /// Today itself only counts once every scheduled habit is kept; until
   /// then it's "still in progress" rather than a break. Days Vacation Mode
   /// was active on are skipped the same way — frozen, not missed.
   Future<int> _currentStreak(DateTime today) async {
@@ -124,14 +127,14 @@ class MockCalendarRepository implements CalendarRepository {
           : await _habits.getHabitsForDate(day);
       if (scheduled.isNotEmpty) {
         final isToday = dateOnly(day) == today;
-        final allClaimed = scheduled.every((h) => h.isCompletedToday);
-        final anyClaimed = scheduled.any((h) => h.isCompletedToday);
+        final allKept = scheduled.every((h) => h.keptStreak);
+        final anyKept = scheduled.any((h) => h.keptStreak);
         if (isToday) {
-          if (!allClaimed) {
+          if (!allKept) {
             day = day.subtract(const Duration(days: 1));
             continue;
           }
-        } else if (!anyClaimed) {
+        } else if (!anyKept) {
           break;
         }
         streak++;
@@ -294,9 +297,12 @@ class FirestoreCalendarRepository implements CalendarRepository {
     if (scheduled.isEmpty || await _vacationLog.isFrozen(date)) {
       return CalendarDayStatus.done;
     }
-    final claimedCount = scheduled.where((h) => h.isCompletedToday).length;
-    if (claimedCount == 0) return CalendarDayStatus.missed;
-    if (claimedCount == scheduled.length) return CalendarDayStatus.perfect;
+    // Reaching a minimum saves the day from "missed"; "perfect" still means
+    // every habit was claimed.
+    if (!scheduled.any((h) => h.keptStreak)) return CalendarDayStatus.missed;
+    if (scheduled.every((h) => h.isCompletedToday)) {
+      return CalendarDayStatus.perfect;
+    }
     return CalendarDayStatus.done;
   }
 
@@ -318,14 +324,14 @@ class FirestoreCalendarRepository implements CalendarRepository {
           : _scheduledFor(day, today, definitions, logs);
       if (scheduled.isNotEmpty) {
         final isToday = dateOnly(day) == today;
-        final allClaimed = scheduled.every((h) => h.isCompletedToday);
-        final anyClaimed = scheduled.any((h) => h.isCompletedToday);
+        final allKept = scheduled.every((h) => h.keptStreak);
+        final anyKept = scheduled.any((h) => h.keptStreak);
         if (isToday) {
-          if (!allClaimed) {
+          if (!allKept) {
             day = day.subtract(const Duration(days: 1));
             continue;
           }
-        } else if (!anyClaimed) {
+        } else if (!anyKept) {
           break;
         }
         streak++;

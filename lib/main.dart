@@ -16,7 +16,11 @@ import 'theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  _connectToEmulatorsInDebug();
+  // Not calling _connectToEmulatorsInDebug(): Valeria's side develops
+  // directly against the live nori-pet project (docs/BACKEND.md, "Local
+  // dev" — no Java runtime available for the emulator, and it was never
+  // actually used for this project). The function is left below rather
+  // than deleted in case Jimena wants to opt back in for her own machine.
   // Firebase Auth restores a signed-in session from local storage on
   // startup — checking it here is what makes "stay logged in between app
   // launches" (Auth > Persistencia de sesión) work, instead of always
@@ -43,6 +47,9 @@ void main() async {
 /// A release build never takes this branch -- `kDebugMode` is
 /// compile-time false there, so a real APK always talks to the real
 /// `nori-pet` project, never the emulators.
+///
+/// Currently unreferenced -- see the comment at its call site in main().
+// ignore: unused_element
 void _connectToEmulatorsInDebug() {
   if (!kDebugMode) return;
 

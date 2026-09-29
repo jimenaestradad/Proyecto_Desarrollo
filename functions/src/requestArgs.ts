@@ -1,6 +1,7 @@
 import { HttpsError } from "firebase-functions/v2/https";
 
 const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 export function requireAuth(uid: string | undefined): string {
   if (!uid) {
@@ -20,6 +21,8 @@ export function parseHabitId(value: unknown): string {
 export interface DayArgs {
   dayKey: string;
   dayStartMillis: number;
+  // dayKey's own UTC midnight; minus dayStartMillis, it's the client's UTC offset.
+  utcMidnightMillis: number;
 }
 
 // The client sends its device-local day (docs/BACKEND.md "Dates and the
@@ -38,11 +41,26 @@ export function parseDayArgs(data: { dayKey?: unknown; dayStartMillis?: unknown 
   // UTC offsets range from −12h to +14h, so local midnight must sit within
   // 14h of the same calendar date's UTC midnight.
   const utcMidnight = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  // Date.UTC rolls impossible dates over ("2025-13-01" → 2026-01-01), which
+  // would let one real day be claimed again under every alias. The callable
+  // is reachable outside the app, so only an exact round-trip is accepted.
+  if (new Date(utcMidnight).toISOString().slice(0, 10) !== match[0]) {
+    throw new HttpsError("invalid-argument", "dayKey isn't a real date.");
+  }
   if (Math.abs(dayStartMillis - utcMidnight) > 14 * HOUR_MS) {
     throw new HttpsError("invalid-argument", "dayStartMillis doesn't match dayKey.");
   }
   if (dayStartMillis > Date.now()) {
     throw new HttpsError("invalid-argument", "Can't act on a future day.");
   }
-  return { dayKey: match[0], dayStartMillis };
+  return { dayKey: match[0], dayStartMillis, utcMidnightMillis: utcMidnight };
+}
+
+// The client-local dayKey of a date-only habit field (startDate/endDate),
+// which the date picker stores as local midnight. Shifted by the caller's
+// offset, then rounded to the nearest UTC midnight so a DST hour of drift
+// can't tip it into the neighbouring day.
+export function localDayKeyOf(dateOnlyMillis: number, day: DayArgs): string {
+  const shifted = dateOnlyMillis + (day.utcMidnightMillis - day.dayStartMillis);
+  return new Date(Math.round(shifted / DAY_MS) * DAY_MS).toISOString().slice(0, 10);
 }

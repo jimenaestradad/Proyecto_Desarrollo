@@ -25,10 +25,19 @@ class AppData {
 
   static AuthRepository auth = FirebaseAuthRepository();
   static UsernameRepository usernames = FirestoreUsernameRepository();
-  static HabitRepository habits = MockHabitRepository();
-  static VacationLog vacationLog = MockVacationLog();
-  static CalendarRepository calendar = MockCalendarRepository(
-    habits,
+
+  /// Concrete-typed so [calendar] below can be constructed with it —
+  /// [habits] itself stays declared as the abstract [HabitRepository].
+  static final FirestoreHabitRepository _habits = FirestoreHabitRepository();
+  static HabitRepository habits = _habits;
+
+  /// Like [habits], reads the signed-in uid lazily (see
+  /// FirestoreVacationLog/FirestoreHabitRepository's own `_uid` getters) —
+  /// not rebuilt in [bindToUser]/[unbindUser], unlike the repositories
+  /// below that take a `uid` constructor argument.
+  static VacationLog vacationLog = FirestoreVacationLog();
+  static CalendarRepository calendar = FirestoreCalendarRepository(
+    _habits,
     vacationLog,
   );
   static UserRepository user = MockUserRepository(calendar, vacationLog);
@@ -52,23 +61,25 @@ class AppData {
   /// AppData.user et al., so nothing is ever left pointed at another
   /// account's (or the Mock's demo) data.
   ///
-  /// [habits] is the one repository still Mock — Valeria's
-  /// FirestoreHabitRepository hasn't landed yet (docs/BACKEND.md's task
-  /// checklist). Everything else now has a real implementation: [user] /
-  /// [habitCategories] (firestore_user_repository.dart /
-  /// habit_category_repository.dart's FirestoreHabitCategoryRepository),
-  /// and [pet] / [inventory] / [bucketList] (firestore_pet_repository.dart
-  /// / firestore_inventory_repository.dart /
+  /// [habits], [calendar] and [vacationLog] are NOT rebuilt here — they
+  /// resolve the signed-in uid lazily on every call (see each class's own
+  /// `_uid` getter) rather than capturing one at construction, so the same
+  /// static instances already follow whoever's signed in. Everything else
+  /// has a real implementation: [user] / [habitCategories]
+  /// (firestore_user_repository.dart / habit_category_repository.dart's
+  /// FirestoreHabitCategoryRepository), and [pet] / [inventory] /
+  /// [bucketList] (firestore_pet_repository.dart /
+  /// firestore_inventory_repository.dart /
   /// firestore_bucket_list_repository.dart). [achievements] is rebuilt
   /// here too — it holds direct references to [bucketList]/[pet]/
   /// [inventory] captured at construction time (see
   /// achievement_repository.dart), so swapping those without also
   /// rebuilding [achievements] would leave it silently reading the old
-  /// Mock instances. This still depends on 'onUserCreate' (the
-  /// Auth-trigger Cloud Function in functions/src/index.ts) actually
-  /// being deployed to the `nori-pet` Firebase project — that's what
-  /// creates the '/users/{uid}' doc (and its pet/inventory subdocs) these
-  /// repositories read; until it's deployed, real accounts will hit each
+  /// Mock instances. This depends on 'onUserCreate' (the Auth-trigger
+  /// Cloud Function in functions/src/index.ts) having run for [uid] —
+  /// that's what creates the '/users/{uid}' doc (and its pet/inventory
+  /// subdocs) these repositories read; a signed-up account whose
+  /// onUserCreate call failed or hasn't landed yet will hit each
   /// repository's own missing-document error instead.
   static void bindToUser(String uid) {
     user = FirestoreUserRepository(

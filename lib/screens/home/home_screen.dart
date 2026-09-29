@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/accessory_catalog.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/care_item_catalog.dart';
+import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/inventory.dart';
@@ -129,29 +130,47 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// The claimHabit/unclaimHabit Cloud Function already wrote XP, coins,
+  /// level and pet stage server-side — reload picks up the new values, and
+  /// [_reloadUserAndPet]'s own before/after diff (not [reward] directly)
+  /// decides whether to celebrate, since it also has to catch a change made
+  /// on another tab.
   Future<void> _applyReward(HabitRewardResult reward) async {
     if (reward.xpDelta == 0 && reward.coinsDelta == 0) return;
-    if (reward.xpDelta != 0) await AppData.user.addXp(reward.xpDelta);
-    if (reward.coinsDelta != 0) await AppData.user.addCoins(reward.coinsDelta);
     await _reloadUserAndPet();
   }
 
   Future<void> _toggleHabit(Habit habit, bool completed) async {
-    final reward = await AppData.habits.setHabitCompleted(habit.id, completed);
-    await _applyReward(reward);
-    await _reloadHabits();
+    try {
+      final reward = await AppData.habits.setHabitCompleted(habit.id, completed);
+      await _applyReward(reward);
+      await _reloadHabits();
+    } on CloudFunctionFailure catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+    }
   }
 
   Future<void> _claimHabit(Habit habit) async {
-    final reward = await AppData.habits.claimHabit(habit.id);
-    await _applyReward(reward);
-    await _reloadHabits();
+    try {
+      final reward = await AppData.habits.claimHabit(habit.id);
+      await _applyReward(reward);
+      await _reloadHabits();
+    } on CloudFunctionFailure catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+    }
   }
 
   Future<void> _unclaimHabit(Habit habit) async {
-    final reward = await AppData.habits.unclaimHabit(habit.id);
-    await _applyReward(reward);
-    await _reloadHabits();
+    try {
+      final reward = await AppData.habits.unclaimHabit(habit.id);
+      await _applyReward(reward);
+      await _reloadHabits();
+    } on CloudFunctionFailure catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+    }
   }
 
   Future<void> _quickLog(Habit habit, double amount) async {

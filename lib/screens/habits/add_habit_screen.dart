@@ -471,7 +471,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                         const SizedBox(height: AppSpacing.stackMd),
                         _ToggleRow(
                           title: 'Minimum Threshold',
-                          subtitle: 'Partial credit protection',
+                          subtitle: 'Streak protection',
                           value: _minThresholdEnabled,
                           onChanged: (value) =>
                               setState(() => _minThresholdEnabled = value),
@@ -490,7 +490,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                           const _InfoBanner(
                             icon: Icons.eco,
                             message:
-                                "Preserves streak & awards 75% XP if the ideal target isn't reached.",
+                                "Keeps your streak alive on days you reach this but not the full target. No XP on its own — claim the habit to earn that.",
                           ),
                         ],
                       ],

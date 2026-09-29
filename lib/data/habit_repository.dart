@@ -3,18 +3,30 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../models/habit.dart';
 import '../models/habit_day_state.dart';
+import '../models/pet.dart';
 import '../theme/app_colors.dart';
+import 'cloud_functions_client.dart';
 import 'habit_history_store.dart';
 
 /// What a completion/claim/un-claim action just paid out (or clawed back).
-/// Screens apply this to [UserRepository.addXp]/[addCoins].
+/// With [FirestoreHabitRepository] the claimHabit/unclaimHabit Cloud Function
+/// has already applied it to the user and pet docs — screens only reload.
+/// [leveledUp]/[evolved] come from the function's before/after values, so a
+/// screen can celebrate without holding its own pre-claim snapshot.
 class HabitRewardResult {
-  const HabitRewardResult(this.xpDelta, this.coinsDelta);
+  const HabitRewardResult(
+    this.xpDelta,
+    this.coinsDelta, {
+    this.leveledUp = false,
+    this.evolved = false,
+  });
 
   static const none = HabitRewardResult(0, 0);
 
   final int xpDelta;
   final int coinsDelta;
+  final bool leveledUp;
+  final bool evolved;
 }
 
 abstract class HabitRepository {
@@ -194,7 +206,8 @@ class MockHabitRepository implements HabitRepository {
   ];
 
   @override
-  Future<List<Habit>> getTodayHabits() async => List.unmodifiable(_habits);
+  Future<List<Habit>> getTodayHabits() async =>
+      List.unmodifiable(_habits.where((h) => h.isActiveOn(DateTime.now())));
 
   @override
   Future<HabitRewardResult> setHabitCompleted(
@@ -486,11 +499,9 @@ class MockHabitRepository implements HabitRepository {
 ///
 /// - [setHabitCompleted], [claimHabit], [unclaimHabit] (and their `*ForDate`
 ///   twins) mint/burn XP and coins — `firestore.rules` denies clients from
-///   writing those fields directly on purpose (see the rules file), so
-///   these become Cloud Function calls in the Backend sprint, not plain
-///   Firestore writes. Left as [UnimplementedError] here on purpose, so a
-///   call site that isn't updated yet fails loudly instead of silently
-///   doing nothing.
+///   writing those fields directly on purpose (see the rules file), so they
+///   call the claimHabit/unclaimHabit Cloud Functions instead, which update
+///   the log, user, pet and inventory in one transaction.
 class FirestoreHabitRepository implements HabitRepository {
   /// Every document lives under the signed-in user — see
   /// docs/BACKEND.md "Firestore schema". Throws if nobody's signed in.
@@ -599,7 +610,7 @@ class FirestoreHabitRepository implements HabitRepository {
   @override
   Future<List<Habit>> getTodayHabits() async {
     // Structurally identical to getHabitsForDate(today), minus the schedule
-    // filter — getTodayHabits shows every non-archived habit regardless of
+    // filter — getTodayHabits shows every active habit regardless of
     // whether it's "due" today (see the interface doc comment), while
     // getHabitsForDate below only returns what's actually scheduled.
     final definitions = await _fetchDefinitions();
@@ -607,9 +618,10 @@ class FirestoreHabitRepository implements HabitRepository {
     final logs = await logsInRange(today, today);
     return [
       for (final definition in definitions)
-        definition.hydrate(
-          logs['${dayKey(today)}_${definition.id}'] ?? HabitDayState.empty,
-        ),
+        if (definition.isActiveOn(today))
+          definition.hydrate(
+            logs['${dayKey(today)}_${definition.id}'] ?? HabitDayState.empty,
+          ),
     ];
   }
 
@@ -670,15 +682,42 @@ class FirestoreHabitRepository implements HabitRepository {
 
   @override
   Future<HabitRewardResult> setHabitCompleted(String habitId, bool completed) =>
-      throw UnimplementedError('claimHabit Cloud Function not wired up yet');
+      setHabitCompletedForDate(habitId, DateTime.now(), completed);
 
   @override
   Future<HabitRewardResult> claimHabit(String habitId) =>
-      throw UnimplementedError('claimHabit Cloud Function not wired up yet');
+      claimHabitForDate(habitId, DateTime.now());
 
   @override
   Future<HabitRewardResult> unclaimHabit(String habitId) =>
-      throw UnimplementedError('unclaimHabit Cloud Function not wired up yet');
+      unclaimHabitForDate(habitId, DateTime.now());
+
+  /// Calls the claimHabit/unclaimHabit Cloud Function for [date]. The day is
+  /// sent as the device-local key + local midnight, never derived on the
+  /// server (docs/BACKEND.md, "Dates and the day-rollover rule"). Throws
+  /// [CloudFunctionFailure] with a user-facing message on any failure.
+  Future<HabitRewardResult> _callRewardFunction(
+    String function,
+    String habitId,
+    DateTime date,
+  ) async {
+    final day = dateOnly(date);
+    final result = await callCloudFunction(function, {
+      'habitId': habitId,
+      'dayKey': dayKey(day),
+      'dayStartMillis': day.millisecondsSinceEpoch,
+    });
+    int asInt(Object? value) => (value as num?)?.toInt() ?? 0;
+    int stageIndex(Object? name) =>
+        PetEvolutionStage.values.indexWhere((stage) => stage.name == name);
+    return HabitRewardResult(
+      asInt(result['xpDelta']),
+      asInt(result['coinsDelta']),
+      leveledUp: asInt(result['level']) > asInt(result['previousLevel']),
+      evolved:
+          stageIndex(result['petStage']) > stageIndex(result['previousPetStage']),
+    );
+  }
 
   @override
   Future<List<Habit>> getHabitsForDate(DateTime date) async {
@@ -702,7 +741,9 @@ class FirestoreHabitRepository implements HabitRepository {
     String habitId,
     DateTime date,
     bool completed,
-  ) => throw UnimplementedError('claimHabit Cloud Function not wired up yet');
+  ) => completed
+      ? claimHabitForDate(habitId, date)
+      : unclaimHabitForDate(habitId, date);
 
   @override
   Future<void> logProgressForDate(String habitId, DateTime date, double amount) async {
@@ -744,11 +785,11 @@ class FirestoreHabitRepository implements HabitRepository {
 
   @override
   Future<HabitRewardResult> claimHabitForDate(String habitId, DateTime date) =>
-      throw UnimplementedError('claimHabit Cloud Function not wired up yet');
+      _callRewardFunction('claimHabit', habitId, date);
 
   @override
   Future<HabitRewardResult> unclaimHabitForDate(String habitId, DateTime date) =>
-      throw UnimplementedError('unclaimHabit Cloud Function not wired up yet');
+      _callRewardFunction('unclaimHabit', habitId, date);
 
   @override
   Future<void> setProgressForDate(String habitId, DateTime date, double value) async {

@@ -15,7 +15,9 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Negative/limit-habit implementation details
 
 ## XP balancing
-- Exact XP % awarded for minimum-threshold-only completion (~70% was an example, not final)
+- Exact XP % awarded for minimum-threshold-only completion (~70% was an example, not final) —
+  moot for now: as of 2026-09-28 the minimum keeps streaks but pays nothing; a partial reward is a
+  logged future idea (FEATURES.md §3)
 - Starting XP values per difficulty tier (Easy/Medium/Hard — 10/20/30 were examples)
 - Adaptive-XP formula and adjustment window (how much history, how fast it moves)
 - Adaptive-XP multiplier bounds (~0.5×–1.5× was an example)

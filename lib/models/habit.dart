@@ -145,9 +145,9 @@ class Habit {
   final int lastAwardedXp;
   final int lastAwardedCoins;
 
-  /// Optional habit lifespan. Stored for the "Set End Date" UI control, but
-  /// nothing currently reads these to auto-archive a habit — no archived-habit
-  /// view exists yet. Do not treat their presence as working archival.
+  /// Optional habit lifespan (the "Set End Date" control). Outside this
+  /// window a habit acts archived (FEATURES.md §2) — see [isActiveOn] — by
+  /// date check, not by flipping [archived]; no archived-habit view exists yet.
   final DateTime? startDate;
   final DateTime? endDate;
 
@@ -226,6 +226,22 @@ class Habit {
       return false;
     }
 
+    if (!isActiveOn(day)) return false;
+
+    return switch (repeat) {
+      HabitRepeat.daily => true,
+      HabitRepeat.weekdays => day.weekday <= DateTime.friday,
+      HabitRepeat.weekends => day.weekday >= DateTime.saturday,
+      HabitRepeat.custom => customDays?.contains(day.weekday) ?? true,
+    };
+  }
+
+  /// Whether [date] falls inside the optional [startDate]/[endDate] window.
+  /// Unlike [isScheduledOn] this ignores the repeat schedule, so today's list
+  /// can hide an ended habit while still showing unscheduled ones. The
+  /// claimHabit Cloud Function enforces the same window.
+  bool isActiveOn(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
     final start = startDate;
     if (start != null &&
         day.isBefore(DateTime(start.year, start.month, start.day))) {
@@ -235,13 +251,7 @@ class Habit {
     if (end != null && day.isAfter(DateTime(end.year, end.month, end.day))) {
       return false;
     }
-
-    return switch (repeat) {
-      HabitRepeat.daily => true,
-      HabitRepeat.weekdays => day.weekday <= DateTime.friday,
-      HabitRepeat.weekends => day.weekday >= DateTime.saturday,
-      HabitRepeat.custom => customDays?.contains(day.weekday) ?? true,
-    };
+    return true;
   }
 
   /// "Stay under a max" instead of "reach a target".
@@ -269,6 +279,13 @@ class Habit {
 
   bool get isMinMet =>
       !isInverted && minThreshold != null && currentValue >= minThreshold!;
+
+  /// Whether this day counts toward streaks: claimed, or — even unclaimed —
+  /// logged up to [minThreshold]. Reaching the minimum pays nothing (Complete
+  /// always snaps to the full target, see MockHabitRepository._claimValue),
+  /// so this is its whole job: "didn't finish, but showed up" keeps the
+  /// streak, per FEATURES.md §3. Limit habits have no minimum.
+  bool get keptStreak => isCompletedToday || isMinMet;
 
   HabitRewardTier get rewardTier {
     if (isTargetMet) return HabitRewardTier.full;
