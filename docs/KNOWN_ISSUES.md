@@ -111,6 +111,15 @@ are toggled per-stat, not via tapping the pet itself. Not a bug.)
 
 ## 🟡 Minor / polish / backlog
 
+### Bucket list can mint unlimited XP/coins through the normal UI (2026-09-28 audit)
+
+The 500 XP / 250 coin cap in `completeBucketListItem` is per item, but nothing limits how many
+items exist: anyone can use the add sheet to create any number of items at the cap and complete
+each one. Deleting a completed item is allowed and keeps the reward, so the list never even
+fills up. It needs no cheating, and pays ~10× a habit claim per tap. Needs a product call from
+valevasqc/Jimena — e.g. a cap on items completed per day/week, a much lower per-item cap, fixed
+server-side reward tiers instead of free-text amounts, or accept it as a self-reward feature.
+
 ### Claim → spend → unclaim → re-claim mints coins (2026-09-24, found while implementing unclaimHabit)
 
 `unclaimHabit` clamps coins at 0, same as `MockUserRepository.addCoins`. So: claim a habit
@@ -121,6 +130,10 @@ unilaterally, because both fixes change something users see: **(a)** let coins g
 negative balance), or **(b)** reject the unclaim with "you already spent those coins" (the
 user can't correct a mistaken claim after shopping). Needs a call from valevasqc/Jimena; the
 change itself is one line in `functions/src/unclaimHabit.ts`.
+
+The same loop works on the bucket list (2026-09-28 audit): `uncompleteBucketListItem` clamps
+coins at 0 too, so complete (+250), spend, uncomplete, complete again. Whichever fix is chosen
+should apply to both functions (`functions/src/index.ts`).
 
 ### claimHabit still trusts two client-written habit fields (2026-09-24, found while implementing it)
 
@@ -134,6 +147,28 @@ this stays the bounded "moderate" trust level docs/BACKEND.md chose, not an open
 if it's ever worth doing: require `createdAt == request.time` in the create rule (the client
 would send `FieldValue.serverTimestamp()`, and `FirestoreHabitRepository.addHabit` would need
 to switch to that).
+
+### Pet vitals are a direct client write, so buying care items is optional (2026-09-28 audit)
+
+`firestore.rules` lets a client set `hunger`/`hygiene`/`happiness` on `pet/main` to any value,
+so a modified client can keep the pet at 100 without spending coins on food/care items. This is
+the trust level chosen for cosmetic stats (docs/BACKEND.md); logged only because the shop economy
+depends on it. Fix if it ever matters: allow only decreases from the client (like
+`careItemCounts`) and move restoring into a `consumeCareItem` Cloud Function.
+
+### Dart mock still has a 75% "min" reward tier (2026-09-28 audit)
+
+The server has no partial tier anymore (the minimum threshold keeps streaks but pays nothing —
+FEATURES.md §3), but `HabitRewardTier.min` (0.75×) and `Habit.rewardTier` in
+`lib/models/habit.dart` still exist and drive `MockHabitRepository`'s rewards. Since claims snap to
+the target it's rarely reached, but it's a second copy of the reward rule that now disagrees with
+`functions/src/rewards.ts`. Remove it once nothing in the UI reads the tier.
+
+### First-habit sunglasses gift has no in-app moment (2026-09-28 audit)
+
+`claimHabit` returns `giftedAccessoryId` when it grants the sunglasses, but
+`FirestoreHabitRepository._callRewardFunction` drops it — the accessory just appears (and is
+auto-equipped) in the inventory with no celebration or explanation.
 
 ### functions/ has 8 moderate transitive npm audit findings (2026-09-24, scaffold)
 

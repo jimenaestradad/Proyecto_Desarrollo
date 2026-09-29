@@ -2,9 +2,17 @@
 
 Trimmed historical fix log for Nori, split out of `docs/KNOWN_ISSUES.md` on 2026-09-16 to keep the working file scannable. Full narrative detail from before the split was intentionally condensed; this log favors terse entries going forward.
 
+### 2026-09-28 — shop items could be made free; bucket-list NaN; functions cleanup
+
+`purchaseCareItem`/`purchaseAccessory` looked items up with a plain `catalog[id]`, so an id like `"constructor"` matched an inherited key, its price was undefined, the coin check passed against NaN, and `coins` was saved as NaN — making every later purchase free. They now require an own catalog key. `completeBucketListItem` read client-writable `xpReward`/`coinReward` with `Number()`, which turned a string into NaN past both caps; it now uses `asNumber` and rounds. Both bucket-list functions now use the shared `readLevelState`/`levelFields` helpers instead of hand-built copies, `onUserCreate` uses `create()` so a duplicate trigger can't reset an account, and the server's dead 75% `min` reward tier was removed.
+
 ### 2026-09-28 — minimum threshold now keeps streaks
 
 Complete always snaps to the target, so the minimum threshold could never pay a partial reward and did nothing. It now keeps the streak instead (FEATURES.md §3): new `Habit.keptStreak` (claimed, or logged to the minimum) drives both calendar streak walks, the "missed" calendar status ("perfect" still needs every habit claimed), and Rising Again's missed-day check. The Not All or Nothing achievement was unreachable for the same reason and now checks unclaimed days too. Partial reward after the day ends logged as a future idea.
+
+### 2026-09-28 — two separate functions/ folders were silently deleting each other's deploys
+
+Valeria's and Jimena's branches each scaffolded their own `functions/` directory, both deploying to the same Cloud Functions codebase on `nori-pet`. A plain `firebase deploy --only functions` from either one deletes any live function not present in that folder's `index.ts`, since Firebase treats a codebase's local source as the full desired state. This happened for real: Jimena's `onUserCreate` was deleted by a deploy run from Valeria's folder (surfaced as an interactive CLI prompt — "found in your project but not in your local source, delete?" — accidentally confirmed). Redeployed from Jimena's branch via a temporary worktree checkout. Fixed properly by merging both branches so `functions/src/index.ts` exports all 7 functions from one shared codebase; a future deploy from that shared folder can no longer drop the other side's functions. Until Jimena's branch and Valeria's are both merged into whatever branch actually gets deployed from, this risk returns — deploy with `--only functions:<name>,...` naming specific functions if working from an unmerged branch.
 
 ### 2026-09-28 — claim Cloud Functions: impossible dayKeys, ended habits, duplicate endpoint
 

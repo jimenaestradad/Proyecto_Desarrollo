@@ -209,8 +209,9 @@ OPEN_DECISIONS.md tracks what's genuinely unresolved. The level curve is the one
 settled — see below.
 - `adaptiveMultiplier` is a **static stored field clamped 0.5–1.5**, not an algorithm. Adaptive
   XP isn't built yet and isn't part of this round.
-- Reward tiers are `none` / `min` (0.75×) / `full` (1.0×) from `HabitRewardTier` — retuning them
-  is a balance question, not an implementation one.
+- Claims pay `full` (1.0×) or `none` — no partial tier since 2026-09-28: the minimum threshold
+  keeps streaks but pays nothing (FEATURES.md §3). The Dart mock's `HabitRewardTier.min` (0.75×)
+  is a leftover, see KNOWN_ISSUES.md.
 - Care-item restore amounts and prices come from `care_item_catalog.dart` as-is.
 
 **XP curve: `xpForNextLevel = 100 × currentLevel`** (decided 2026-09-16; supersedes the mock's
@@ -562,9 +563,9 @@ just "design the DB," so it isn't a thin sprint sitting next to a heavy Backend 
 2. **Cloud Functions.** `claimHabit` / `unclaimHabit` (level-up math and
    evolution sync happen inside this same transaction, not a separate function);
    `purchaseCareItem` / `purchaseAccessory`.
-3. **Client-side calling code.** The repository methods that are Cloud-Function-backed
-   (`claimHabit`, etc.) call the callable instead of mutating local state — this is the
-   glue between the Data-sprint repositories and the Backend-sprint functions.
+3. **Client-side calling code.** Done for habits (2026-09-28) and for bucket list (Jimena's side)
+   — the repository methods that are Cloud-Function-backed call the callable instead of
+   mutating local state, the glue between the Data-sprint repositories and these functions.
 4. **Bucket list.** `completeBucketListItem` / `uncompleteBucketListItem` — same currency-minting
    reasoning as habit claims, plus the reward cap (see "Bucket-list rewards" above). This is real
    Backend-sprint work, not an afterthought — it just wasn't in the original draft's task list.
@@ -574,11 +575,17 @@ just "design the DB," so it isn't a thin sprint sitting next to a heavy Backend 
 
 ### GCP sprint
 `Setup Firebase project` ✅ done. `cloud_firestore`/`firebase_auth`/`cloud_functions` added to
-`pubspec.yaml` ✅ done (2026-09-21). Left: scaffold `functions/` (Node/TypeScript); Firebase Local
-Emulator Suite setup, if used (see "Local dev" — not used so far this project); CI/CD básico;
-deploying Cloud Functions + rules to the live project (rules for the habits/habitLogs vertical
-already deployed manually via `firebase deploy --only firestore:rules`); cost awareness (Cloud
-Functions require the Blaze plan, still free-tier-eligible at this scale).
+`pubspec.yaml` ✅ done (2026-09-21). `functions/` scaffolded (TypeScript) ✅ done 2026-09-24 — the
+two branches' separate `functions/` folders were merged into one shared codebase 2026-09-28 (a
+`firebase deploy` from either separate folder would have deleted the other's live functions —
+this actually happened once, to `onUserCreate`, and was redeployed from Jimena's branch; see
+docs/RESOLVED_LOG.md's 2026-09-28 entry). **All 7 Cloud Functions deployed to the
+live `nori-pet` project 2026-09-29** (`onUserCreate`, `claimHabit`, `unclaimHabit`,
+`purchaseCareItem`, `purchaseAccessory`, `completeBucketListItem`, `uncompleteBucketListItem` —
+confirmed via `firebase functions:list`), Blaze plan therefore active. `firestore.rules`
+deployed the same pass. Left: CI/CD básico; explicit cost-awareness check-in (still
+free-tier-eligible at this scale, not yet watched). Firebase Local Emulator Suite deliberately
+not used for this project (see "Local dev").
 
 Google Sign-In's console configuration (enabling the provider, OAuth client, SHA-1 fingerprints
 for the Android build) sits in this sprint by category but belongs to **Jimena**, since it's
@@ -638,64 +645,58 @@ whoever's building it will have a better sense of what unblocks what.
 ### Shared setup (do together, or one person while the other reads this doc)
 - [x] Add `cloud_firestore`, `firebase_auth`, `cloud_functions` to `pubspec.yaml` — done
       2026-09-21, `flutter analyze` clean.
-      [ ] Scaffold `functions/` as a TypeScript Firebase Functions project — not started.
+- [x] Scaffold `functions/` as a TypeScript Firebase Functions project — done 2026-09-24; the two
+      branches' separate copies merged into one codebase 2026-09-28.
 - [ ] ~~Firebase Local Emulator Suite~~ — **skipped for this project**, see "Local dev" above.
       Testing instead against the live `nori-pet` project with a disposable test account.
-- [x] `firestore.rules` field-level locks — **Valeria's vertical done** (`/users/{uid}` split,
-      `habits/{habitId}`, `habitLogs/{logId}`, deployed 2026-09-21). `pet/main`, `inventory/main`,
-      `/usernames` still open — marked `TODO(Jimena)` directly in `firestore.rules`.
+- [x] `firestore.rules` field-level locks — **both verticals done**: Valeria's (`/users/{uid}`
+      split, `habits/{habitId}`, `habitLogs/{logId}`) and Jimena's (`pet/main`, `inventory/main`,
+      `/usernames`, `bucketList/{itemId}`) merged into one ruleset 2026-09-28, deployed
+      2026-09-29.
 - [x] `icon_registry.dart` + color-key registry — done for every icon/color the habit vertical
       actually uses (the closed add/edit-habit picker + the mock's seed-habit demo variety).
-      **Not yet verified:** a release build (`flutter build apk --release`) hasn't been run to
-      confirm `--tree-shake-icons` doesn't break them; bucket-list items are Jimena's vertical,
-      not covered here.
+      Jimena's side added a parallel registry for bucket-list icons/colors — the two haven't been
+      merged into one, logged in docs/KNOWN_ISSUES.md. **Not yet verified:** a release build
+      (`flutter build apk --release`) hasn't been run to confirm `--tree-shake-icons` doesn't
+      break either registry.
 
 ### Jimena — Account & virtual pet
-- [ ] `FirestoreUserRepository` — profile fields + `habitCategories` + vacation toggle only.
-      Do **not** touch `level`/`totalXp`/`xpIntoLevel`/`coins` (Cloud Functions own those).
-      **Done when:** editing name/username/email and adding a category survive an app restart.
-- [ ] `FirestorePetRepository` — `getPet`, `feed`, `groom`, `play`, decay-on-read. Port the decay
-      math from `MockPetRepository` unchanged (2 points/hour, clamped 0–100). Each care action is
-      one Firestore transaction that applies decay and the restore together.
-      **Done when:** stats decay across an app restart and never go below 0 or above 100.
-- [ ] `FirestoreInventoryRepository` — `getInventory`, `consumeCareItem`, `addCareItem`,
-      `addAccessory`, `setEquippedAccessory`. `consumeCareItem` must be a transaction and must
-      return `false` (not throw, not go negative) when the count is 0.
-      **Done when:** using the last item of a type leaves the count at exactly 0.
-- [ ] `FirestoreBucketListRepository` — CRUD only (add/edit/delete/list). The payout on
-      complete/un-complete goes through Cloud Functions 7 and 8, not this class.
-- [ ] `completeBucketListItem` / `uncompleteBucketListItem` Cloud Functions — store
-      `awardedXp`/`awardedCoins` on completion, reverse from those stored values.
-      **Done when:** completing an item, editing its reward, then un-completing it leaves XP and
-      coins exactly where they started.
-- [ ] Achievements: point the real repository at the real repositories. **No Firestore
-      collection** — it stays computed. **Done when:** achievements still unlock with real data.
-- [ ] Firebase Auth: email sign-up/login, session persistence, password reset, account settings.
-      **Done when:** closing and reopening the app keeps you logged in, and a wrong password
-      shows an error rather than crashing.
-- [ ] Google Sign-In, end to end — console configuration (provider, OAuth client, Android SHA-1)
-      *and* the client flow, including the post-Google username picker.
-      **Done when:** a Google sign-up reaches Home with a username the user chose.
-- [ ] Account linking, both directions (password→Google and Google→password).
-      **Done when:** using the same email through both methods lands in the **same** account
-      with the same pet and history — never a second account, never a dead end.
-- [ ] Email verification — send on sign-up, dismissible banner with resend, gates nothing.
-      *Droppable if the sprint runs short.* **Done when:** a new user gets the email and the
-      banner disappears once verified.
-- [ ] Username uniqueness — the `/usernames` index, live availability check on the sign-up form,
-      atomic claim after account creation, and the change-username transaction.
-      **Done when:** two accounts cannot end up with the same username in any casing, and
-      changing a username frees the old one for someone else to take.
-- [ ] `onUserCreate` Cloud Function — use the exact values in "New-account provisioning" above;
-      no accessory is granted here. **Done when:** a fresh sign-up lands on Home with a level-1
-      user, a full-stat pet named Nori, the three starter care items, an empty accessory list,
-      and no crash.
-- [ ] Onboarding writes the chosen pet name to `pet/main` as a direct client write after
-      sign-up — the auth trigger can't see it. **Done when:** naming the pet during onboarding
-      persists, and skipping onboarding leaves it as "Nori".
-- [ ] `purchaseCareItem` / `purchaseAccessory` Cloud Functions — validate cost ≤ coins server-
-      side, one transaction. **Done when:** buying with insufficient coins fails cleanly and the
-      client cannot grant itself items by writing Firestore directly.
+
+**Status note (2026-09-29, added while merging her branch into Valeria's):** every item below is
+checked off based on the code existing, matching this doc's spec, and (for the Cloud Functions)
+being live on `nori-pet` with no stub/`UnimplementedError` bodies — not on independently
+exercising each flow end-to-end the way `claimHabit`/`unclaimHabit` was verified. The one
+exception is `onUserCreate`, which that same verification run exercised directly (real sign-up →
+provisioned user/pet/inventory docs matched every value below exactly). Treat the rest as "looks
+complete, confirm with Jimena or run it once" rather than fully proven.
+
+- [x] `FirestoreUserRepository` — profile fields + `habitCategories` + vacation toggle only;
+      `addXp`/`addCoins` correctly throw (Cloud-Function-only).
+- [x] `FirestorePetRepository` — `getPet`, `feed`, `groom`, `play`; `syncEvolution` is a
+      deliberate no-op (stage is Cloud-Function-only, set inside `claimHabit`).
+- [x] `FirestoreInventoryRepository` — `getInventory`, `consumeCareItem`, accessory/equip methods.
+- [x] `FirestoreBucketListRepository` — CRUD only, payout goes through the Cloud Functions below.
+- [x] `completeBucketListItem` / `uncompleteBucketListItem` Cloud Functions — deployed, store
+      `awardedXp`/`awardedCoins` for exact reversal, same pattern as habits.
+- [x] Achievements: `AppData.bindToUser` rebuilds `MockAchievementRepository` against the real
+      bucket list/pet/inventory (and Valeria's real habits/calendar) — still no Firestore
+      collection, as intended.
+- [x] Firebase Auth: email sign-up/login, session persistence, password reset, account settings —
+      `firebase_auth_repository.dart` has no stub methods.
+- [x] Google Sign-In end to end, including the post-Google username picker
+      (`choose_username_screen.dart`) and Android SHA-1 registration.
+- [x] Account linking, both directions (password→Google and Google→password) — see
+      `git log --grep=linking`.
+- [x] Email verification — `email_verification_banner.dart`.
+- [x] Username uniqueness — `/usernames` index, `username_repository.dart`.
+- [x] `onUserCreate` Cloud Function — **independently verified 2026-09-29**: a fresh disposable
+      sign-up landed with `level: 1`, `totalXp: 0`, `coins: 0`, pet `stage: baby` with full
+      stats, the exact starter `careItemCounts`, and an empty `ownedAccessoryIds` — matches
+      "New-account provisioning" above exactly.
+- [x] Onboarding writes the chosen pet name to `pet/main` — `name_pet_screen.dart`.
+- [x] `purchaseCareItem` / `purchaseAccessory` Cloud Functions — deployed, validate cost ≤ coins
+      server-side against the duplicated catalog (see functions/src/index.ts's own comment on
+      why prices are hand-synced rather than trusted from the client).
 
 ### Valeria — Core habit loop
 - [x] `FirestoreHabitRepository` — create/update/reorder, `logProgress`/`setProgress`, and the
@@ -711,31 +712,30 @@ whoever's building it will have a better sense of what unblocks what.
       **Still open:** `delete` unimplemented (no archive/delete UI exists yet either).
 - [x] `FirestoreCalendarRepository` + streak derivation over `habitLogs` range queries (one query
       per range, not one per day — see `logsInRange`). Vacation ranges wired to read from
-      `FirestoreVacationLog`, but that class **can't actually persist yet** — see
-      `docs/KNOWN_ISSUES.md` 🟠 "FirestoreVacationLog can't actually persist yet" (blocked on
-      account creation, Jimena's vertical). Two 🟡 performance/duplication issues also logged
-      there, not yet fixed.
-- [ ] `claimHabit` / `unclaimHabit` Cloud Functions — one transaction over
-      habit + habitLog + user + pet. Port `Habit.computeReward()` and `MockUserRepository.addXp`'s
-      level loop verbatim into TypeScript; the claim-value snap rule lives in
-      `MockHabitRepository._claimValue`. **Done when:** claim → unclaim → claim leaves XP, coins,
-      level and pet stage exactly where they started. `functions/` scaffolded 2026-09-24.
-      **`claimHabit` implemented 2026-09-24** (see the Cloud Functions list above for the calls
-      made); reward/level/evolution math unit-tested (`npm test` in `functions/`), but the
-      transaction itself is **not yet run end-to-end** (no emulator on this project — that
-      means deploying to nori-pet and calling it from the app). **`unclaimHabit` implemented
-      2026-09-24**, same status. Both written; next is
-      deploying them and the Flutter call-site rewrite below.
-- [ ] Rewrite the call sites in `habits_list_screen.dart`, `home_screen.dart`,
-      `calendar_screen.dart`, `bucket_list_screen.dart` to call the one callable instead of the
-      three-step repo sequence (see gap #1 below). Not started.
-- [ ] Seed script — real Firestore documents replacing `HabitHistoryStore.seedHistory`. Not
-      started. **Finding (2026-09-23):** this can't be plain Data-sprint client code after all —
-      `firestore.rules` blocks a normal client from writing `claimed: true`/`awardedXp`/
-      `awardedCoins`, the same guard that stops habit-claim cheating, so a script running as a
-      signed-in user can only seed *unclaimed* progress, never a believable "completed" history.
-      A real version needs the Firebase Admin SDK (bypasses rules) and belongs with the Cloud
-      Functions work above, not before it.
+      `FirestoreVacationLog`; the "can't actually persist yet" blocker (needed account creation
+      to exist) is likely resolved now that `onUserCreate` is live and verified, but this specific
+      flow hasn't been re-tested since — worth a quick check before assuming it's fixed.
+- [x] `claimHabit` / `unclaimHabit` Cloud Functions — one transaction over habit + habitLog +
+      user + pet + inventory (first-completion gift). **Implemented and deployed 2026-09-28/29**;
+      **independently verified end-to-end 2026-09-29** against live `nori-pet` with a disposable
+      test account (25 checks): claim/unclaim round trip lands on identical XP/coins/level,
+      sunglasses gift is granted once and never revoked, a direct client write to `coins` is
+      rejected by `firestore.rules`, an impossible `dayKey` is rejected, and claiming outside a
+      habit's `startDate`/`endDate` window is rejected. `setHabitCompleted` was removed as a pure
+      dispatcher over these two — see the Cloud Functions list above.
+- [x] Rewrite the call sites in `habits_list_screen.dart`, `home_screen.dart`, and the calendar
+      day-detail sheet to call `claimHabit`/`unclaimHabit` instead of the old three-step repo
+      sequence (see gap #1 below) — done 2026-09-28. `bucket_list_screen.dart` wasn't touched
+      here; it already calls Jimena's bucket-list Cloud Functions directly, a separate code path.
+- [ ] Seed script — real Firestore documents replacing `HabitHistoryStore.seedHistory`. Still not
+      started — the one genuinely open item left in this vertical. **Finding (2026-09-23):** this
+      can't be plain Data-sprint client code after all — `firestore.rules` blocks a normal client
+      from writing `claimed: true`/`awardedXp`/`awardedCoins`, the same guard that stops
+      habit-claim cheating, so a script running as a signed-in user can only seed *unclaimed*
+      progress, never a believable "completed" history. A real version needs the Firebase Admin
+      SDK (bypasses rules) — the verification script written 2026-09-29
+      (`scratchpad/verify_claim.mjs`, not committed) shows the REST-API pattern this could reuse,
+      but a real seed script still needs to be written.
 
 ## Explicit non-goals this phase
 
@@ -747,11 +747,12 @@ epic, don't build it now), Apple Health/Fitbit/Duolingo integrations, analytics,
 
 ## Gaps/risks found while planning this
 
-1. **The current claim flow isn't atomic.** `habits_list_screen.dart` sequences three separate
-   repo calls — `AppData.habits.claimHabitForDate(...)` → `AppData.user.addXp/addCoins(...)` →
-   `AppData.pet.syncEvolution(...)` — with no transaction tying them together. Moving to
-   `claimHabit` as one Cloud Function means **screen code changes too**, not just the repo's
-   internals: budget time for rewriting those call sites, it isn't a drop-in swap.
+1. ~~**The current claim flow isn't atomic.**~~ — **fixed 2026-09-28.** `claimHabit`/
+   `unclaimHabit` now do the habit + user + pet + inventory writes in one Firestore transaction
+   server-side; the three screens (`home_screen.dart`, `habits_list_screen.dart`, the calendar
+   day-detail sheet) no longer call `AppData.user.addXp`/`addCoins`/`AppData.pet.syncEvolution`
+   after a claim — they reload and let the function's own before/after result decide whether to
+   celebrate.
 2. **Notifications/FCM**: OPEN_DECISIONS.md says whether notifications exist at all is
    undecided. Treated as out-of-scope here (see non-goals) — resolve the product question
    before building any FCM wiring, whichever sprint it'd land in.

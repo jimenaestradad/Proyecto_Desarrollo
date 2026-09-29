@@ -26,7 +26,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import * as functionsV1 from "firebase-functions/v1";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 
-import { applyXpDelta, xpForLevel } from "./xpCurve";
+import { asNumber, levelFields, readLevelState } from "./habitTransaction";
+import { applyXpDelta } from "./xpCurve";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -70,6 +71,18 @@ const BUCKET_LIST_XP_CAP = 500;
 const BUCKET_LIST_COIN_CAP = 250;
 
 /**
+ * Own-key catalog lookup. A plain `catalog[id]` also matches inherited
+ * keys ("constructor", "toString", "__proto__"), whose `price` is
+ * undefined -- the coin check then compares against NaN, passes, and
+ * saves `coins: NaN`, after which every purchase is free.
+ */
+function catalogEntry<T>(catalog: Record<string, T>, id: unknown): T | undefined {
+  return typeof id === "string" && Object.prototype.hasOwnProperty.call(catalog, id)
+    ? catalog[id]
+    : undefined;
+}
+
+/**
  * Provisions a brand-new sign-up's /users/{uid} doc, starter pet, and
  * starter inventory. Values are exactly docs/BACKEND.md's "New-account
  * provisioning" table — do not tune game-balance numbers here, that's an
@@ -93,9 +106,11 @@ export const onUserCreate = functionsV1.auth.user().onCreate(async (user) => {
   const uid = user.uid;
   const now = FieldValue.serverTimestamp();
 
+  // create(), not set(): if this trigger is ever delivered twice, the
+  // second run fails instead of resetting a user who has already started.
   const batch = db.batch();
 
-  batch.set(db.collection("users").doc(uid), {
+  batch.create(db.collection("users").doc(uid), {
     name: "",
     username: "",
     email: user.email ?? "",
@@ -112,7 +127,7 @@ export const onUserCreate = functionsV1.auth.user().onCreate(async (user) => {
     firstHabitCompletedAt: null,
   });
 
-  batch.set(db.collection("users").doc(uid).collection("pet").doc("main"), {
+  batch.create(db.collection("users").doc(uid).collection("pet").doc("main"), {
     name: "Nori",
     hunger: 100,
     hygiene: 100,
@@ -122,7 +137,7 @@ export const onUserCreate = functionsV1.auth.user().onCreate(async (user) => {
     evolutionLevelThreshold: 7,
   });
 
-  batch.set(
+  batch.create(
     db.collection("users").doc(uid).collection("inventory").doc("main"),
     {
       // All six catalog ids present from the start (not just the ones
@@ -162,8 +177,8 @@ export const purchaseCareItem = onCall(async (request) => {
 
   const itemId = request.data?.itemId;
   const quantity = Number(request.data?.quantity ?? 1);
-  const catalogEntry = CARE_ITEM_CATALOG[itemId];
-  if (!catalogEntry) {
+  const careItem = catalogEntry(CARE_ITEM_CATALOG, itemId);
+  if (!careItem) {
     throw new HttpsError("invalid-argument", "Unknown care item.");
   }
   if (!Number.isInteger(quantity) || quantity < 1) {
@@ -175,8 +190,8 @@ export const purchaseCareItem = onCall(async (request) => {
 
   const userRef = db.collection("users").doc(uid);
   const inventoryRef = userRef.collection("inventory").doc("main");
-  const cost = catalogEntry.price * quantity;
-  const grantedCount = catalogEntry.grants * quantity;
+  const cost = careItem.price * quantity;
+  const grantedCount = careItem.grants * quantity;
 
   return db.runTransaction(async (tx) => {
     const [userSnap, inventorySnap] = await Promise.all([
@@ -192,7 +207,7 @@ export const purchaseCareItem = onCall(async (request) => {
       );
     }
 
-    const coins: number = userData.coins ?? 0;
+    const coins = asNumber(userData.coins, 0);
     if (coins < cost) {
       throw new HttpsError("failed-precondition", "Not enough coins.");
     }
@@ -224,8 +239,8 @@ export const purchaseAccessory = onCall(async (request) => {
   }
 
   const accessoryId = request.data?.accessoryId;
-  const catalogEntry = ACCESSORY_CATALOG[accessoryId];
-  if (!catalogEntry) {
+  const accessory = catalogEntry(ACCESSORY_CATALOG, accessoryId);
+  if (!accessory) {
     throw new HttpsError("invalid-argument", "Unknown accessory.");
   }
 
@@ -254,11 +269,11 @@ export const purchaseAccessory = onCall(async (request) => {
       );
     }
 
-    const coins: number = userData.coins ?? 0;
-    if (coins < catalogEntry.price) {
+    const coins = asNumber(userData.coins, 0);
+    if (coins < accessory.price) {
       throw new HttpsError("failed-precondition", "Not enough coins.");
     }
-    const newCoins = coins - catalogEntry.price;
+    const newCoins = coins - accessory.price;
 
     tx.update(userRef, { coins: newCoins });
     tx.update(inventoryRef, {
@@ -311,24 +326,18 @@ export const completeBucketListItem = onCall(async (request) => {
       return { xpDelta: 0, coinsDelta: 0 };
     }
 
-    const xpAwarded = Math.max(
-      0,
-      Math.min(Number(itemData.xpReward ?? 0), BUCKET_LIST_XP_CAP)
+    // asNumber, not Number(): the rules let a client write any type into
+    // these fields, and Number("abc") is NaN, which slips past both clamps.
+    // Rounded so a fractional reward can't leave fractional XP/coins.
+    const xpAwarded = Math.round(
+      Math.max(0, Math.min(asNumber(itemData.xpReward, 0), BUCKET_LIST_XP_CAP))
     );
-    const coinsAwarded = Math.max(
-      0,
-      Math.min(Number(itemData.coinReward ?? 0), BUCKET_LIST_COIN_CAP)
+    const coinsAwarded = Math.round(
+      Math.max(0, Math.min(asNumber(itemData.coinReward, 0), BUCKET_LIST_COIN_CAP))
     );
 
-    const nextLevelState = applyXpDelta(
-      {
-        level: userData.level ?? 1,
-        totalXp: userData.totalXp ?? 0,
-        xpIntoLevel: userData.xpIntoLevel ?? 0,
-      },
-      xpAwarded
-    );
-    const newCoins = Math.max(0, (userData.coins ?? 0) + coinsAwarded);
+    const nextLevelState = applyXpDelta(readLevelState(userData), xpAwarded);
+    const newCoins = Math.max(0, asNumber(userData.coins, 0) + coinsAwarded);
 
     tx.update(itemRef, {
       isCompleted: true,
@@ -336,13 +345,7 @@ export const completeBucketListItem = onCall(async (request) => {
       awardedXp: xpAwarded,
       awardedCoins: coinsAwarded,
     });
-    tx.update(userRef, {
-      level: nextLevelState.level,
-      totalXp: nextLevelState.totalXp,
-      xpIntoLevel: nextLevelState.xpIntoLevel,
-      xpForNextLevel: xpForLevel(nextLevelState.level),
-      coins: newCoins,
-    });
+    tx.update(userRef, { ...levelFields(nextLevelState), coins: newCoins });
 
     return { xpDelta: xpAwarded, coinsDelta: coinsAwarded };
   });
@@ -383,18 +386,11 @@ export const uncompleteBucketListItem = onCall(async (request) => {
       return { xpDelta: 0, coinsDelta: 0 };
     }
 
-    const xpToReverse = Number(itemData.awardedXp ?? 0);
-    const coinsToReverse = Number(itemData.awardedCoins ?? 0);
+    const xpToReverse = asNumber(itemData.awardedXp, 0);
+    const coinsToReverse = asNumber(itemData.awardedCoins, 0);
 
-    const nextLevelState = applyXpDelta(
-      {
-        level: userData.level ?? 1,
-        totalXp: userData.totalXp ?? 0,
-        xpIntoLevel: userData.xpIntoLevel ?? 0,
-      },
-      -xpToReverse
-    );
-    const newCoins = Math.max(0, (userData.coins ?? 0) - coinsToReverse);
+    const nextLevelState = applyXpDelta(readLevelState(userData), -xpToReverse);
+    const newCoins = Math.max(0, asNumber(userData.coins, 0) - coinsToReverse);
 
     tx.update(itemRef, {
       isCompleted: false,
@@ -402,13 +398,7 @@ export const uncompleteBucketListItem = onCall(async (request) => {
       awardedXp: 0,
       awardedCoins: 0,
     });
-    tx.update(userRef, {
-      level: nextLevelState.level,
-      totalXp: nextLevelState.totalXp,
-      xpIntoLevel: nextLevelState.xpIntoLevel,
-      xpForNextLevel: xpForLevel(nextLevelState.level),
-      coins: newCoins,
-    });
+    tx.update(userRef, { ...levelFields(nextLevelState), coins: newCoins });
 
     return { xpDelta: -xpToReverse, coinsDelta: -coinsToReverse };
   });

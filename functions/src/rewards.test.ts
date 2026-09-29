@@ -16,7 +16,6 @@ function habit(overrides: Partial<HabitDefinition>): HabitDefinition {
     type: "binary",
     difficulty: "medium",
     targetValue: null,
-    minThreshold: null,
     adaptiveMultiplier: 1,
     ...overrides,
   };
@@ -27,15 +26,15 @@ test("binary claim pays full base reward", () => {
 });
 
 test("progress habit snaps to target on claim and pays full", () => {
-  const water = habit({ type: "quantity", difficulty: "easy", targetValue: 1000, minThreshold: 500 });
+  const water = habit({ type: "quantity", difficulty: "easy", targetValue: 1000 });
   const value = claimValue(water, 750);
   assert.equal(value, 1000);
   assert.equal(computeReward(water, value).tier, "full");
 });
 
-test("min tier pays 75%", () => {
-  const study = habit({ type: "quantity", targetValue: 60, minThreshold: 30 });
-  assert.deepEqual(computeReward(study, 45), { tier: "min", xp: 15, coins: 8 });
+test("reaching only the minimum pays nothing", () => {
+  const study = habit({ type: "quantity", targetValue: 60 });
+  assert.deepEqual(computeReward(study, 45), { tier: "none", xp: 0, coins: 0 });
 });
 
 test("limit habit claims the logged value, full under the ceiling, none over it", () => {

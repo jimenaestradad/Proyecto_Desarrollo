@@ -6,7 +6,7 @@
 
 export type HabitType = "binary" | "quantity" | "duration" | "multipleCompletion" | "limit";
 export type HabitDifficulty = "easy" | "medium" | "hard";
-export type RewardTier = "none" | "min" | "full";
+export type RewardTier = "none" | "full";
 export type PetStage = "baby" | "evolution1";
 
 const HABIT_TYPES: readonly HabitType[] = [
@@ -16,13 +16,10 @@ const DIFFICULTIES: readonly HabitDifficulty[] = ["easy", "medium", "hard"];
 
 const BASE_XP: Record<HabitDifficulty, number> = { easy: 10, medium: 20, hard: 30 };
 
-const TIER_FRACTION: Record<RewardTier, number> = { none: 0, min: 0.75, full: 1 };
-
 export interface HabitDefinition {
   type: HabitType;
   difficulty: HabitDifficulty;
   targetValue: number | null;
-  minThreshold: number | null;
   adaptiveMultiplier: number;
 }
 
@@ -41,7 +38,6 @@ export function parseHabitDefinition(data: Record<string, unknown>): HabitDefini
     type,
     difficulty,
     targetValue: numberOrNull(data.targetValue),
-    minThreshold: numberOrNull(data.minThreshold),
     adaptiveMultiplier: Math.min(1.5, Math.max(0.5, multiplier)),
   };
 }
@@ -64,18 +60,14 @@ export function claimValue(habit: HabitDefinition, loggedValue: number): number 
 }
 
 // Evaluated at claim time, so a binary habit's "completed" is always true here.
+// No partial tier: the minimum threshold keeps streaks but pays nothing
+// (FEATURES.md §3), and claimValue already snaps progress up to the target.
 export function rewardTier(habit: HabitDefinition, value: number): RewardTier {
   const target = habit.targetValue;
-  const inverted = habit.type === "limit";
-  let targetMet: boolean;
-  if (habit.type === "binary") targetMet = true;
-  else if (inverted) targetMet = target !== null && value <= target;
-  else targetMet = target !== null && value >= target;
-
-  if (targetMet) return "full";
-  if (inverted) return "none";
-  const minMet = habit.minThreshold !== null && value >= habit.minThreshold;
-  return minMet ? "min" : "none";
+  if (habit.type === "binary") return "full";
+  if (target === null) return "none";
+  const targetMet = habit.type === "limit" ? value <= target : value >= target;
+  return targetMet ? "full" : "none";
 }
 
 export function computeReward(
@@ -83,13 +75,9 @@ export function computeReward(
   value: number,
 ): { tier: RewardTier; xp: number; coins: number } {
   const tier = rewardTier(habit, value);
-  const fraction = TIER_FRACTION[tier];
+  if (tier === "none") return { tier, xp: 0, coins: 0 };
   const base = baseRewards(habit.difficulty);
-  return {
-    tier,
-    xp: Math.round(base.xp * habit.adaptiveMultiplier * fraction),
-    coins: Math.round(base.coins * fraction),
-  };
+  return { tier, xp: Math.round(base.xp * habit.adaptiveMultiplier), coins: base.coins };
 }
 
 export function petStageForLevel(
