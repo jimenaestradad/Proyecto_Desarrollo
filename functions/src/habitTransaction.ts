@@ -1,5 +1,6 @@
 import { DocumentData, DocumentReference, Firestore, Transaction } from "firebase-admin/firestore";
 import { PetStage, petStageForLevel } from "./rewards";
+import { LevelState, xpForLevel } from "./xpCurve";
 
 const DEFAULT_EVOLUTION_THRESHOLD = 7;
 
@@ -27,6 +28,23 @@ export function habitDocRefs(db: Firestore, uid: string, habitId: string, dayKey
 
 export function asNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+export function readLevelState(userData: DocumentData): LevelState {
+  return {
+    level: asNumber(userData.level, 1),
+    totalXp: asNumber(userData.totalXp, 0),
+    xpIntoLevel: asNumber(userData.xpIntoLevel, 0),
+  };
+}
+
+export function levelFields(state: LevelState) {
+  return {
+    level: state.level,
+    totalXp: state.totalXp,
+    xpIntoLevel: state.xpIntoLevel,
+    xpForNextLevel: xpForLevel(state.level),
+  };
 }
 
 export function currentPetStage(petData: DocumentData | undefined): PetStage | null {

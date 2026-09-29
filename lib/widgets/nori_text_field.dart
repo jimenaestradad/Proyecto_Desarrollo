@@ -16,6 +16,10 @@ class NoriTextField extends StatelessWidget {
     this.textInputAction,
     this.autofillHints,
     this.onSubmitted,
+    this.onChanged,
+    this.suffixIcon,
+    this.helperText,
+    this.helperColor,
   });
 
   final TextEditingController controller;
@@ -27,6 +31,21 @@ class NoriTextField extends StatelessWidget {
   final TextInputAction? textInputAction;
   final Iterable<String>? autofillHints;
   final ValueChanged<String>? onSubmitted;
+
+  /// Fires on every keystroke — used for live validation (e.g. the sign-up
+  /// screen's "is this username taken?" check) without waiting for submit.
+  final ValueChanged<String>? onChanged;
+
+  /// Shown at the trailing edge of the field, e.g. a spinner/check/cross
+  /// reflecting live-validation state. Doesn't replace `obscureText`'s own
+  /// visibility toggle (there isn't one here) — fields needing both would
+  /// need a small rework, not a case this screen hits yet.
+  final Widget? suffixIcon;
+
+  /// Small status line under the field (e.g. "Username is taken"). Purely
+  /// informational — doesn't block submission on its own.
+  final String? helperText;
+  final Color? helperColor;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +73,7 @@ class NoriTextField extends StatelessWidget {
             textInputAction: textInputAction,
             autofillHints: autofillHints,
             onSubmitted: onSubmitted,
+            onChanged: onChanged,
             style: AppTextStyles.bodyMd,
             decoration: InputDecoration(
               hintText: hint,
@@ -61,6 +81,7 @@ class NoriTextField extends StatelessWidget {
                 color: AppColors.inkFaint,
               ),
               prefixIcon: Icon(icon, color: AppColors.ink),
+              suffixIcon: suffixIcon,
               filled: true,
               fillColor: AppColors.linenAlt,
               contentPadding: const EdgeInsets.symmetric(
@@ -78,6 +99,18 @@ class NoriTextField extends StatelessWidget {
               ),
             ),
           ),
+          if (helperText != null) ...[
+            const SizedBox(height: AppSpacing.unit),
+            Padding(
+              padding: const EdgeInsets.only(left: AppSpacing.gutter),
+              child: Text(
+                helperText!,
+                style: AppTextStyles.labelSm.copyWith(
+                  color: helperColor ?? AppColors.inkMuted,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

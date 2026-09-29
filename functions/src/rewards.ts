@@ -92,26 +92,6 @@ export function computeReward(
   };
 }
 
-export interface LevelState {
-  level: number;
-  xpIntoLevel: number;
-  xpForNextLevel: number;
-}
-
-// Curve: xpForNextLevel = 100 × level, so reaching level n takes 50·n·(n−1)
-// cumulative XP. Derived from totalXp alone, so claim → unclaim always lands
-// back on the exact same level, including multi-level jumps.
-export function levelStateForTotalXp(totalXp: number): LevelState {
-  const total = Math.max(0, Math.floor(totalXp));
-  let level = 1;
-  while (total >= 50 * (level + 1) * level) level += 1;
-  return {
-    level,
-    xpIntoLevel: total - 50 * level * (level - 1),
-    xpForNextLevel: 100 * level,
-  };
-}
-
 export function petStageForLevel(
   current: PetStage,
   level: number,

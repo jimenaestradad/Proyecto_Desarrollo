@@ -1,12 +1,14 @@
 import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { levelStateForTotalXp } from "./rewards";
+import { applyXpDelta } from "./xpCurve";
 import { DayArgs, parseDayArgs, parseHabitId, requireAuth } from "./requestArgs";
 import {
   HabitRewardResult,
   asNumber,
   currentPetStage,
   habitDocRefs,
+  levelFields,
+  readLevelState,
   syncPetStage,
 } from "./habitTransaction";
 
@@ -33,8 +35,8 @@ export async function runUnclaimHabit(
       throw new HttpsError("failed-precondition", "User profile hasn't been provisioned yet.");
     }
 
-    const previousTotalXp = asNumber(userData.totalXp, 0);
-    const previousLevel = levelStateForTotalXp(previousTotalXp).level;
+    const previousState = readLevelState(userData);
+    const previousLevel = previousState.level;
     const petData = petSnap.data();
     const previousPetStage = currentPetStage(petData);
 
@@ -58,24 +60,17 @@ export async function runUnclaimHabit(
     // The claimed value stays on the log so the user can keep editing from it.
     tx.update(refs.log, { claimed: false, awardedXp: 0, awardedCoins: 0 });
 
-    const totalXp = Math.max(0, previousTotalXp - awardedXp);
+    const levelState = applyXpDelta(previousState, -awardedXp);
     // Clamped at 0 like MockUserRepository.addCoins — coins already spent
     // can't be taken back. See docs/KNOWN_ISSUES.md for the exploit this allows.
     const previousCoins = asNumber(userData.coins, 0);
     const coins = Math.max(0, previousCoins - awardedCoins);
-    const levelState = levelStateForTotalXp(totalXp);
 
-    tx.update(refs.user, {
-      totalXp,
-      level: levelState.level,
-      xpIntoLevel: levelState.xpIntoLevel,
-      xpForNextLevel: levelState.xpForNextLevel,
-      coins,
-    });
+    tx.update(refs.user, { ...levelFields(levelState), coins });
 
     return {
       changed: true,
-      xpDelta: totalXp - previousTotalXp,
+      xpDelta: levelState.totalXp - previousState.totalXp,
       coinsDelta: coins - previousCoins,
       previousLevel,
       level: levelState.level,

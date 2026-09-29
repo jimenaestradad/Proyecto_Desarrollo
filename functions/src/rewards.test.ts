@@ -4,10 +4,12 @@ import {
   HabitDefinition,
   claimValue,
   computeReward,
-  levelStateForTotalXp,
   parseHabitDefinition,
   petStageForLevel,
 } from "./rewards";
+import { LevelState, applyXpDelta } from "./xpCurve";
+
+const fresh: LevelState = { level: 1, totalXp: 0, xpIntoLevel: 0 };
 
 function habit(overrides: Partial<HabitDefinition>): HabitDefinition {
   return {
@@ -67,24 +69,29 @@ test("unknown enum values fall back like Habit.fromJson", () => {
 });
 
 test("level curve is 100 × level per step", () => {
-  assert.deepEqual(levelStateForTotalXp(0), { level: 1, xpIntoLevel: 0, xpForNextLevel: 100 });
-  assert.deepEqual(levelStateForTotalXp(99), { level: 1, xpIntoLevel: 99, xpForNextLevel: 100 });
-  assert.deepEqual(levelStateForTotalXp(100), { level: 2, xpIntoLevel: 0, xpForNextLevel: 200 });
-  assert.deepEqual(levelStateForTotalXp(299), { level: 2, xpIntoLevel: 199, xpForNextLevel: 200 });
-  assert.equal(levelStateForTotalXp(2100).level, 7);
+  assert.deepEqual(applyXpDelta(fresh, 99), { level: 1, totalXp: 99, xpIntoLevel: 99 });
+  assert.deepEqual(applyXpDelta(fresh, 100), { level: 2, totalXp: 100, xpIntoLevel: 0 });
+  assert.deepEqual(applyXpDelta(fresh, 299), { level: 2, totalXp: 299, xpIntoLevel: 199 });
+  assert.equal(applyXpDelta(fresh, 2100).level, 7);
 });
 
 test("a single award can jump several levels", () => {
-  assert.deepEqual(levelStateForTotalXp(500), { level: 3, xpIntoLevel: 200, xpForNextLevel: 300 });
+  assert.deepEqual(applyXpDelta(fresh, 500), { level: 3, totalXp: 500, xpIntoLevel: 200 });
 });
 
 test("claim → unclaim → claim returns to the same level state", () => {
-  const start = 95;
+  const start = applyXpDelta(fresh, 95);
   const award = computeReward(habit({ difficulty: "hard" }), 0).xp;
-  const claimed = levelStateForTotalXp(start + award);
+  const claimed = applyXpDelta(start, award);
   assert.equal(claimed.level, 2);
-  assert.deepEqual(levelStateForTotalXp(start + award - award), levelStateForTotalXp(start));
-  assert.deepEqual(levelStateForTotalXp(start + award - award + award), claimed);
+  const unclaimed = applyXpDelta(claimed, -award);
+  assert.deepEqual(unclaimed, start);
+  assert.deepEqual(applyXpDelta(unclaimed, award), claimed);
+});
+
+test("unclaim can drop several levels", () => {
+  const high = applyXpDelta(fresh, 500);
+  assert.deepEqual(applyXpDelta(high, -500), fresh);
 });
 
 test("pet evolves at the threshold and demotes below it", () => {

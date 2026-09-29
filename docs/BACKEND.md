@@ -364,9 +364,10 @@ deleting them would silently rewrite history.
      mint arbitrary XP. The add-habit screen already writes exactly `difficulty.baseXp`/
      `baseCoins`, so real habits see no change. `adaptiveMultiplier` is clamped 0.5–1.5
      server-side for the same reason.
-   - **Level is derived from `totalXp` alone** via the `50·n·(n−1)` curve, instead of stepping
-     the stored `level`/`xpIntoLevel`. Same result for consistent data, handles multi-level
-     jumps, and guarantees claim → unclaim → claim lands on the identical level.
+   - **Level math uses `applyXpDelta` from `functions/src/xpCurve.ts`** — the single shared
+     curve implementation, also used by the bucket-list functions (merged 2026-09-28; an
+     earlier separate `levelStateForTotalXp` was removed so the curve lives in one place).
+     Handles multi-level jumps both ways; claim → unclaim → claim lands on the identical level.
    - **Sunglasses gift** needs a non-`none` reward tier (a failed limit day isn't a
      "completion"), only equips if nothing is equipped yet, and is skipped (not stamped) if
      `inventory/main` doesn't exist, so it isn't lost before provisioning lands.
@@ -523,8 +524,8 @@ test account (credentials in the gitignored `TEST_ACCOUNT.local.md`), verifying 
 method against real Firestore, then deleting the test documents afterward via
 `firebase firestore:delete`. No Java runtime was available locally, and the emulator's main
 value (cost control, blast-radius limits, instant resets) matters much less at this scale than the
-faster iteration loop of skipping it. `firebase.json`'s `emulators` config was removed since it
-was never actually used. Jimena can use either approach — this isn't a hard rule, just what
+faster iteration loop of skipping it. `firebase.json` has an `emulators` block from Jimena's branch;
+Valeria's side doesn't use it. Jimena can use either approach — this isn't a hard rule, just what
 happened in practice.
 
 The seed-data script (replacing `HabitHistoryStore.seedHistory`'s demo generator) turned out to

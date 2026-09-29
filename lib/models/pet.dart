@@ -42,6 +42,7 @@ class Pet {
       (evolutionLevelThreshold - userLevel).clamp(0, evolutionLevelThreshold);
 
   Pet copyWith({
+    String? name,
     PetEvolutionStage? stage,
     double? hunger,
     double? hygiene,
@@ -50,7 +51,7 @@ class Pet {
   }) {
     return Pet(
       id: id,
-      name: name,
+      name: name ?? this.name,
       stage: stage ?? this.stage,
       evolutionLevelThreshold: evolutionLevelThreshold,
       hunger: hunger ?? this.hunger,

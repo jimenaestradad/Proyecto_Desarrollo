@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/auth_repository.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/premium/nori_plus_screen.dart';
 import 'package:nori/theme/app_theme.dart';
@@ -20,17 +21,109 @@ class _SettingsScreenState extends State<SettingsScreen> {
   NoriUser? _user;
   List<String>? _categories;
 
+  /// Null while loading. See docs/BACKEND.md, "Account linking, both
+  /// directions" -- a Google-only account can attach a password from
+  /// here (the Google->password direction; password->Google already
+  /// happens automatically on login_screen.dart's account-linking
+  /// prompt). Once true, the row that offers this hides itself.
+  bool? _hasPasswordProvider;
+
   @override
   void initState() {
     super.initState();
     _loadUser();
     _loadCategories();
+    _loadPasswordProvider();
   }
 
   Future<void> _loadUser() async {
     final user = await AppData.user.getCurrentUser();
     if (!mounted) return;
     setState(() => _user = user);
+  }
+
+  Future<void> _loadPasswordProvider() async {
+    final hasPassword = await AppData.auth.hasPasswordProvider();
+    if (!mounted) return;
+    setState(() => _hasPasswordProvider = hasPassword);
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _addPassword() async {
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
+    final password = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+        ),
+        title: const Text('Set a Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Add a password so you can also log in without Google.',
+            ),
+            const SizedBox(height: AppSpacing.gutter),
+            TextField(
+              controller: passwordController,
+              autofocus: true,
+              obscureText: true,
+              decoration: const InputDecoration(hintText: 'New password'),
+            ),
+            const SizedBox(height: AppSpacing.unit),
+            TextField(
+              controller: confirmController,
+              obscureText: true,
+              decoration: const InputDecoration(hintText: 'Confirm password'),
+              onSubmitted: (value) =>
+                  Navigator.pop(dialogContext, passwordController.text),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (passwordController.text != confirmController.text) {
+                _showMessage('Passwords do not match.');
+                return;
+              }
+              Navigator.pop(dialogContext, passwordController.text);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    passwordController.dispose();
+    confirmController.dispose();
+    if (password == null || password.isEmpty || !mounted) return;
+
+    try {
+      await AppData.auth.addPassword(password);
+      if (!mounted) return;
+      _showMessage('Password set — you can now log in with either method.');
+      await _loadPasswordProvider();
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      _showMessage(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      _showMessage('Unable to set a password. Please try again.');
+    }
   }
 
   Future<void> _loadCategories() async {
@@ -159,6 +252,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onRename: _renameCategory,
                     onDelete: _deleteCategory,
                   ),
+                  if (_hasPasswordProvider == false) ...[
+                    const SizedBox(height: AppSpacing.stackMd),
+                    Text(
+                      'Account',
+                      style: AppTextStyles.labelLg.copyWith(
+                        color: AppColors.inkMuted,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.unit),
+                    NoriListRow(
+                      icon: Icons.password,
+                      label: 'Set a Password',
+                      onTap: _addPassword,
+                    ),
+                  ],
                   const SizedBox(height: AppSpacing.stackMd),
                   Text(
                     'Plan',

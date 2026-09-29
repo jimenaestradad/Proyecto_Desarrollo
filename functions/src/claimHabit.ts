@@ -1,12 +1,15 @@
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { claimValue, computeReward, levelStateForTotalXp, parseHabitDefinition } from "./rewards";
+import { claimValue, computeReward, parseHabitDefinition } from "./rewards";
+import { applyXpDelta } from "./xpCurve";
 import { DayArgs, parseDayArgs, parseHabitId, requireAuth } from "./requestArgs";
 import {
   HabitRewardResult,
   asNumber,
   currentPetStage,
   habitDocRefs,
+  levelFields,
+  readLevelState,
   syncPetStage,
 } from "./habitTransaction";
 
@@ -46,8 +49,8 @@ export async function runClaimHabit(
       throw new HttpsError("failed-precondition", "Habit didn't exist on that day.");
     }
 
-    const previousTotalXp = asNumber(userData.totalXp, 0);
-    const previousLevel = levelStateForTotalXp(previousTotalXp).level;
+    const previousState = readLevelState(userData);
+    const previousLevel = previousState.level;
     const petData = petSnap.data();
     const previousPetStage = currentPetStage(petData);
 
@@ -79,13 +82,9 @@ export async function runClaimHabit(
       awardedCoins: reward.coins,
     });
 
-    const totalXp = previousTotalXp + reward.xp;
-    const levelState = levelStateForTotalXp(totalXp);
+    const levelState = applyXpDelta(previousState, reward.xp);
     const userUpdate: Record<string, unknown> = {
-      totalXp,
-      level: levelState.level,
-      xpIntoLevel: levelState.xpIntoLevel,
-      xpForNextLevel: levelState.xpForNextLevel,
+      ...levelFields(levelState),
       coins: asNumber(userData.coins, 0) + reward.coins,
     };
 

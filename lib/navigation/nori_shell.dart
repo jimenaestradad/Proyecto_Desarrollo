@@ -4,6 +4,7 @@ import '../screens/habits/habits_list_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/social/social_screen.dart';
+import '../widgets/email_verification_banner.dart';
 import '../widgets/nori_bottom_nav.dart';
 
 /// Hosts the five main tabs behind a shared bottom nav. Each tab is a full
@@ -32,7 +33,16 @@ class _NoriShellState extends State<NoriShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _index, children: _tabs),
+      // The banner sits above the tabs (not inside any one of them) so it
+      // shows regardless of which tab is active, without touching each
+      // tab's own — often visually fragile, see docs/KNOWN_ISSUES.md —
+      // layout.
+      body: Column(
+        children: [
+          const EmailVerificationBanner(),
+          Expanded(child: IndexedStack(index: _index, children: _tabs)),
+        ],
+      ),
       bottomNavigationBar: NoriBottomNav(
         currentIndex: _index,
         onTap: (i) => setState(() => _index = i),
