@@ -111,6 +111,41 @@ are toggled per-stat, not via tapping the pet itself. Not a bug.)
 
 ## 🟡 Minor / polish / backlog
 
+### Claim → spend → unclaim → re-claim mints coins (2026-09-24, found while implementing unclaimHabit)
+
+`unclaimHabit` clamps coins at 0, same as `MockUserRepository.addCoins`. So: claim a habit
+(+15 coins), spend them in the shop, unclaim (coins can't go below 0, so nothing is taken
+back), claim again (+15 again) — repeat for free shop items. Ported as-is rather than decided
+unilaterally, because both fixes change something users see: **(a)** let coins go negative
+(exact reversal, shop already blocks buying with too few coins, but the UI would show a
+negative balance), or **(b)** reject the unclaim with "you already spent those coins" (the
+user can't correct a mistaken claim after shopping). Needs a call from valevasqc/Jimena; the
+change itself is one line in `functions/src/unclaimHabit.ts`.
+
+### claimHabit still trusts two client-written habit fields (2026-09-24, found while implementing it)
+
+`claimHabit` no longer trusts the habit doc's `xpReward`/`coinReward`/`adaptiveMultiplier`
+(it derives base rewards from `difficulty` and clamps the multiplier — see docs/BACKEND.md's
+Cloud Functions list). Two smaller cheats are still possible, because `firestore.rules`' habit
+`allow create` accepts any payload: (1) a client can create a habit with a backdated
+`createdAt`, then claim it on every past day back to that date; (2) a client can create any
+number of habits and claim each one daily. Each claim is capped at 45 XP (hard × 1.5), so
+this stays the bounded "moderate" trust level docs/BACKEND.md chose, not an open mint. The fix,
+if it's ever worth doing: require `createdAt == request.time` in the create rule (the client
+would send `FieldValue.serverTimestamp()`, and `FirestoreHabitRepository.addHabit` would need
+to switch to that).
+
+### functions/ has 8 moderate transitive npm audit findings (2026-09-24, scaffold)
+
+`npm install` in the newly-scaffolded `functions/` pulls in a vulnerable `uuid` (<11.1.1,
+missing buffer bounds check when a `buf` argument is supplied — GHSA-w5hq-g745-h8pq) several
+layers deep inside `firebase-admin`'s own Google Cloud dependencies (`google-gax` →
+`gaxios`/`teeny-request` → `uuid`). Cloud Functions code never calls `uuid` directly or passes
+it a `buf`, so this isn't attacker-reachable through anything Nori's functions do — flagging
+for hygiene, not urgency. `npm audit fix --force` would resolve it by bumping
+`firebase-admin` to a breaking major version (14.x); worth doing as a deliberate upgrade once
+there's real function code to regression-test against, not blind right after scaffolding.
+
 ### FirestoreCalendarRepository re-runs its 400-day streak query on every getMonth call (2026-09-23 audit)
 
 `FirestoreCalendarRepository.getMonth()` (`lib/data/calendar_repository.dart`) calls

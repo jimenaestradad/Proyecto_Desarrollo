@@ -39,7 +39,7 @@ three sprints that are each substantial on their own, not one dumping ground plu
   database."
 - **Backend phase** — narrower than the draft implied: Firebase Auth wiring (sign up/login,
   Google Sign-In, password reset, session persistence) + the Cloud Functions that enforce
-  currency/business rules (`claimHabit`, `unclaimHabit`, `setHabitCompleted`,
+  currency/business rules (`claimHabit`, `unclaimHabit`,
   `purchaseCareItem`, `purchaseAccessory`, `onUserCreate`) + the client-side calling code for
   those. This is specifically the business-logic/orchestration layer, not "everything that
   isn't UI."
@@ -62,7 +62,7 @@ while closing the one real cheat vector (a client overwriting its own XP/coins f
 |---|---|---|---|
 | Habit create/update/delete/reorder | Direct client write | Data | No currency involved |
 | `logProgress` / `setProgress` (non-claiming) | Direct client write | Data | FEATURES.md §3: logging progress alone never earns XP |
-| `claimHabit` / `unclaimHabit` / `setHabitCompleted` (today or a past date) | **Cloud Function (callable)** | Backend | Mints/burns XP + coins, must update habit + user + pet atomically |
+| `claimHabit` / `unclaimHabit` (today or a past date) | **Cloud Function (callable)** | Backend | Mints/burns XP + coins, must update habit + user + pet atomically |
 | Feed / groom / play (+ stat decay) | Direct client write (client-side transaction) | Data | Spends an already-owned consumable for a pet stat, not currency; pet "cannot die" so stakes are low |
 | `consumeCareItem` as part of feed/groom/play | Direct client write, same transaction as above | Data | Same reasoning |
 | Buying a care item or accessory from the shop | **Cloud Function (callable)** | Backend | Spends coins to mint an owned item — currency-affecting |
@@ -281,7 +281,7 @@ the demo user (level 5, 7220 XP, 340 coins) — is screenshot dressing, not a st
 completion** — not at sign-up, and never again for anything else. Every other accessory is
 bought with coins.
 
-- **Where it lives:** inside the `claimHabit` / `setHabitCompleted` transaction (Valeria's
+- **Where it lives:** inside the `claimHabit` transaction (Valeria's
   vertical). If `firstHabitCompletedAt` is null, the same transaction adds `'sunglasses'` to
   `ownedAccessoryIds`, sets `equippedAccessoryId` to it, and stamps `firstHabitCompletedAt`.
 - **It is deliberately one-way.** Un-claiming that first habit reverses XP and coins exactly, as
@@ -351,12 +351,40 @@ deleting them would silently rewrite history.
    The pet name doesn't go through this function — an auth trigger only sees the auth record,
    not a value typed on a later onboarding screen. It's a direct client write after sign-up
    instead; see the provisioning table below.
-2. `claimHabit(habitId, date?)` — computes the claim value + reward tier, writes habit +
-   habitLog + user (XP/coins/level) + pet (evolution sync) in one transaction.
-3. `unclaimHabit(habitId, date?)` — exact reversal using the stored `lastAwardedXp/Coins`,
-   same atomic scope as above.
-4. `setHabitCompleted(habitId, completed, date?)` — binary quick-toggle; thin wrapper over
-   claim/unclaim.
+2. `claimHabit({habitId, dayKey, dayStartMillis})` — computes the claim value + reward tier,
+   writes habitLog + user (XP/coins/level) + pet (evolution sync) + inventory (first-completion
+   gift) in one transaction. **Implemented 2026-09-24** (`functions/src/claimHabit.ts`, pure
+   math in `functions/src/rewards.ts`). Calls made while building it:
+   - **Day args are required, not optional.** `dayKey` is the client's device-local
+     `yyyy-mm-dd`; `dayStartMillis` is that day's local midnight (becomes the log's `date`).
+     The server checks they agree (within ±14h, the UTC-offset range) and rejects future days
+     and days before the habit's `createdAt`.
+   - **Base XP/coins come from `difficulty`, not the habit doc's `xpReward`/`coinReward`.**
+     `firestore.rules` lets clients edit those two fields, so trusting them would let anyone
+     mint arbitrary XP. The add-habit screen already writes exactly `difficulty.baseXp`/
+     `baseCoins`, so real habits see no change. `adaptiveMultiplier` is clamped 0.5–1.5
+     server-side for the same reason.
+   - **Level is derived from `totalXp` alone** via the `50·n·(n−1)` curve, instead of stepping
+     the stored `level`/`xpIntoLevel`. Same result for consistent data, handles multi-level
+     jumps, and guarantees claim → unclaim → claim lands on the identical level.
+   - **Sunglasses gift** needs a non-`none` reward tier (a failed limit day isn't a
+     "completion"), only equips if nothing is equipped yet, and is skipped (not stamped) if
+     `inventory/main` doesn't exist, so it isn't lost before provisioning lands.
+   - Already claimed → no-op returning `changed: false` and zero deltas. Returns `{changed,
+     xpDelta, coinsDelta, previousLevel, level, previousPetStage, petStage, giftedAccessoryId}`
+     so the client can fire level-up/evolution/gift celebrations without extra reads.
+3. `unclaimHabit({habitId, dayKey, dayStartMillis})` — exact reversal using the log's stored
+   `awardedXp`/`awardedCoins`, same atomic scope as above. **Implemented 2026-09-24**
+   (`functions/src/unclaimHabit.ts`; shared refs/result type/pet sync in
+   `functions/src/habitTransaction.ts`). Keeps the log's `value` (so progress stays editable),
+   demotes the pet if the level drops below its threshold, never revokes the sunglasses gift.
+   Not claimed → no-op. Coins clamp at 0 like the mock, so `coinsDelta` reports what was
+   *actually* removed — see docs/KNOWN_ISSUES.md for the spend-then-unclaim exploit that allows.
+   Both functions return the same shape: `{changed, xpDelta, coinsDelta, previousLevel, level,
+   previousPetStage, petStage, giftedAccessoryId}`.
+4. ~~`setHabitCompleted`~~ — **removed 2026-09-28** as a duplicate endpoint: it only dispatched
+   to claim/unclaim. The binary checkbox's Dart `setHabitCompleted(id, completed)` calls
+   `claimHabit` or `unclaimHabit` directly instead.
 5. `purchaseCareItem(itemId, quantity)` — validates cost ≤ coins, decrements coins, increments
    `careItemCounts`.
 6. `purchaseAccessory(accessoryId)` — validates cost ≤ coins, decrements coins, adds to
@@ -530,7 +558,7 @@ just "design the DB," so it isn't a thin sprint sitting next to a heavy Backend 
 ### Backend sprint
 1. **Auth.** Sign up/login (email), Google Sign-In, session persistence, password reset,
    basic account settings; `onUserCreate` provisions the starter user/pet/inventory docs.
-2. **Cloud Functions.** `claimHabit` / `unclaimHabit` / `setHabitCompleted` (level-up math and
+2. **Cloud Functions.** `claimHabit` / `unclaimHabit` (level-up math and
    evolution sync happen inside this same transaction, not a separate function);
    `purchaseCareItem` / `purchaseAccessory`.
 3. **Client-side calling code.** The repository methods that are Cloud-Function-backed
@@ -567,7 +595,7 @@ both the depth *and* half the breadth on one side, so Auth/onboarding/account si
 vertical to even it out.
 
 - **Valeria — Core habit loop.** Habit CRUD + progress logging, `claimHabit` /
-  `unclaimHabit` / `setHabitCompleted` Cloud Functions (incl. XP/level-up math and the
+  `unclaimHabit` Cloud Functions (incl. XP/level-up math and the
   `pet.stage` write — see the seam note below), streaks, vacation mode. Narrow and deep: the
   atomic multi-document claim transaction plus the streak/XP edge cases OPEN_DECISIONS.md
   hasn't settled yet.
@@ -686,13 +714,17 @@ whoever's building it will have a better sense of what unblocks what.
       `docs/KNOWN_ISSUES.md` 🟠 "FirestoreVacationLog can't actually persist yet" (blocked on
       account creation, Jimena's vertical). Two 🟡 performance/duplication issues also logged
       there, not yet fixed.
-- [ ] `claimHabit` / `unclaimHabit` / `setHabitCompleted` Cloud Functions — one transaction over
+- [ ] `claimHabit` / `unclaimHabit` Cloud Functions — one transaction over
       habit + habitLog + user + pet. Port `Habit.computeReward()` and `MockUserRepository.addXp`'s
       level loop verbatim into TypeScript; the claim-value snap rule lives in
       `MockHabitRepository._claimValue`. **Done when:** claim → unclaim → claim leaves XP, coins,
-      level and pet stage exactly where they started. Not started — needs `functions/` scaffolded
-      first (see GCP sprint). The source-of-truth question is now settled (habitLogs, every day),
-      so these functions have a stable schema to write against.
+      level and pet stage exactly where they started. `functions/` scaffolded 2026-09-24.
+      **`claimHabit` implemented 2026-09-24** (see the Cloud Functions list above for the calls
+      made); reward/level/evolution math unit-tested (`npm test` in `functions/`), but the
+      transaction itself is **not yet run end-to-end** (no emulator on this project — that
+      means deploying to nori-pet and calling it from the app). **`unclaimHabit` implemented
+      2026-09-24**, same status. Both written; next is
+      deploying them and the Flutter call-site rewrite below.
 - [ ] Rewrite the call sites in `habits_list_screen.dart`, `home_screen.dart`,
       `calendar_screen.dart`, `bucket_list_screen.dart` to call the one callable instead of the
       three-step repo sequence (see gap #1 below). Not started.
