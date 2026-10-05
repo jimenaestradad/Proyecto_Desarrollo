@@ -38,8 +38,9 @@ level / evolve / collect / customize pets → stay motivated
   is still open — see OPEN_DECISIONS.)
 - Optional start/end date. When the period ends, the habit is **archived, not deleted** —
   history/stats/streaks stay visible.
-- **Vacation Mode / pause** — freezes scheduled obligations so paused time doesn't break streaks
-  or hurt the pet. (Per-habit pause vs. a global mode — probably both, not formally decided.)
+- **Vacation Mode** — freezes scheduled obligations so paused time doesn't break streaks
+  or hurt the pet. A global mode only: per-habit pause is out of MVP scope (decided 2026-09-30).
+  Archiving a habit (see BACKEND.md) covers "stop tracking this one for now".
 
 ## 3. Completion & thresholds
 

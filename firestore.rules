@@ -56,7 +56,8 @@ service cloud.firestore {
         // there's no Cloud-Function-only field left on this doc to guard.
         allow create: if request.auth.uid == uid;
 
-        // order (drag-reorder) and archived (future delete-as-archive) are
+        // order (drag-reorder) and archived/archivedRanges (archive and
+        // restore, FirestoreHabitRepository.archiveHabit/restoreHabit) are
         // legitimately client-writable, just not via editing a habit's own
         // definition — FirestoreHabitRepository.updateHabit deliberately
         // excludes them (reorderHabits/a future archive flow write them
@@ -70,12 +71,14 @@ service cloud.firestore {
                  'targetValue', 'unit', 'minThreshold', 'quickLogAmount',
                  'adaptiveMultiplier', 'customDays',
                  'allowVacationFreeze', 'startDate', 'endDate', 'order',
-                 'archived',
+                 'archived', 'archivedRanges',
                ]);
 
-        // Deleting a habit archives it (sets archived = true via the
-        // update rule above) instead of removing the doc — habitLogs must
-        // survive for history/streaks. See docs/BACKEND.md:64.
+        // A habit with history is archived (update rule above), never
+        // removed. Real deletion is only for a habit with almost no
+        // history, and it takes back what its claims paid, so it goes
+        // through the deleteHabit Cloud Function (Admin SDK). See
+        // docs/BACKEND.md, "Deleting vs. archiving a habit".
         allow delete: if false;
       }
 
@@ -177,8 +180,12 @@ service cloud.firestore {
                ]);
 
         // Unlike habits, bucket list items have no archive-not-delete
-        // rule in FEATURES.md -- a straight delete is fine.
-        allow delete: if request.auth.uid == uid;
+        // rule in FEATURES.md -- a straight delete is fine, but only while
+        // the item is *not* completed. Deleting a completed one would keep
+        // its reward, so that goes through deleteBucketListItem (Cloud
+        // Function), which takes the reward back in the same transaction.
+        allow delete: if request.auth.uid == uid
+          && resource.data.isCompleted != true;
       }
     }
 

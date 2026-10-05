@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/accessory_catalog.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/care_item_catalog.dart';
-import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/inventory.dart';
@@ -15,9 +14,11 @@ import 'package:nori/screens/pet/evolution_screen.dart';
 import 'package:nori/screens/pet/level_up_screen.dart';
 import 'package:nori/screens/shop/shop_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/utils/formatting.dart';
 import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/habit_tile.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_avatar.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_room_stage.dart';
@@ -49,7 +50,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with RemoteLoadState<HomeScreen> {
   NoriUser? _user;
   List<Habit>? _habits;
   Pet? _pet;
@@ -73,23 +75,21 @@ class _HomeScreenState extends State<HomeScreen> {
     // celebration on switching back, not just one earned via a Home action.
     final previousStage = _pet?.stage;
     final previousLevel = _user?.level;
-    final user = await AppData.user.getCurrentUser();
-    final habits = await AppData.habits.getTodayHabits();
-    await AppData.pet.syncEvolution(user.level);
-    final pet = await AppData.pet.getPet();
-    final inventory = await AppData.inventory.getInventory();
-    if (!mounted) return;
-    setState(() {
-      _user = user;
-      _habits = habits;
-      _pet = pet;
-      _inventory = inventory;
+    await guardedLoad(hasData: _user != null, () async {
+      final user = await AppData.user.getCurrentUser();
+      final habits = await AppData.habits.getTodayHabits();
+      await AppData.pet.syncEvolution(user.level);
+      final pet = await AppData.pet.getPet();
+      final inventory = await AppData.inventory.getInventory();
+      if (!mounted) return;
+      setState(() {
+        _user = user;
+        _habits = habits;
+        _pet = pet;
+        _inventory = inventory;
+      });
     });
-    if (previousStage != null && pet.stage.index > previousStage.index) {
-      await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
-    } else if (previousLevel != null && user.level > previousLevel) {
-      await showLevelUpCelebration(context, level: user.level, petName: pet.name);
-    }
+    await _celebrateChanges(previousStage, previousLevel);
   }
 
   Future<void> _reloadHabits() async {
@@ -105,8 +105,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _reloadUserAndPet() async {
-    final previousStage = _pet?.stage;
-    final previousLevel = _user?.level;
     final user = await AppData.user.getCurrentUser();
     await AppData.pet.syncEvolution(user.level);
     final pet = await AppData.pet.getPet();
@@ -115,10 +113,24 @@ class _HomeScreenState extends State<HomeScreen> {
       _user = user;
       _pet = pet;
     });
-    // previousStage == null only on the very first load (no prior pet to
-    // compare against) — skip the celebration then so it only ever fires
-    // for a real, in-session evolution, not on app open. Same reasoning
-    // applies to previousLevel below.
+  }
+
+  /// Fires the evolution/level-up celebration when [_pet]/[_user] moved past
+  /// the captured values. Kept outside every guarded load/action on purpose:
+  /// it awaits a dialog the user may leave open, which would otherwise trip
+  /// [remoteTimeout].
+  ///
+  /// previousStage == null only on the very first load (no prior pet to
+  /// compare against) — skip the celebration then so it only ever fires
+  /// for a real, in-session evolution, not on app open. Same reasoning
+  /// applies to previousLevel.
+  Future<void> _celebrateChanges(
+    PetEvolutionStage? previousStage,
+    int? previousLevel,
+  ) async {
+    final pet = _pet;
+    final user = _user;
+    if (!mounted || pet == null || user == null) return;
     if (previousStage != null && pet.stage.index > previousStage.index) {
       await showEvolutionCelebration(
         context,
@@ -126,56 +138,37 @@ class _HomeScreenState extends State<HomeScreen> {
         stage: pet.stage,
       );
     } else if (previousLevel != null && user.level > previousLevel) {
-      await showLevelUpCelebration(context, level: user.level, petName: pet.name);
+      await showLevelUpCelebration(
+        context,
+        level: user.level,
+        petName: pet.name,
+      );
     }
   }
 
-  /// The claimHabit/unclaimHabit Cloud Function already wrote XP, coins,
-  /// level and pet stage server-side — reload picks up the new values, and
-  /// [_reloadUserAndPet]'s own before/after diff (not [reward] directly)
-  /// decides whether to celebrate, since it also has to catch a change made
-  /// on another tab.
-  Future<void> _applyReward(HabitRewardResult reward) async {
-    if (reward.xpDelta == 0 && reward.coinsDelta == 0) return;
-    await _reloadUserAndPet();
-  }
-
-  Future<void> _toggleHabit(Habit habit, bool completed) async {
-    try {
-      final reward = await AppData.habits.setHabitCompleted(habit.id, completed);
-      await _applyReward(reward);
+  /// Runs one claim-style call — the claimHabit/unclaimHabit Cloud Function
+  /// already wrote XP, coins, level and pet stage server-side, so a nonzero
+  /// reward reloads user + pet and [_celebrateChanges]' before/after diff
+  /// (not [reward] directly) decides whether to celebrate, since it also
+  /// has to catch a change made on another tab.
+  Future<void> _runClaim(Future<HabitRewardResult> Function() claim) async {
+    final previousStage = _pet?.stage;
+    final previousLevel = _user?.level;
+    final ok = await guardedAction(() async {
+      final reward = await claim();
+      if (reward.xpDelta != 0 || reward.coinsDelta != 0) {
+        await _reloadUserAndPet();
+      }
       await _reloadHabits();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
-  }
-
-  Future<void> _claimHabit(Habit habit) async {
-    try {
-      final reward = await AppData.habits.claimHabit(habit.id);
-      await _applyReward(reward);
-      await _reloadHabits();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
-  }
-
-  Future<void> _unclaimHabit(Habit habit) async {
-    try {
-      final reward = await AppData.habits.unclaimHabit(habit.id);
-      await _applyReward(reward);
-      await _reloadHabits();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
+    });
+    if (ok) await _celebrateChanges(previousStage, previousLevel);
   }
 
   Future<void> _quickLog(Habit habit, double amount) async {
-    await AppData.habits.logProgress(habit.id, amount);
-    await _reloadHabits();
+    await guardedAction(() async {
+      await AppData.habits.logProgress(habit.id, amount);
+      await _reloadHabits();
+    });
   }
 
   /// The compact Today's Goal row uses [HabitTile], whose checkbox means
@@ -184,37 +177,41 @@ class _HomeScreenState extends State<HomeScreen> {
   /// quick-log button ([_quickLog]), not this checkbox.
   Future<void> _onHabitTileToggle(Habit habit, bool completed) async {
     if (habit.type == HabitType.binary) {
-      await _toggleHabit(habit, completed);
+      await _runClaim(
+        () => AppData.habits.setHabitCompleted(habit.id, completed),
+      );
       return;
     }
     if (completed) {
-      await _claimHabit(habit);
+      await _runClaim(() => AppData.habits.claimHabit(habit.id));
     } else {
-      await _unclaimHabit(habit);
+      await _runClaim(() => AppData.habits.unclaimHabit(habit.id));
     }
   }
 
   Future<void> _useCareItem(CareItem item) async {
-    final ok = await AppData.inventory.consumeCareItem(item.id);
-    if (!mounted) return;
-    if (!ok) {
-      _showSnack('Out of stock — buy more in the Shop.');
-      return;
-    }
-    switch (item.category) {
-      case CareCategory.hunger:
-        await AppData.pet.feed(amount: item.restoreAmount);
-      case CareCategory.hygiene:
-        await AppData.pet.groom(amount: item.restoreAmount);
-      case CareCategory.love:
-        await AppData.pet.play(amount: item.restoreAmount);
-    }
-    final inventory = await AppData.inventory.getInventory();
-    final pet = await AppData.pet.getPet();
-    if (!mounted) return;
-    setState(() {
-      _inventory = inventory;
-      _pet = pet;
+    await guardedAction(() async {
+      final ok = await AppData.inventory.consumeCareItem(item.id);
+      if (!mounted) return;
+      if (!ok) {
+        _showSnack('Out of stock — buy more in the Shop.');
+        return;
+      }
+      switch (item.category) {
+        case CareCategory.hunger:
+          await AppData.pet.feed(amount: item.restoreAmount);
+        case CareCategory.hygiene:
+          await AppData.pet.groom(amount: item.restoreAmount);
+        case CareCategory.love:
+          await AppData.pet.play(amount: item.restoreAmount);
+      }
+      final inventory = await AppData.inventory.getInventory();
+      final pet = await AppData.pet.getPet();
+      if (!mounted) return;
+      setState(() {
+        _inventory = inventory;
+        _pet = pet;
+      });
     });
   }
 
@@ -231,7 +228,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const CustomizationScreen()));
-    await _reloadInventory();
+    await guardedAction(_reloadInventory);
   }
 
   Future<void> _openShop() async {
@@ -239,8 +236,10 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
     ).push(MaterialPageRoute(builder: (_) => const ShopScreen()));
     // Purchases spend coins as well as changing inventory.
-    await _reloadUserAndPet();
-    await _reloadInventory();
+    await guardedAction(() async {
+      await _reloadUserAndPet();
+      await _reloadInventory();
+    });
   }
 
   @override
@@ -251,7 +250,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final inventory = _inventory;
 
     if (user == null || habits == null || pet == null || inventory == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      final error = loadError;
+      return Scaffold(
+        body: error != null
+            ? LoadErrorView(error: error, onRetry: _loadData)
+            : const Center(child: CircularProgressIndicator()),
+      );
     }
 
     final completedCount = habits.where((habit) => habit.isCompletedToday).length;

@@ -8,6 +8,8 @@ import 'package:nori/screens/profile/edit_profile_screen.dart';
 import 'package:nori/screens/settings/settings_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/formatting.dart';
+import 'package:nori/utils/remote_errors.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_avatar.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
@@ -29,7 +31,8 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen>
+    with RemoteLoadState<ProfileScreen> {
   NoriUser? _user;
   List<Achievement>? _achievementPreview;
   double? _weeklyCompletion;
@@ -48,7 +51,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!oldWidget.active && widget.active) _loadData();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData() =>
+      guardedLoad(_fetchData, hasData: _user != null);
+
+  Future<void> _fetchData() async {
     final user = await AppData.user.getCurrentUser();
     final achievementsByCategory = await AppData.achievements
         .getAchievementsByCategory();
@@ -78,9 +84,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final today = DateTime.now();
     var scheduled = 0;
     var completed = 0;
-    for (var i = 0; i < 7; i++) {
-      final date = today.subtract(Duration(days: i));
-      final habits = await AppData.habits.getHabitsForDate(date);
+    final byDay = await AppData.habits.getHabitsForRange(
+      today.subtract(const Duration(days: 6)),
+      today,
+    );
+    for (final habits in byDay.values) {
       scheduled += habits.length;
       completed += habits.where((h) => h.isCompletedToday).length;
     }
@@ -116,7 +124,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Actually end the Firebase session (not just navigate away) — see
     // AuthRepository.logOut doc: otherwise relaunching the app would read
     // the still-signed-in Firebase user and skip straight back to Home.
-    await AppData.auth.logOut();
+    final ok = await guardedAction(AppData.auth.logOut);
+    if (!ok) return;
     // Un-point AppData.user (etc.) from this account's Firestore data so a
     // different account signing in next doesn't start out reading it —
     // see AppData.unbindUser.
@@ -132,6 +141,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final weeklyCompletion = _weeklyCompletion;
     final currentStreak = _currentStreak;
     final habitStats = _habitStats;
+    final error = loadError;
 
     return Scaffold(
       body: SafeArea(
@@ -141,7 +151,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 weeklyCompletion == null ||
                 currentStreak == null ||
                 habitStats == null
-            ? const Center(child: CircularProgressIndicator())
+            ? error != null
+                  ? LoadErrorView(error: error, onRetry: _loadData)
+                  : const Center(child: CircularProgressIndicator())
             : NoriScrollScaffold(
                 maxWidth: 1000,
                 children: [

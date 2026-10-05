@@ -4,6 +4,8 @@ import 'package:nori/models/achievement.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/remote_errors.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
@@ -19,6 +21,7 @@ class AchievementsScreen extends StatefulWidget {
 }
 
 class _AchievementsScreenState extends State<AchievementsScreen>
+    with RemoteLoadState<AchievementsScreen>
     implements Reloadable {
   NoriUser? _user;
   Map<String, List<Achievement>>? _achievementsByCategory;
@@ -32,7 +35,10 @@ class _AchievementsScreenState extends State<AchievementsScreen>
   @override
   Future<void> reload() => _loadData();
 
-  Future<void> _loadData() async {
+  Future<void> _loadData() =>
+      guardedLoad(_fetchData, hasData: _user != null);
+
+  Future<void> _fetchData() async {
     final user = await AppData.user.getCurrentUser();
     final achievements = await AppData.achievements.getAchievementsByCategory();
     if (!mounted) return;
@@ -46,11 +52,14 @@ class _AchievementsScreenState extends State<AchievementsScreen>
   Widget build(BuildContext context) {
     final user = _user;
     final achievementsByCategory = _achievementsByCategory;
+    final error = loadError;
 
     return Scaffold(
       body: SafeArea(
         child: user == null || achievementsByCategory == null
-            ? const Center(child: CircularProgressIndicator())
+            ? error != null
+                  ? LoadErrorView(error: error, onRetry: _loadData)
+                  : const Center(child: CircularProgressIndicator())
             : NoriScrollScaffold(
                 maxWidth: 1200,
                 children: [

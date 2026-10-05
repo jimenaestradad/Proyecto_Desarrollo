@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/bucket_list_item.dart';
 import 'bucket_list_repository.dart';
+import 'cloud_functions_client.dart';
 import 'habit_repository.dart' show HabitRewardResult;
 import 'icon_registry.dart';
 
@@ -9,10 +10,11 @@ import 'icon_registry.dart';
 /// `/users/{uid}/bucketList/{itemId}` -- see docs/BACKEND.md, "Firestore
 /// schema".
 ///
-/// CRUD ([getItems]/[addItem]/[updateItem]/[deleteItem]) is a direct,
-/// rules-guarded client write -- no currency involved (Architecture
-/// table: "Habit create/update/delete/reorder", same reasoning applies
-/// here). [updateItem] only ever touches the user-editable fields --
+/// [getItems]/[addItem]/[updateItem] are direct, rules-guarded client
+/// writes -- no currency involved (Architecture table: "Habit
+/// create/update/delete/reorder", same reasoning applies here).
+/// [deleteItem] is the exception: deleting a completed item takes its
+/// reward back, so it's a Cloud Function call (see its own comment). [updateItem] only ever touches the user-editable fields --
 /// never `isCompleted`/`completedAt`/`awardedXp`/`awardedCoins`, which are
 /// Cloud-Function-only (see below).
 ///
@@ -93,9 +95,13 @@ class FirestoreBucketListRepository implements BucketListRepository {
     });
   }
 
+  /// Always goes through the `deleteBucketListItem` Cloud Function rather
+  /// than a direct delete: a completed item's reward has to be taken back
+  /// in the same transaction, and firestore.rules rejects a direct delete
+  /// of a completed item for exactly that reason.
   @override
   Future<void> deleteItem(String id) async {
-    await _collection.doc(id).delete();
+    await callCloudFunction('deleteBucketListItem', {'itemId': id});
   }
 
   @override

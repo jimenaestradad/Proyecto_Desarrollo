@@ -97,7 +97,41 @@ abstract class HabitRepository {
 
   /// [setProgress] for an arbitrary past date.
   Future<void> setProgressForDate(String habitId, DateTime date, double value);
+
+  /// [getHabitsForDate] for every day in [start, end] (inclusive), keyed by
+  /// `dateOnly` day — for callers that walk a whole window (achievements,
+  /// profile stats) and would otherwise make one round trip per day.
+  Future<Map<DateTime, List<Habit>>> getHabitsForRange(
+    DateTime start,
+    DateTime end,
+  );
+
+  /// Habits currently archived ([Habit.archived]), for the Archived list.
+  Future<List<Habit>> getArchivedHabits();
+
+  /// Hides a habit from today onward, keeping all of its history. See
+  /// docs/BACKEND.md, "Deleting vs. archiving a habit".
+  Future<void> archiveHabit(String habitId);
+
+  /// Brings an archived habit back from today. The archived stretch stays
+  /// recorded in [Habit.archivedRanges], so those days never read as missed.
+  Future<void> restoreHabit(String habitId);
+
+  /// How many days have any logged progress or a claim for this habit —
+  /// [deleteHabit] is only allowed at or under [kMaxDeletableActiveDays].
+  Future<int> activeDayCount(String habitId);
+
+  /// Removes a habit and all of its logs for good, taking back whatever
+  /// its claims paid. Only for habits with almost no history (see
+  /// [activeDayCount]) — everything else is archived instead.
+  Future<HabitRewardResult> deleteHabit(String habitId);
 }
+
+/// A habit with activity on more days than this can't be deleted, only
+/// archived. "Very little data" per valevasqc (2026-09-30), a default worth
+/// revisiting. Keep in sync with MAX_DELETABLE_ACTIVE_DAYS in
+/// functions/src/deleteHabit.ts, which enforces it server-side.
+const kMaxDeletableActiveDays = 2;
 
 class MockHabitRepository implements HabitRepository {
   MockHabitRepository() {
@@ -487,6 +521,68 @@ class MockHabitRepository implements HabitRepository {
         : value.clamp(0.0, definition.isInverted ? target * 2 : target);
     history.write(habitId, day, previous.copyWith(value: clamped));
   }
+
+  @override
+  Future<Map<DateTime, List<Habit>>> getHabitsForRange(
+    DateTime start,
+    DateTime end,
+  ) async {
+    final result = <DateTime, List<Habit>>{};
+    for (var day = dateOnly(start);
+        !day.isAfter(dateOnly(end));
+        day = day.add(const Duration(days: 1))) {
+      result[day] = await getHabitsForDate(day);
+    }
+    return result;
+  }
+
+  @override
+  Future<List<Habit>> getArchivedHabits() async =>
+      List.unmodifiable(_habits.where((h) => h.archived));
+
+  @override
+  Future<void> archiveHabit(String habitId) async {
+    final index = _habits.indexWhere((h) => h.id == habitId);
+    if (index == -1 || _habits[index].archived) return;
+    final habit = _habits[index];
+    _habits[index] = habit.copyWith(
+      archived: true,
+      archivedRanges: archiveRangesAfterArchiving(habit.archivedRanges),
+    );
+  }
+
+  @override
+  Future<void> restoreHabit(String habitId) async {
+    final index = _habits.indexWhere((h) => h.id == habitId);
+    if (index == -1 || !_habits[index].archived) return;
+    final habit = _habits[index];
+    _habits[index] = habit.copyWith(
+      archived: false,
+      archivedRanges: archiveRangesAfterRestoring(habit.archivedRanges),
+    );
+  }
+
+  @override
+  Future<int> activeDayCount(String habitId) async {
+    final index = _habits.indexWhere((h) => h.id == habitId);
+    if (index == -1) return 0;
+    final today = _habits[index];
+    var count = today.currentValue > 0 || today.isCompletedToday ? 1 : 0;
+    final now = dateOnly(DateTime.now());
+    for (var back = 1; back <= history.seedDayCount; back++) {
+      final state = history.stateFor(habitId, now.subtract(Duration(days: back)));
+      if (state.value > 0 || state.claimed) count++;
+    }
+    return count;
+  }
+
+  /// In-memory stand-in: no user/XP state lives here to take back, so it
+  /// just drops the habit (its seeded history entries become unreachable).
+  @override
+  Future<HabitRewardResult> deleteHabit(String habitId) async {
+    _habits.removeWhere((h) => h.id == habitId);
+    return HabitRewardResult.none;
+  }
 }
 
 /// Real Firestore-backed implementation of the plain-CRUD subset of
@@ -565,16 +661,16 @@ class FirestoreHabitRepository implements HabitRepository {
     return Habit.fromJson(doc.id, doc.data()!);
   }
 
-  /// Every non-archived habit definition, ordered by `order` — the shared
-  /// base [getTodayHabits] and [getHabitsForDate] both hydrate. Filtering
-  /// `archived` here in Dart, instead of a Firestore `where`, avoids needing
-  /// a composite index (equality + orderBy on a different field) at a scale
-  /// — a handful of habits per user — where that index would buy nothing.
-  Future<List<Habit>> _fetchDefinitions() async {
+  /// Every habit definition, archived and ended ones included, ordered by
+  /// `order`. Deliberately unfiltered: whether a habit counts on a given day
+  /// is [Habit.isActiveOn]'s call (its archived stretches, its end date), so
+  /// an archived habit still shows up on the past days it was active instead
+  /// of vanishing from history. Public for [FirestoreCalendarRepository].
+  Future<List<Habit>> fetchAllDefinitions() async {
     final snapshot = await _habits.orderBy('order').get();
     return [
       for (final doc in snapshot.docs) Habit.fromJson(doc.id, doc.data()),
-    ].where((habit) => !habit.archived).toList();
+    ];
   }
 
   /// The subset of `Habit.toJson()` that actually lives on the habit doc.
@@ -613,7 +709,7 @@ class FirestoreHabitRepository implements HabitRepository {
     // filter — getTodayHabits shows every active habit regardless of
     // whether it's "due" today (see the interface doc comment), while
     // getHabitsForDate below only returns what's actually scheduled.
-    final definitions = await _fetchDefinitions();
+    final definitions = await fetchAllDefinitions();
     final today = dateOnly(DateTime.now());
     final logs = await logsInRange(today, today);
     return [
@@ -722,7 +818,7 @@ class FirestoreHabitRepository implements HabitRepository {
   @override
   Future<List<Habit>> getHabitsForDate(DateTime date) async {
     final day = dateOnly(date);
-    final definitions = await _fetchDefinitions();
+    final definitions = await fetchAllDefinitions();
     final scheduled = [
       for (final definition in definitions)
         if (definition.isScheduledOn(day)) definition,
@@ -816,4 +912,105 @@ class FirestoreHabitRepository implements HabitRepository {
       });
     });
   }
+
+  @override
+  Future<Map<DateTime, List<Habit>>> getHabitsForRange(
+    DateTime start,
+    DateTime end,
+  ) async {
+    // Two queries for the whole window — same approach as
+    // FirestoreCalendarRepository.
+    final definitions = await fetchAllDefinitions();
+    final logs = await logsInRange(start, end);
+    final result = <DateTime, List<Habit>>{};
+    for (var day = dateOnly(start);
+        !day.isAfter(dateOnly(end));
+        day = day.add(const Duration(days: 1))) {
+      final key = dayKey(day);
+      result[day] = [
+        for (final definition in definitions)
+          if (definition.isScheduledOn(day))
+            definition.hydrate(
+              logs['${key}_${definition.id}'] ?? HabitDayState.empty,
+            ),
+      ];
+    }
+    return result;
+  }
+
+  @override
+  Future<List<Habit>> getArchivedHabits() async => [
+    for (final habit in await fetchAllDefinitions())
+      if (habit.archived) habit,
+  ];
+
+  @override
+  Future<void> archiveHabit(String habitId) async {
+    final habit = await _fetchDefinition(habitId);
+    if (habit == null || habit.archived) return;
+    await _habits.doc(habitId).update({
+      'archived': true,
+      'archivedRanges': [
+        for (final range in archiveRangesAfterArchiving(habit.archivedRanges))
+          range.toJson(),
+      ],
+    });
+  }
+
+  @override
+  Future<void> restoreHabit(String habitId) async {
+    final habit = await _fetchDefinition(habitId);
+    if (habit == null || !habit.archived) return;
+    await _habits.doc(habitId).update({
+      'archived': false,
+      'archivedRanges': [
+        for (final range in archiveRangesAfterRestoring(habit.archivedRanges))
+          range.toJson(),
+      ],
+    });
+  }
+
+  @override
+  Future<int> activeDayCount(String habitId) async {
+    // Single-field equality — Firestore indexes it automatically.
+    final snapshot = await _habitLogs.where('habitId', isEqualTo: habitId).get();
+    return snapshot.docs.where((doc) {
+      final state = HabitDayState.fromJson(doc.data());
+      return state.value > 0 || state.claimed;
+    }).length;
+  }
+
+  /// The deleteHabit Cloud Function — deleting logs that hold claims takes
+  /// XP/coins back, which is currency, so it can't be a client write
+  /// (firestore.rules denies deleting a habit doc outright).
+  @override
+  Future<HabitRewardResult> deleteHabit(String habitId) async {
+    final result = await callCloudFunction('deleteHabit', {'habitId': habitId});
+    int asInt(Object? value) => value is num ? value.toInt() : 0;
+    return HabitRewardResult(
+      asInt(result['xpDelta']),
+      asInt(result['coinsDelta']),
+    );
+  }
+}
+
+/// [ranges] with a new open-ended stretch starting today — what archiving
+/// writes. Shared by both repositories so they can't disagree.
+List<ArchivedRange> archiveRangesAfterArchiving(List<ArchivedRange> ranges) => [
+  ...ranges,
+  ArchivedRange(start: dayKey(DateTime.now())),
+];
+
+/// [ranges] with the open stretch closed at today (exclusive, so today is
+/// active again). A same-day archive + restore leaves an empty stretch,
+/// which is dropped rather than stored.
+List<ArchivedRange> archiveRangesAfterRestoring(List<ArchivedRange> ranges) {
+  final today = dayKey(DateTime.now());
+  return [
+    for (final range in ranges)
+      if (range.end != null)
+        range
+      else if (range.start.compareTo(today) < 0)
+        ArchivedRange(start: range.start, end: today),
+  ];
 }

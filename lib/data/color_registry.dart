@@ -1,18 +1,14 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
-/// Maps the colors a user-created habit can actually have to stable string
-/// keys for Firestore storage — today that's just `AppColors.terracotta`
-/// (see `AddHabitScreen`, which has no color picker yet). New keys get added
-/// here if/when more colors become choosable, not speculatively ahead of it.
+/// Maps the colors a habit can have to stable string keys for Firestore
+/// storage. `AddHabitScreen`'s color picker offers every key here (added
+/// 2026-10-05), so a new key must go in both places.
 class ColorRegistry {
   ColorRegistry._();
 
   static const Map<String, Color> byKey = {
     'terracotta': AppColors.terracotta,
-    // Not reachable from AddHabitScreen (no color picker exists), but used
-    // by MockHabitRepository's seed habits — see the same note in
-    // icon_registry.dart.
     'sky': AppColors.sky,
     'mossLight': AppColors.mossLight,
     'blushPink': AppColors.blushPink,

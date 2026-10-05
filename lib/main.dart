@@ -16,6 +16,13 @@ import 'theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Online only (docs/BACKEND.md): with persistence on, direct Firestore
+  // writes silently queue offline while Cloud Function calls fail, so half
+  // the app would appear to work. Off, everything fails the same way and
+  // RemoteLoadState's timeout surfaces it.
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: false,
+  );
   // Not calling _connectToEmulatorsInDebug(): Valeria's side develops
   // directly against the live nori-pet project (docs/BACKEND.md, "Local
   // dev" — no Java runtime available for the emulator, and it was never

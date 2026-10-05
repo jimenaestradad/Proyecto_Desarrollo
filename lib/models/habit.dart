@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../data/color_registry.dart';
+import '../data/habit_history_store.dart' show dayKey;
 import '../data/icon_registry.dart';
 import '../utils/firestore_date.dart';
 import 'habit_day_state.dart';
@@ -74,6 +75,31 @@ extension HabitRewardTierFraction on HabitRewardTier {
   };
 }
 
+/// One stretch of time a habit was archived. [start]/[end] are device-local
+/// `dayKey`s (the same convention as `habitLogs`, see docs/BACKEND.md);
+/// [end] is exclusive — the day it was restored counts as active again —
+/// and null while it's still archived. The `isArchivedOn` helper in
+/// functions/src/habitTransaction.ts applies the identical rule server-side.
+class ArchivedRange {
+  const ArchivedRange({required this.start, this.end});
+
+  final String start;
+  final String? end;
+
+  bool contains(String key) =>
+      key.compareTo(start) >= 0 && (end == null || key.compareTo(end!) < 0);
+
+  Map<String, dynamic> toJson() => {'start': start, 'end': end};
+
+  static ArchivedRange? fromJson(dynamic json) {
+    if (json is! Map) return null;
+    final start = json['start'];
+    if (start is! String) return null;
+    final end = json['end'];
+    return ArchivedRange(start: start, end: end is String ? end : null);
+  }
+}
+
 class Habit {
   const Habit({
     required this.id,
@@ -101,6 +127,7 @@ class Habit {
     this.isCompletedToday = false,
     this.order = 0,
     this.archived = false,
+    this.archivedRanges = const [],
     this.createdAt,
   });
 
@@ -160,11 +187,16 @@ class Habit {
   /// with plain 0..n indices.
   final int order;
 
-  /// Soft-delete flag — deleting a habit archives it instead of removing
-  /// the doc, so `habitLogs` (streak/calendar history) survives. No UI
-  /// calls this yet (there's no delete button built) — the field exists so
-  /// the schema doesn't need a migration once one is.
+  /// Whether the habit is archived right now — hidden from today onward, its
+  /// `habitLogs` (streak/calendar history) kept. Only used to list archived
+  /// habits; which *days* count is [archivedRanges]' job, so restoring a
+  /// habit later doesn't retroactively turn the archived stretch into
+  /// missed days. See docs/BACKEND.md, "Deleting vs. archiving a habit".
   final bool archived;
+
+  /// Every stretch this habit spent archived — see [ArchivedRange] and
+  /// [isActiveOn].
+  final List<ArchivedRange> archivedRanges;
 
   /// When this habit was created. Null for the mock's seed habits (which
   /// have always "existed"); always set for a real, Firestore-created
@@ -236,12 +268,17 @@ class Habit {
     };
   }
 
-  /// Whether [date] falls inside the optional [startDate]/[endDate] window.
-  /// Unlike [isScheduledOn] this ignores the repeat schedule, so today's list
-  /// can hide an ended habit while still showing unscheduled ones. The
-  /// claimHabit Cloud Function enforces the same window.
+  /// Whether [date] falls inside the optional [startDate]/[endDate] window
+  /// and outside every [archivedRanges] stretch. Unlike [isScheduledOn] this
+  /// ignores the repeat schedule, so today's list can hide an ended or
+  /// archived habit while still showing unscheduled ones. The claimHabit
+  /// Cloud Function enforces the same rules.
   bool isActiveOn(DateTime date) {
     final day = DateTime(date.year, date.month, date.day);
+    if (archivedRanges.isNotEmpty) {
+      final key = dayKey(day);
+      if (archivedRanges.any((range) => range.contains(key))) return false;
+    }
     final start = startDate;
     if (start != null &&
         day.isBefore(DateTime(start.year, start.month, start.day))) {
@@ -324,6 +361,7 @@ class Habit {
     int? lastAwardedCoins,
     int? order,
     bool? archived,
+    List<ArchivedRange>? archivedRanges,
   }) {
     return Habit(
       id: id,
@@ -351,6 +389,7 @@ class Habit {
       isCompletedToday: isCompletedToday ?? this.isCompletedToday,
       order: order ?? this.order,
       archived: archived ?? this.archived,
+      archivedRanges: archivedRanges ?? this.archivedRanges,
       createdAt: createdAt,
     );
   }
@@ -383,6 +422,7 @@ class Habit {
     'isCompletedToday': isCompletedToday,
     'order': order,
     'archived': archived,
+    'archivedRanges': [for (final range in archivedRanges) range.toJson()],
     'createdAt': createdAt,
   };
 
@@ -420,6 +460,10 @@ class Habit {
     isCompletedToday: json['isCompletedToday'] as bool? ?? false,
     order: json['order'] as int? ?? 0,
     archived: json['archived'] as bool? ?? false,
+    archivedRanges: [
+      for (final raw in json['archivedRanges'] as List<dynamic>? ?? const [])
+        ?ArchivedRange.fromJson(raw),
+    ],
     createdAt: dateFromFirestoreValue(json['createdAt']),
   );
 }

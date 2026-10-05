@@ -4,7 +4,9 @@ import 'package:nori/data/auth_repository.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/premium/nori_plus_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_list_row.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
@@ -17,7 +19,8 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with RemoteLoadState<SettingsScreen> {
   NoriUser? _user;
   List<String>? _categories;
 
@@ -31,10 +34,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadUser();
-    _loadCategories();
-    _loadPasswordProvider();
+    _loadData();
   }
+
+  Future<void> _loadData() => guardedLoad(hasData: _user != null, () async {
+    await _loadUser();
+    await _loadCategories();
+    await _loadPasswordProvider();
+  });
 
   Future<void> _loadUser() async {
     final user = await AppData.user.getCurrentUser();
@@ -142,8 +149,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _toggleVacationMode() async {
     final user = _user;
     if (user == null) return;
-    await AppData.user.setVacationMode(!user.vacationModeEnabled);
-    await _loadUser();
+    await guardedAction(() async {
+      await AppData.user.setVacationMode(!user.vacationModeEnabled);
+      await _loadUser();
+    });
   }
 
   Future<void> _addCategory() async {
@@ -152,8 +161,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       hint: 'e.g. Finance',
     );
     if (name == null || name.trim().isEmpty) return;
-    await AppData.habitCategories.addCategory(name.trim());
-    await _loadCategories();
+    await guardedAction(() async {
+      await AppData.habitCategories.addCategory(name.trim());
+      await _loadCategories();
+    });
   }
 
   Future<void> _renameCategory(String category) async {
@@ -163,13 +174,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       initialValue: category,
     );
     if (name == null || name.trim().isEmpty || name.trim() == category) return;
-    await AppData.habitCategories.renameCategory(category, name.trim());
-    await _loadCategories();
+    await guardedAction(() async {
+      await AppData.habitCategories.renameCategory(category, name.trim());
+      await _loadCategories();
+    });
   }
 
   Future<void> _deleteCategory(String category) async {
-    await AppData.habitCategories.deleteCategory(category);
-    await _loadCategories();
+    await guardedAction(() async {
+      await AppData.habitCategories.deleteCategory(category);
+      await _loadCategories();
+    });
   }
 
   Future<String?> _promptForText({
@@ -213,11 +228,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final user = _user;
     final categories = _categories;
+    final error = loadError;
 
     return Scaffold(
       body: SafeArea(
         child: user == null || categories == null
-            ? const Center(child: CircularProgressIndicator())
+            ? error != null
+                  ? LoadErrorView(error: error, onRetry: _loadData)
+                  : const Center(child: CircularProgressIndicator())
             : NoriScrollScaffold(
                 maxWidth: 800,
                 children: [

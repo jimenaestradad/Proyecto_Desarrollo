@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/app_notification.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/remote_errors.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
@@ -13,7 +15,8 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen> {
+class _NotificationsScreenState extends State<NotificationsScreen>
+    with RemoteLoadState<NotificationsScreen> {
   List<AppNotification>? _notifications;
   bool _isMarkingRead = false;
 
@@ -24,27 +27,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _loadNotifications() async {
-    final notifications = await AppData.notifications.getNotifications();
-    if (!mounted) return;
-    setState(() => _notifications = notifications);
+    await guardedLoad(hasData: _notifications != null, () async {
+      final notifications = await AppData.notifications.getNotifications();
+      if (!mounted) return;
+      setState(() => _notifications = notifications);
+    });
   }
 
   Future<void> _markAllRead() async {
     if (_isMarkingRead) return;
     setState(() => _isMarkingRead = true);
-    try {
+    await guardedAction(() async {
       await AppData.notifications.markAllRead();
       final notifications = await AppData.notifications.getNotifications();
       if (!mounted) return;
       setState(() => _notifications = notifications);
-    } finally {
-      if (mounted) setState(() => _isMarkingRead = false);
-    }
+    });
+    if (mounted) setState(() => _isMarkingRead = false);
   }
 
   @override
   Widget build(BuildContext context) {
     final notifications = _notifications;
+    final error = loadError;
 
     return Scaffold(
       body: SafeArea(
@@ -57,7 +62,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               onMarkAllRead: _markAllRead,
             ),
             const SizedBox(height: AppSpacing.stackMd),
-            if (notifications == null)
+            if (notifications == null && error != null)
+              LoadErrorView(error: error, onRetry: _loadNotifications)
+            else if (notifications == null)
               const Padding(
                 padding: EdgeInsets.all(AppSpacing.stackLg),
                 child: Center(child: CircularProgressIndicator()),

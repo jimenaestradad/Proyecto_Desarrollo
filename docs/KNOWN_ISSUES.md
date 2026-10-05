@@ -36,39 +36,34 @@ re-running the audit.
 
 ## 🟠 Important
 
-### FirestoreVacationLog can't actually persist yet (2026-09-23 audit)
+### Adaptive XP is promised in the UI but never adjusts (2026-10-05)
 
-`FirestoreVacationLog` (`lib/data/vacation_log.dart`) reads and writes
-`vacationModeEnabled`/`vacationRanges` on `/users/{uid}`, but that document is never
-created for a new account. `FirebaseAuthRepository.signUp` does not create it,
-`firestore.rules` has no `allow create` for `/users/{uid}` (only read/update), and
-Jimena's `onUserCreate` account-provisioning Cloud Function described in
-`docs/BACKEND.md` does not exist yet.
+The add-habit form tells users "Adaptive XP scales between 0.5x–1.5x depending on your
+consistency over time", and FEATURES.md's MVP boundary includes "adaptive XP (some working
+form)". But nothing ever changes a habit's `adaptiveMultiplier`: new habits are written at 1.0
+and stay there. `claimHabit` applies the stored value (clamped to 0.5–1.5) and the reward preview
+shows it, so the plumbing exists; only the adjustment rule is missing, and its formula is still an
+open decision (OPEN_DECISIONS.md, "XP balancing"). Either decide a simple rule (e.g. recompute from
+the last N scheduled days when a habit is claimed, inside `claimHabit`, so a client can't set it)
+or soften the banner's wording until it exists.
 
-Consequently, a new user enabling Vacation Mode can update `startFreeze`'s in-memory
-cache and then gets a not-found error from the Firestore `.update()` call because the
-parent document is absent. This needs coordination with account creation, not a habit/
-calendar-only workaround: guessing at a partial user-document shape client-side risks
-conflicting with the eventual provisioning flow. It is not live yet because
-`AppData.vacationLog` still points at the mock.
+### Vacation mode has never been exercised live (2026-10-05, replaces a 2026-09-23 entry)
 
-### No error handling outside the two auth screens (2026-09-10 audit)
+The 2026-09-23 blocker is gone: `onUserCreate` now creates `/users/{uid}` with
+`vacationModeEnabled: false` and `vacationRanges: []`, `firestore.rules` lets the owner update both
+fields, and `AppData.vacationLog` is the real `FirestoreVacationLog`. But no account on `nori-pet`
+has ever saved a vacation range (checked 2026-10-05), so starting/ending a freeze, and the calendar
+and streak treating frozen days as safe, are untested end to end. One manual pass on
+`demo@test.com` closes this.
 
-`LoginScreen` and `SignUpScreen` are the only places in `lib/` with a `try`/`catch`
-around a repository call. Every other await — roughly 90 of them — is unguarded. This
-costs nothing today because every `Mock*` repository is in-memory and can't throw, but
-`docs/` and `lib/data/app_data.dart`'s own doc comment frame swapping in a real backend
-as a one-file change — and that promise only holds if the screens can survive a repository
-throwing.
+### Live Cloud Functions are ahead of the committed code (2026-10-05)
 
-More broadly, every data-bearing screen has exactly three states — `null` (loading),
-data, and nothing else. A failed load leaves the `CircularProgressIndicator` on screen
-forever with no message and no retry. A fourth (`error`) state is the single
-highest-value UI addition before a real backend lands.
-
-(Guard discipline is otherwise strong — ~30 correct guards found elsewhere. The specific
-`mounted`-guard misses and one undisposed controller this section used to name are fixed
-— see docs/RESOLVED_LOG.md.)
+`deleteHabit`, `deleteBucketListItem`, the bucket-list `pet.stage` sync, `claimHabit`'s archive
+check and the matching `firestore.rules` were deployed to `nori-pet` on 2026-10-04 from
+`valevasqc-dev`'s uncommitted working tree. A `firebase deploy --only functions` from any checkout
+without those files would delete the two new functions from the live project (Firebase treats
+local source as the full desired state; this already happened once, see RESOLVED_LOG.md
+2026-09-28). Resolved by committing and merging into the branch both people deploy from.
 
 ### No reward feedback on claim itself (2026-09-10 audit; level-up half fixed 2026-09-15)
 
@@ -97,28 +92,13 @@ The original audit also flagged "tapping the pet opens Customization instead of 
 a gap here — confirmed 2026-09-15 by valevasqc that this is intended: care actions
 are toggled per-stat, not via tapping the pet itself. Not a bug.)
 
-### Other correctness gaps that cost nothing today but will once a real backend lands (2026-09-10 audit)
-
-- `MockCalendarRepository.getMonth` (`lib/data/calendar_repository.dart:45`) awaits
-  `HabitRepository.getHabitsForDate` once per day in the visible month, and
-  `_currentStreak` (`:118`) walks backward awaiting it again per day — up to ~430
-  sequential round-trips for one Calendar screen load. Free against an in-memory mock;
-  worth batching before this points at Firestore. (Now called even more often — see the
-  `docs/RESOLVED_LOG.md` streak-unification entry — so this is worth prioritizing sooner rather
-  than later.)
-
 ---
 
+### Sign-up can fail if onUserCreate cold-starts slowly (2026-09-30, found reviewing Jimena's flow)
+
+`sign_up_screen.dart` writes the profile (`updateProfile`) right after the account is created, but `/users/{uid}` comes from the asynchronous `onUserCreate` trigger. `_updateWithRetry` (and `renamePet`) retry 5 × 400ms, about 2s total, while a cold-started v1 function can take longer. If it does, the user sees "Unable to create your account" even though the account and username claim already exist, and retrying fails with email-already-in-use. Not reproduced yet, so worth a deliberate check in QA (first sign-up after the function has been idle). A longer or backoff retry would cover it.
+
 ## 🟡 Minor / polish / backlog
-
-### Bucket list can mint unlimited XP/coins through the normal UI (2026-09-28 audit)
-
-The 500 XP / 250 coin cap in `completeBucketListItem` is per item, but nothing limits how many
-items exist: anyone can use the add sheet to create any number of items at the cap and complete
-each one. Deleting a completed item is allowed and keeps the reward, so the list never even
-fills up. It needs no cheating, and pays ~10× a habit claim per tap. Needs a product call from
-valevasqc/Jimena — e.g. a cap on items completed per day/week, a much lower per-item cap, fixed
-server-side reward tiers instead of free-text amounts, or accept it as a self-reward feature.
 
 ### Claim → spend → unclaim → re-claim mints coins (2026-09-24, found while implementing unclaimHabit)
 
@@ -132,8 +112,17 @@ user can't correct a mistaken claim after shopping). Needs a call from valevasqc
 change itself is one line in `functions/src/unclaimHabit.ts`.
 
 The same loop works on the bucket list (2026-09-28 audit): `uncompleteBucketListItem` clamps
-coins at 0 too, so complete (+250), spend, uncomplete, complete again. Whichever fix is chosen
-should apply to both functions (`functions/src/index.ts`).
+coins at 0 too, so complete (+250), spend, uncomplete, complete again. Deleting a completed
+item goes through the same clamp (`reverseBucketListReward`, shared since 2026-09-30). Whichever
+fix is chosen applies there once, in `functions/src/index.ts`.
+
+### Bucket-list card shows a reward the server won't pay (2026-09-30)
+
+The add/edit sheet's XP and coin fields accept any number, and the card's `RewardPill` shows it
+as typed, but `completeBucketListItem` silently pays at most 500 XP / 250 coins. Type 3000 XP and
+the card promises 3000 but pays 500. BACKEND.md deliberately left the fields free-text when the
+cap was set. The fix is either clamping the fields in the sheet or showing the capped amount on
+the card. 🟡 cosmetic, but it's a visible broken promise.
 
 ### claimHabit still trusts two client-written habit fields (2026-09-24, found while implementing it)
 
@@ -155,6 +144,22 @@ so a modified client can keep the pet at 100 without spending coins on food/care
 the trust level chosen for cosmetic stats (docs/BACKEND.md); logged only because the shop economy
 depends on it. Fix if it ever matters: allow only decreases from the client (like
 `careItemCounts`) and move restoring into a `consumeCareItem` Cloud Function.
+
+### Two parallel icon/color registries (2026-09-28 merge, logged 2026-10-05)
+
+Habits store icons/colors through `IconRegistry` (`icon_registry.dart`) and `ColorRegistry`
+(`color_registry.dart`); bucket-list items use the separate top-level `kIconRegistry`/
+`kColorRegistry` maps in the same `icon_registry.dart`, from Jimena's branch. Both work and the
+keys don't conflict, but adding an icon or color means knowing which one a screen uses.
+BACKEND.md's shared-setup checklist already said this was logged here; it wasn't until now.
+Merge into one registry when either side next touches icons.
+
+### A release APK has never been built (2026-10-05)
+
+The registries exist because `--tree-shake-icons` blanks `IconData` codePoints it can't prove are
+used, which only shows up in release builds. Nobody has run `flutter build apk --release` yet, so
+that protection is unverified, as is anything else release-only (minification, Google Sign-In's
+release SHA-1). Run one before Demo Day, not on it.
 
 ### Dart mock still has a 75% "min" reward tier (2026-09-28 audit)
 

@@ -209,7 +209,7 @@ class FirestoreCalendarRepository implements CalendarRepository {
     final leadingEmpty = (DateTime(year, month, 1).weekday - DateTime.monday) % 7;
 
     // Two queries total for the whole month — not one per day.
-    final definitions = await _habits.getTodayHabits();
+    final definitions = await _habits.fetchAllDefinitions();
     final logs = await _habits.logsInRange(
       DateTime(year, month, 1),
       DateTime(year, month, daysInMonth),
@@ -262,9 +262,11 @@ class FirestoreCalendarRepository implements CalendarRepository {
   /// [FirestoreHabitRepository.getHabitsForDate], but reads from an
   /// already-fetched [logs] map instead of querying Firestore again, since
   /// this gets called once per day in a loop ([getMonth], [_currentStreak],
-  /// [getHabitStats]). Today is a special case: its state already lives on
-  /// [definitions] themselves (see [FirestoreHabitRepository.getTodayHabits]),
-  /// not in `habitLogs`, so there's nothing to look up.
+  /// [getHabitStats]). [definitions] is every habit, archived and ended ones
+  /// included ([FirestoreHabitRepository.fetchAllDefinitions]) — taking
+  /// only today's active habits used to erase an ended habit from the past
+  /// days it was actually on. Today reads from [logs] like any other day;
+  /// every caller's range includes it.
   List<Habit> _scheduledFor(
     DateTime date,
     DateTime today,
@@ -276,7 +278,6 @@ class FirestoreCalendarRepository implements CalendarRepository {
       for (final definition in definitions)
         if (definition.isScheduledOn(day)) definition,
     ];
-    if (day == today) return scheduled;
     final key = dayKey(day);
     return [
       for (final definition in scheduled)
@@ -344,7 +345,7 @@ class FirestoreCalendarRepository implements CalendarRepository {
   @override
   Future<List<HabitStat>> getHabitStats({int days = 30}) async {
     final today = dateOnly(DateTime.now());
-    final definitions = await _habits.getTodayHabits();
+    final definitions = await _habits.fetchAllDefinitions();
     final logs = await _habits.logsInRange(
       today.subtract(Duration(days: days - 1)),
       today,

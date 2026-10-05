@@ -5,11 +5,13 @@ import 'package:nori/data/care_item_catalog.dart';
 import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/accessory_art.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/formatting.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
@@ -43,7 +45,8 @@ class ShopScreen extends StatefulWidget {
   State<ShopScreen> createState() => _ShopScreenState();
 }
 
-class _ShopScreenState extends State<ShopScreen> {
+class _ShopScreenState extends State<ShopScreen>
+    with RemoteLoadState<ShopScreen> {
   static const _categories = [
     (label: 'Hats', icon: Icons.checkroom),
     (label: 'Clothes', icon: Icons.dry_cleaning),
@@ -86,15 +89,7 @@ class _ShopScreenState extends State<ShopScreen> {
     _loadData();
   }
 
-  Future<void> _loadData() async {
-    final user = await AppData.user.getCurrentUser();
-    final inventory = await AppData.inventory.getInventory();
-    if (!mounted) return;
-    setState(() {
-      _user = user;
-      _inventory = inventory;
-    });
-  }
+  Future<void> _loadData() => guardedLoad(_reloadData, hasData: _user != null);
 
   Future<void> _reloadData() async {
     final user = await AppData.user.getCurrentUser();
@@ -134,18 +129,14 @@ class _ShopScreenState extends State<ShopScreen> {
         _showSnack('Not enough coins.');
         return;
       }
-      try {
+      final ok = await guardedAction(() async {
         await callCloudFunction('purchaseCareItem', {
           'itemId': item.id,
           'quantity': 1,
         });
-      } on CloudFunctionFailure catch (e) {
-        if (!mounted) return;
-        _showSnack(e.message);
-        return;
-      }
-      await _reloadData();
-      if (!mounted) return;
+        await _reloadData();
+      });
+      if (!ok || !mounted) return;
       _showSnack('Bought ${item.name} — head to Home to use it!');
     } finally {
       _isPurchasing = false;
@@ -162,15 +153,11 @@ class _ShopScreenState extends State<ShopScreen> {
         _showSnack('Not enough coins.');
         return;
       }
-      try {
+      final ok = await guardedAction(() async {
         await callCloudFunction('purchaseAccessory', {'accessoryId': item.id});
-      } on CloudFunctionFailure catch (e) {
-        if (!mounted) return;
-        _showSnack(e.message);
-        return;
-      }
-      await _reloadData();
-      if (!mounted) return;
+        await _reloadData();
+      });
+      if (!ok || !mounted) return;
       _showSnack('Bought ${item.name}!');
     } finally {
       _isPurchasing = false;
@@ -188,12 +175,15 @@ class _ShopScreenState extends State<ShopScreen> {
   Widget build(BuildContext context) {
     final user = _user;
     final inventory = _inventory;
+    final error = loadError;
 
     return Scaffold(
       backgroundColor: AppColors.linen,
       appBar: AppBar(title: const Text('Pet Boutique')),
       body: user == null || inventory == null
-          ? const Center(child: CircularProgressIndicator())
+          ? error != null
+                ? LoadErrorView(error: error, onRetry: _loadData)
+                : const Center(child: CircularProgressIndicator())
           : NoriScrollScaffold(
               maxWidth: 1120,
               children: [

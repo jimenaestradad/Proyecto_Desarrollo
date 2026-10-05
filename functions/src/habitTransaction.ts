@@ -26,6 +26,19 @@ export function habitDocRefs(db: Firestore, uid: string, habitId: string, dayKey
   };
 }
 
+// Mirrors Habit.isActiveOn's archive check: `archivedRanges` is a list of
+// {start, end} client-local dayKeys, end exclusive (the restore day is active
+// again) and null while the habit is still archived. dayKeys compare as strings.
+export function isArchivedOn(archivedRanges: unknown, dayKey: string): boolean {
+  if (!Array.isArray(archivedRanges)) return false;
+  return archivedRanges.some((range) => {
+    const start = range?.start;
+    const end = range?.end;
+    if (typeof start !== "string" || dayKey < start) return false;
+    return typeof end !== "string" || dayKey < end;
+  });
+}
+
 export function asNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }

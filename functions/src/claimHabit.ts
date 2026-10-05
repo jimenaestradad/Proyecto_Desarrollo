@@ -8,6 +8,7 @@ import {
   asNumber,
   currentPetStage,
   habitDocRefs,
+  isArchivedOn,
   levelFields,
   readLevelState,
   syncPetStage,
@@ -36,7 +37,7 @@ export async function runClaimHabit(
     ]);
 
     const habitData = habitSnap.data();
-    if (!habitData || habitData.archived === true) {
+    if (!habitData) {
       throw new HttpsError("not-found", "Habit not found.");
     }
     const userData = userSnap.data();
@@ -53,7 +54,11 @@ export async function runClaimHabit(
     const { startDate, endDate } = habitData;
     if (
       (startDate instanceof Timestamp && day.dayKey < localDayKeyOf(startDate.toMillis(), day)) ||
-      (endDate instanceof Timestamp && day.dayKey > localDayKeyOf(endDate.toMillis(), day))
+      (endDate instanceof Timestamp && day.dayKey > localDayKeyOf(endDate.toMillis(), day)) ||
+      // Archived days are off too, but days before the archive stay
+      // claimable — archiving hides a habit going forward, it doesn't
+      // freeze its history.
+      isArchivedOn(habitData.archivedRanges, day.dayKey)
     ) {
       throw new HttpsError("failed-precondition", "Habit isn't active on that day.");
     }

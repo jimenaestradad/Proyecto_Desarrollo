@@ -99,6 +99,7 @@ users — see "Username uniqueness" below.
   targetValue, unit, minThreshold,
   quickLogAmount, adaptiveMultiplier, customDays, allowVacationFreeze,
   startDate, endDate, order, archived (bool, default false — see deletion rule),
+  archivedRanges ([{start, end}] dayKeys — see "Deleting vs. archiving a habit"),
   createdAt   # implicit lower bound for isScheduledOn — see "Resolved 2026-09-24" below
   # Resolved 2026-09-24 (supersedes the original plan): currentValue,
   # isCompletedToday, lastAwardedXp, lastAwardedCoins do NOT live here.
@@ -298,12 +299,29 @@ the chosen name afterward as a **direct client write** to `pet/main` (a pet's na
 currency, so it needs no Cloud Function). If the user skips onboarding, the name simply stays
 `'Nori'`. Don't try to pass the name into the auth trigger; it isn't possible.
 
-**Deleting a habit archives it, never deletes its logs.** This extends FEATURES.md §2's
-archive-not-delete rule to manual deletion. It needs a schema field that doesn't exist in the
-current `Habit` model: add **`archived: bool`** (default `false`) to the habit doc, have the
-habit list and "today" queries filter `archived == false`, and leave every `habitLogs` document
-untouched. Past streaks, calendar days and achievements are all derived from those logs, so
-deleting them would silently rewrite history.
+**Deleting vs. archiving a habit** (decided 2026-09-30 by valevasqc; replaces the 2026-09-16
+"deleting always archives" rule).
+- **Archive** works for any habit. It hides the habit from today onward and keeps every
+  `habitLogs` document, because past streaks, calendar days and achievements are derived from
+  them. Archived habits are listed on the Archived Habits screen (reached from the Habits header)
+  and can be **restored**. Stored as `archived` (is it archived right now, used for that list)
+  plus `archivedRanges`, the stretches it was archived as `{start, end}` device-local dayKeys.
+  `end` is exclusive (the restore day counts again) and null while it's still archived.
+  `Habit.isActiveOn` treats a day inside a stretch like a day past `endDate`: the habit isn't
+  scheduled, so the stretch never reads as missed after a restore, and the days before the
+  archive keep their history. `claimHabit` enforces the same rule via `isArchivedOn`.
+  Past-day reads (`FirestoreHabitRepository.fetchAllDefinitions`, the calendar) use every
+  definition and let `isActiveOn` decide per day. Filtering archived habits out up front would
+  erase them from history.
+- **Delete** is only offered for a habit with almost no history: at most
+  `kMaxDeletableActiveDays` (2) days with any logged progress or a claim. The threshold is a
+  default from this decision, so change it in both `habit_repository.dart` and
+  `functions/src/deleteHabit.ts` if it's wrong. Delete goes through the `deleteHabit` Cloud
+  Function: it removes the habit and all its logs and takes back whatever those claims paid
+  (exact stored amounts, coins clamped at 0, `pet.stage` re-synced, the sunglasses gift kept),
+  all in one transaction. The client can never delete a habit doc directly.
+- **Hard delete of a habit with real history is deferred**: whether its earned XP/coins
+  should stay or be taken back is undecided. See OPEN_DECISIONS.md.
 
 ## Security rules (sketch)
 
@@ -392,12 +410,21 @@ deleting them would silently rewrite history.
 6. `purchaseAccessory(accessoryId)` — validates cost ≤ coins, decrements coins, adds to
    `ownedAccessoryIds`. Rejects an accessory the user already owns.
 7. `completeBucketListItem(itemId)` — awards the item's XP/coins and **stores what it paid into
-   `awardedXp`/`awardedCoins`** on the item.
+   `awardedXp`/`awardedCoins`** on the item. Syncs `pet.stage` in the same transaction, like
+   `claimHabit` (added 2026-09-30: before that a bucket-list reward could cross the evolution
+   level without evolving the pet, since the client can't write `stage`).
 8. `uncompleteBucketListItem(itemId)` — reverses using those stored values, never the item's
-   current `xpReward`/`coinReward`.
+   current `xpReward`/`coinReward`, and re-syncs `pet.stage`.
+9. `deleteBucketListItem(itemId)` — added 2026-09-30. Deletes the item, first reversing its
+   reward (same shared reversal as #8) if it was completed, in one transaction. Before this,
+   deleting a completed item kept the reward. `firestore.rules` now only lets the client
+   delete an item directly while it isn't completed.
+10. `deleteHabit(habitId)` — added 2026-09-30 (Valeria's). Deletes a habit with at most 2
+   active days plus all its logs, taking back what its claims paid, in one transaction. Rejects
+   anything with more history with "archive it instead". See "Deleting vs. archiving a habit".
 
-That's the whole server-side surface for this phase — eight functions, all callable except #1.
-Functions 1, 5, 6, 7, 8 are Jimena's; 2, 3, 4 are Valeria's.
+That's the whole server-side surface for this phase — nine functions, all callable except #1
+(#4 removed, #9 and #10 added). Functions 1, 5, 6, 7, 8, 9 are Jimena's; 2, 3, 10 are Valeria's.
 
 **Why 7 and 8 store what they paid:** bucket-list rewards are editable by the user at any time
 (the add/edit sheet has free-text XP and coin fields). Reversing an un-completion against the
@@ -414,6 +441,12 @@ seeded 3000 XP "graduate" item would otherwise carry a brand-new user most of th
 first evolution in a single tap. Lower the seed data's 3000 to 500 to match. Bucket-list items
 are still meant to feel much larger than a habit (10–30 XP); the cap bounds them, it doesn't
 shrink them.
+
+**No limit on how many bucket-list items exist — honor system** (decided 2026-09-30 by
+valevasqc). The per-item cap above is the only server-side limit: someone could create many
+maxed-out items and complete each one. That's accepted as a self-reward feature, not patched.
+Deleting a completed item does take its reward back (`deleteBucketListItem`), so you can't keep
+a reward and reuse the slot.
 
 **Level-up must handle multi-level jumps.** A capped 500 XP award still crosses levels 1→3 for
 a new user, so the level loop in `MockUserRepository.addXp` (a `while`, not an `if`) must be
@@ -521,7 +554,9 @@ Same idea — defaults so nothing stalls, most of them just describing what the 
 **Changed 2026-09-23 from the original plan below:** given this is a 2-person course project
 (not a production app with real users or real stakes), Valeria's side has been developing and
 testing directly against the live `nori-pet` project instead of the emulator — using a disposable
-test account (credentials in the gitignored `TEST_ACCOUNT.local.md`), verifying each repository
+test account (credentials in the gitignored `TEST_ACCOUNT.local.md`; since 2026-10-05 the one to
+use is `demo@test.com`, which went through the real sign-up — the older `test@nori.com` there was
+made in the console before `onUserCreate` existed and has no Firestore docs), verifying each repository
 method against real Firestore, then deleting the test documents afterward via
 `firebase firestore:delete`. No Java runtime was available locally, and the emulator's main
 value (cost control, blast-radius limits, instant resets) matters much less at this scale than the
@@ -535,7 +570,31 @@ writing `claimed: true`/`awardedXp`/`awardedCoins` on a habit log — on purpose
 exactly how someone would fake themselves free rewards — so a script running as a normal signed-in
 user can only ever seed *unclaimed* progress, never a believable "completed" history. A real
 version needs the Firebase Admin SDK (bypasses rules, same mechanism Cloud Functions use), which
-means it belongs with the Backend-sprint Cloud Functions work, not before it — not written yet.
+means it belongs with the Backend-sprint Cloud Functions work, not before it.
+
+**Written 2026-10-04: `functions/src/seedHistory.ts`** (planning logic in `seedPlan.ts`, tested in
+`seedPlan.test.ts`). It seeds past days for an account's *existing* habits (create them in the app
+first), with the same odds as the mock generator, and pays each claim through the server's own
+`computeReward`/`applyXpDelta`/`syncPetStage`, plus the sunglasses gift. Logs and the rewards they
+paid are written in the same transaction. It skips today, vacation days, archived days, days
+outside a habit's start/end window, and any day that already has a log, so re-running it is safe.
+It also leaves one whole day in every ~8 empty (`--off-days`, default 0.12). Without those, a
+handful of habits always has *something* kept each day, and since the calendar's streak only breaks
+on a day with nothing kept, every seed came out as one unbroken streak (decided by valevasqc
+2026-10-05: no perfect streak).
+It also moves each seeded habit's `createdAt` back to its first seeded day, since the app hides
+every day before `createdAt`. Day keys use the machine's time zone (`TZ=…` to override). Run it
+from `functions/` after a one-time `gcloud auth application-default login`:
+
+```
+npm run build && node lib/seedHistory.js --uid <uid> --days 30          # dry run, prints the plan
+npm run build && node lib/seedHistory.js --uid <uid> --days 30 --apply  # writes to nori-pet
+```
+
+**Run 2026-10-05 on the demo account** (`demo@test.com`, see `TEST_ACCOUNT.local.md`): 6 habits,
+30 days → 117 logs, level 5, 1,480 XP, 740 coins, sunglasses gifted, pet still baby (evolves at 7),
+4 missed days and a short current streak. Verified against Firestore afterward. It isn't exported from `index.ts`, so it never deploys as a
+function.
 
 Original plan (superseded by the above for this project's actual scale, kept for context): use
 the **Firebase Local Emulator Suite** (Firestore + Auth + Functions emulators) for both of you
@@ -566,7 +625,8 @@ just "design the DB," so it isn't a thin sprint sitting next to a heavy Backend 
 3. **Client-side calling code.** Done for habits (2026-09-28) and for bucket list (Jimena's side)
    — the repository methods that are Cloud-Function-backed call the callable instead of
    mutating local state, the glue between the Data-sprint repositories and these functions.
-4. **Bucket list.** `completeBucketListItem` / `uncompleteBucketListItem` — same currency-minting
+4. **Bucket list.** `completeBucketListItem` / `uncompleteBucketListItem` /
+   `deleteBucketListItem` — same currency-minting
    reasoning as habit claims, plus the reward cap (see "Bucket-list rewards" above). This is real
    Backend-sprint work, not an afterthought — it just wasn't in the original draft's task list.
 5. **Achievements need no Backend-sprint work at all.** Unlock state is fully derived from the
@@ -583,7 +643,10 @@ docs/RESOLVED_LOG.md's 2026-09-28 entry). **All 7 Cloud Functions deployed to th
 live `nori-pet` project 2026-09-29** (`onUserCreate`, `claimHabit`, `unclaimHabit`,
 `purchaseCareItem`, `purchaseAccessory`, `completeBucketListItem`, `uncompleteBucketListItem` —
 confirmed via `firebase functions:list`), Blaze plan therefore active. `firestore.rules`
-deployed the same pass. Left: CI/CD básico; explicit cost-awareness check-in (still
+deployed the same pass. **2026-10-04:** the 2026-09-30 changes deployed too — `deleteBucketListItem`
+and `deleteHabit` (9 functions live, confirmed via `firebase functions:list`), the `pet.stage` sync
+in the two other bucket-list functions, `claimHabit`'s archived-day check, and the matching
+`firestore.rules` changes (bucket-list delete, habit `archivedRanges`). Left: CI/CD básico; explicit cost-awareness check-in (still
 free-tier-eligible at this scale, not yet watched). Firebase Local Emulator Suite deliberately
 not used for this project (see "Local dev").
 
@@ -628,7 +691,10 @@ so the other vertical isn't built against the old assumption.
 **The seam between the two verticals is kept deliberately small.** `claimHabit`/`unclaimHabit`
 is one atomic transaction, so it can't be split mid-function — Valeria writes the whole thing,
 including the two places it reaches into Jimena's data:
-1. `pet.stage`, when the user's level crosses `pet.evolutionLevelThreshold`.
+1. `pet.stage`, when the user's level crosses `pet.evolutionLevelThreshold`. (Jimena's
+   bucket-list functions also move the level, so since 2026-09-30 they call the same
+   `syncPetStage` helper from `functions/src/habitTransaction.ts`. The rule lives in one
+   place either way.)
 2. `inventory.ownedAccessoryIds` + `equippedAccessoryId`, for the one-time sunglasses gift on
    first completion.
 
@@ -675,9 +741,13 @@ complete, confirm with Jimena or run it once" rather than fully proven.
 - [x] `FirestorePetRepository` — `getPet`, `feed`, `groom`, `play`; `syncEvolution` is a
       deliberate no-op (stage is Cloud-Function-only, set inside `claimHabit`).
 - [x] `FirestoreInventoryRepository` — `getInventory`, `consumeCareItem`, accessory/equip methods.
-- [x] `FirestoreBucketListRepository` — CRUD only, payout goes through the Cloud Functions below.
+- [x] `FirestoreBucketListRepository` — CRUD, payout goes through the Cloud Functions below;
+      `deleteItem` calls `deleteBucketListItem` (2026-09-30) so a completed item's reward is
+      taken back.
 - [x] `completeBucketListItem` / `uncompleteBucketListItem` Cloud Functions — deployed, store
       `awardedXp`/`awardedCoins` for exact reversal, same pattern as habits.
+- [x] `deleteBucketListItem` + `pet.stage` sync in the two above + rules delete change —
+      written 2026-09-30 (by Valeria), deployed 2026-10-04. Not exercised live yet.
 - [x] Achievements: `AppData.bindToUser` rebuilds `MockAchievementRepository` against the real
       bucket list/pet/inventory (and Valeria's real habits/calendar) — still no Firestore
       collection, as intended.
@@ -709,12 +779,13 @@ complete, confirm with Jimena or run it once" rather than fully proven.
       Also fixed in the same pass: `Habit.createdAt` gives `isScheduledOn` an implicit lower
       bound (a new habit no longer counts as "missed" on days before it existed), and habit
       definitions are filtered `archived == false` in memory.
-      **Still open:** `delete` unimplemented (no archive/delete UI exists yet either).
+      Archive/restore/delete added 2026-09-30 — see "Deleting vs. archiving a habit".
+      `deleteHabit` + rules deployed 2026-10-04; not exercised live yet.
 - [x] `FirestoreCalendarRepository` + streak derivation over `habitLogs` range queries (one query
       per range, not one per day — see `logsInRange`). Vacation ranges wired to read from
-      `FirestoreVacationLog`; the "can't actually persist yet" blocker (needed account creation
-      to exist) is likely resolved now that `onUserCreate` is live and verified, but this specific
-      flow hasn't been re-tested since — worth a quick check before assuming it's fixed.
+      `FirestoreVacationLog`; the old blocker (no user doc) is gone since `onUserCreate`, but the
+      flow is still unexercised live — see KNOWN_ISSUES.md "Vacation mode has never been
+      exercised live".
 - [x] `claimHabit` / `unclaimHabit` Cloud Functions — one transaction over habit + habitLog +
       user + pet + inventory (first-completion gift). **Implemented and deployed 2026-09-28/29**;
       **independently verified end-to-end 2026-09-29** against live `nori-pet` with a disposable
@@ -727,15 +798,9 @@ complete, confirm with Jimena or run it once" rather than fully proven.
       day-detail sheet to call `claimHabit`/`unclaimHabit` instead of the old three-step repo
       sequence (see gap #1 below) — done 2026-09-28. `bucket_list_screen.dart` wasn't touched
       here; it already calls Jimena's bucket-list Cloud Functions directly, a separate code path.
-- [ ] Seed script — real Firestore documents replacing `HabitHistoryStore.seedHistory`. Still not
-      started — the one genuinely open item left in this vertical. **Finding (2026-09-23):** this
-      can't be plain Data-sprint client code after all — `firestore.rules` blocks a normal client
-      from writing `claimed: true`/`awardedXp`/`awardedCoins`, the same guard that stops
-      habit-claim cheating, so a script running as a signed-in user can only seed *unclaimed*
-      progress, never a believable "completed" history. A real version needs the Firebase Admin
-      SDK (bypasses rules) — the verification script written 2026-09-29
-      (`scratchpad/verify_claim.mjs`, not committed) shows the REST-API pattern this could reuse,
-      but a real seed script still needs to be written.
+- [x] Seed script — `functions/src/seedHistory.ts`, written 2026-10-04 (Admin SDK, since
+      `firestore.rules` block clients from writing claims; see "Local dev" for how to run it).
+      Unit-tested, and run 2026-10-05 on the demo account (30 days, verified).
 
 ## Explicit non-goals this phase
 

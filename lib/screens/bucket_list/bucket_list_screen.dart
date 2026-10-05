@@ -4,6 +4,8 @@ import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/models/bucket_list_item.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/id_generator.dart';
+import 'package:nori/utils/remote_errors.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
@@ -21,7 +23,8 @@ class BucketListScreen extends StatefulWidget {
   State<BucketListScreen> createState() => _BucketListScreenState();
 }
 
-class _BucketListScreenState extends State<BucketListScreen> {
+class _BucketListScreenState extends State<BucketListScreen>
+    with RemoteLoadState<BucketListScreen> {
   List<BucketListItem>? _items;
   bool _isSyncing = false;
 
@@ -31,16 +34,12 @@ class _BucketListScreenState extends State<BucketListScreen> {
     _loadItems();
   }
 
-  Future<void> _loadItems() async {
+  Future<void> _loadItems() => guardedLoad(_fetchItems, hasData: _items != null);
+
+  Future<void> _fetchItems() async {
     final items = await AppData.bucketList.getItems();
     if (!mounted) return;
     setState(() => _items = items);
-  }
-
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   // completeBucketListItem/uncompleteBucketListItem are Cloud-Function-only
@@ -57,24 +56,23 @@ class _BucketListScreenState extends State<BucketListScreen> {
     if (_isSyncing) return;
     _isSyncing = true;
     try {
-      await callCloudFunction(
-        item.isCompleted
-            ? 'uncompleteBucketListItem'
-            : 'completeBucketListItem',
-        {'itemId': item.id},
-      );
-      await _loadItems();
-      // Mirrors home_screen.dart/calendar_screen.dart/habits_list_screen.dart's
-      // own post-reward call -- a bucket-list completion can cross a level
-      // the same way a habit claim can. Currently a no-op for the real
-      // Firestore-backed pet (see firestore_pet_repository.dart's
-      // syncEvolution doc comment); kept here so this call site already
-      // exists once that seam is revisited.
-      final user = await AppData.user.getCurrentUser();
-      await AppData.pet.syncEvolution(user.level);
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
+      await guardedAction(() async {
+        await callCloudFunction(
+          item.isCompleted
+              ? 'uncompleteBucketListItem'
+              : 'completeBucketListItem',
+          {'itemId': item.id},
+        );
+        await _fetchItems();
+        // Mirrors home_screen.dart/calendar_screen.dart/habits_list_screen.dart's
+        // own post-reward call -- a bucket-list completion can cross a level
+        // the same way a habit claim can. Currently a no-op for the real
+        // Firestore-backed pet (see firestore_pet_repository.dart's
+        // syncEvolution doc comment); kept here so this call site already
+        // exists once that seam is revisited.
+        final user = await AppData.user.getCurrentUser();
+        await AppData.pet.syncEvolution(user.level);
+      });
     } finally {
       _isSyncing = false;
     }
@@ -86,8 +84,10 @@ class _BucketListScreenState extends State<BucketListScreen> {
       builder: (_) => const _BucketItemDialog(),
     );
     if (added == null) return;
-    await AppData.bucketList.addItem(added);
-    await _loadItems();
+    await guardedAction(() async {
+      await AppData.bucketList.addItem(added);
+      await _fetchItems();
+    });
   }
 
   Future<void> _openEditDialog(BucketListItem item) async {
@@ -96,23 +96,63 @@ class _BucketListScreenState extends State<BucketListScreen> {
       builder: (_) => _BucketItemDialog(existing: item),
     );
     if (updated == null) return;
-    await AppData.bucketList.updateItem(updated);
-    await _loadItems();
+    await guardedAction(() async {
+      await AppData.bucketList.updateItem(updated);
+      await _fetchItems();
+    });
   }
 
+  /// Deleting a completed item takes its XP/coins back (the
+  /// deleteBucketListItem Cloud Function), so that case asks first — an
+  /// unfinished item has nothing to lose and deletes straight away.
   Future<void> _deleteItem(BucketListItem item) async {
-    await AppData.bucketList.deleteItem(item.id);
-    await _loadItems();
+    if (item.isCompleted && !await _confirmDeleteCompleted(item)) return;
+    await guardedAction(() async {
+      await AppData.bucketList.deleteItem(item.id);
+      await _fetchItems();
+    });
+  }
+
+  Future<bool> _confirmDeleteCompleted(BucketListItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+        ),
+        title: Text('Delete "${item.title}"?'),
+        content: const Text(
+          "You already completed this one — deleting it takes back the XP "
+          'and coins it earned.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 
   @override
   Widget build(BuildContext context) {
     final items = _items;
+    final error = loadError;
 
     return Scaffold(
       body: SafeArea(
         child: items == null
-            ? const Center(child: CircularProgressIndicator())
+            ? error != null
+                ? LoadErrorView(error: error, onRetry: _loadItems)
+                : const Center(child: CircularProgressIndicator())
             : NoriScrollScaffold(
                 maxWidth: 900,
                 children: [
@@ -469,6 +509,10 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
                   ChoiceChip(
                     label: Icon(icon, size: 18),
                     selected: _icon == icon,
+                    // Selection reads from the fill alone (the goal's
+                    // chosen color), not a checkmark crowding the icon.
+                    showCheckmark: false,
+                    selectedColor: _color,
                     onSelected: (_) => setState(() => _icon = icon),
                   ),
               ],

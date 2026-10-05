@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/habit_repository.dart' show kMaxDeletableActiveDays;
 import 'package:nori/models/habit.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/date_labels.dart';
 import 'package:nori/utils/formatting.dart';
 import 'package:nori/utils/id_generator.dart';
+import 'package:nori/utils/remote_errors.dart';
+import 'package:nori/widgets/delete_habit_dialog.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
@@ -19,7 +22,8 @@ class AddHabitScreen extends StatefulWidget {
   State<AddHabitScreen> createState() => _AddHabitScreenState();
 }
 
-class _AddHabitScreenState extends State<AddHabitScreen> {
+class _AddHabitScreenState extends State<AddHabitScreen>
+    with RemoteLoadState<AddHabitScreen> {
   static const _icons = [
     Icons.water_drop,
     Icons.book,
@@ -27,6 +31,17 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     Icons.self_improvement,
     Icons.savings,
     Icons.bedtime,
+  ];
+  // Every key in ColorRegistry, so whatever is picked round-trips through
+  // Firestore. terracotta first: it was the only color before the picker.
+  static const _colors = [
+    AppColors.terracotta,
+    AppColors.sky,
+    AppColors.mossLight,
+    AppColors.blushPink,
+    AppColors.mustardLight,
+    AppColors.blush,
+    AppColors.linenAlt,
   ];
   final _nameController = TextEditingController();
   final _targetController = TextEditingController();
@@ -36,6 +51,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
 
   List<String> _categories = const [];
   IconData _selectedIcon = _icons.first;
+  Color _selectedColor = _colors.first;
   String? _selectedCategory;
   HabitType _selectedType = HabitType.quantity;
   HabitDifficulty _difficulty = HabitDifficulty.medium;
@@ -51,6 +67,13 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
   bool _isSaving = false;
 
   bool get _isEditing => widget.habit != null;
+
+  /// Days with any activity — decides whether Delete is offered next to
+  /// Archive (see kMaxDeletableActiveDays). Null until loaded, and while
+  /// null only Archive shows.
+  int? _activeDays;
+  bool _isManaging = false;
+
   bool get _needsTarget => _selectedType != HabitType.binary;
   bool get _supportsThreshold =>
       _selectedType != HabitType.binary && _selectedType != HabitType.limit;
@@ -62,9 +85,14 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
 
     final habit = widget.habit;
     if (habit == null) return;
+    guardedLoad(hasData: true, () async {
+      final count = await AppData.habits.activeDayCount(habit.id);
+      if (mounted) setState(() => _activeDays = count);
+    });
 
     _nameController.text = habit.name;
     _selectedIcon = habit.icon;
+    _selectedColor = habit.color;
     _selectedCategory = habit.subtitle;
     _selectedType = habit.type;
     _difficulty = habit.difficulty;
@@ -87,7 +115,12 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     _endDate = habit.endDate;
   }
 
-  Future<void> _loadCategories() async {
+  /// The form is usable without categories (no spinner gates it), so a
+  /// failed load only needs the snackbar — hence `hasData: true`.
+  Future<void> _loadCategories() =>
+      guardedLoad(_fetchCategories, hasData: true);
+
+  Future<void> _fetchCategories() async {
     final categories = await AppData.habitCategories.getCategories();
     if (!mounted) return;
     setState(() {
@@ -181,6 +214,18 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     }
   }
 
+  /// A plain amount ("250") or a share of [target] ("25%", which the
+  /// field's own hint suggests). Stored as the absolute amount either way.
+  /// Null if it isn't a positive number.
+  double? _parseQuickLog(String text, double target) {
+    final isPercent = text.endsWith('%');
+    final number = double.tryParse(
+      isPercent ? text.substring(0, text.length - 1).trim() : text,
+    );
+    if (number == null || number <= 0) return null;
+    return isPercent ? target * number / 100 : number;
+  }
+
   String _dateRangeLabel() {
     if (_startDate == null || _endDate == null) {
       return 'Tap to choose a start & end date';
@@ -192,26 +237,44 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
   Future<void> _saveHabit() async {
     if (_isSaving) return;
 
-    final target = double.tryParse(_targetController.text.trim());
-    if (_needsTarget && (target == null || target <= 0)) {
+    void showError(String message) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Enter a target greater than 0.')),
-        );
+        ..showSnackBar(SnackBar(content: Text(message)));
+    }
+
+    final target = double.tryParse(_targetController.text.trim());
+    if (_needsTarget && (target == null || target <= 0)) {
+      showError('Enter an Ideal Target greater than 0.');
       return;
+    }
+
+    // Optional fields: blank means "use the default", but anything typed
+    // that doesn't parse is rejected rather than silently dropped.
+    final quickLogText = _quickLogController.text.trim();
+    double? quickLogAmount;
+    if (_needsTarget && quickLogText.isNotEmpty) {
+      quickLogAmount = _parseQuickLog(quickLogText, target!);
+      if (quickLogAmount == null) {
+        showError('Quick-Log Amount must be a number above 0, like 250 or 25%.');
+        return;
+      }
+    }
+
+    final minThresholdText = _minThresholdController.text.trim();
+    double? minThreshold;
+    if (_minThresholdEnabled && _supportsThreshold && minThresholdText.isNotEmpty) {
+      minThreshold = double.tryParse(minThresholdText);
+      if (minThreshold == null || minThreshold <= 0) {
+        showError('Minimum Threshold must be a number above 0.');
+        return;
+      }
     }
 
     setState(() => _isSaving = true);
 
     final enteredName = _nameController.text.trim();
     final unit = _needsTarget ? _unitController.text.trim() : null;
-    final minThreshold = (_minThresholdEnabled && _supportsThreshold)
-        ? double.tryParse(_minThresholdController.text.trim())
-        : null;
-    final quickLogAmount = _needsTarget
-        ? double.tryParse(_quickLogController.text.trim())
-        : null;
 
     final existing = widget.habit;
     final habit = Habit(
@@ -219,7 +282,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       name: enteredName.isEmpty ? 'New Habit' : enteredName,
       subtitle: _selectedCategory ?? (_categories.isEmpty ? '' : _categories.first),
       icon: _selectedIcon,
-      color: existing?.color ?? AppColors.terracotta,
+      color: _selectedColor,
       xpReward: _difficulty.baseXp,
       coinReward: _difficulty.baseCoins,
       repeat: _repeat,
@@ -239,16 +302,15 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       isCompletedToday: existing?.isCompletedToday ?? false,
     );
 
-    try {
+    final ok = await guardedAction(() async {
       if (_isEditing) {
         await AppData.habits.updateHabit(habit);
       } else {
         await AppData.habits.addHabit(habit);
       }
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-    if (!mounted) return;
+    });
+    if (mounted) setState(() => _isSaving = false);
+    if (!ok || !mounted) return;
     Navigator.pop(context, true);
   }
 
@@ -334,6 +396,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                               _IconChoice(
                                 icon: _icons[index],
                                 selected: _selectedIcon == _icons[index],
+                                selectedColor: _selectedColor,
                                 onTap: () => setState(
                                   () => _selectedIcon = _icons[index],
                                 ),
@@ -343,6 +406,21 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                             ],
                           ],
                         ),
+                      ),
+                      const SizedBox(height: AppSpacing.stackMd),
+                      _FieldLabel(label: 'Color'),
+                      const SizedBox(height: AppSpacing.unit),
+                      Wrap(
+                        spacing: AppSpacing.stackSm,
+                        runSpacing: AppSpacing.stackSm,
+                        children: [
+                          for (final color in _colors)
+                            _ColorChoice(
+                              color: color,
+                              selected: _selectedColor == color,
+                              onTap: () => setState(() => _selectedColor = color),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: AppSpacing.stackMd),
                       _FieldLabel(label: 'Category'),
@@ -434,7 +512,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                                   decimal: true,
                                 ),
                                 style: AppTextStyles.bodyLg,
-                                decoration: _fieldDecoration(hintText: '1000'),
+                                decoration: _fieldDecoration(hintText: 'e.g. 1000'),
                               ),
                             ),
                             const SizedBox(width: AppSpacing.stackSm),
@@ -484,7 +562,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                               decimal: true,
                             ),
                             style: AppTextStyles.bodyLg,
-                            decoration: _fieldDecoration(hintText: '750'),
+                            decoration: _fieldDecoration(hintText: 'e.g. 750'),
                           ),
                           const SizedBox(height: AppSpacing.stackSm),
                           const _InfoBanner(
@@ -635,6 +713,16 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                         onChanged: (value) =>
                             setState(() => _allowVacationFreeze = value),
                       ),
+                      if (_isEditing) ...[
+                        const SizedBox(height: AppSpacing.stackLg),
+                        _ManageHabitSection(
+                          canDelete: (_activeDays ?? kMaxDeletableActiveDays + 1) <=
+                              kMaxDeletableActiveDays,
+                          busy: _isManaging || _isSaving,
+                          onArchive: _archiveHabit,
+                          onDelete: _deleteHabit,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -644,6 +732,33 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _archiveHabit() async {
+    final habit = widget.habit;
+    if (habit == null) return;
+    setState(() => _isManaging = true);
+    final ok = await guardedAction(() => AppData.habits.archiveHabit(habit.id));
+    if (!mounted) return;
+    setState(() => _isManaging = false);
+    if (!ok) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text('Archived "${habit.name}" — restore it from Archived habits.')),
+      );
+    Navigator.pop(context, true);
+  }
+
+  Future<void> _deleteHabit() async {
+    final habit = widget.habit;
+    if (habit == null || !await confirmDeleteHabit(context, habit)) return;
+    if (!mounted) return;
+    setState(() => _isManaging = true);
+    final ok = await guardedAction(() => AppData.habits.deleteHabit(habit.id));
+    if (!mounted) return;
+    setState(() => _isManaging = false);
+    if (ok) Navigator.pop(context, true);
   }
 
   InputDecoration _fieldDecoration({String? hintText}) {
@@ -690,17 +805,20 @@ class _IconChoice extends StatelessWidget {
   const _IconChoice({
     required this.icon,
     required this.selected,
+    required this.selectedColor,
     required this.onTap,
   });
 
   final IconData icon;
   final bool selected;
+  // The habit's chosen color, so the selected icon previews its badge.
+  final Color selectedColor;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? AppColors.moss : AppColors.white,
+      color: selected ? selectedColor : AppColors.white,
       shape: CircleBorder(
         side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
       ),
@@ -715,6 +833,36 @@ class _IconChoice extends StatelessWidget {
             color: AppColors.ink,
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ColorChoice extends StatelessWidget {
+  const _ColorChoice({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color,
+      shape: CircleBorder(
+        side: BorderSide(
+          color: AppColors.ink,
+          width: selected ? AppBorder.thick : AppBorder.thin,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: const SizedBox.square(dimension: 40),
       ),
     );
   }
@@ -962,6 +1110,55 @@ class _RewardPreview extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Archive (always) and Delete (only for a habit with almost no history) at
+/// the bottom of the edit form. See docs/BACKEND.md, "Deleting vs.
+/// archiving a habit".
+class _ManageHabitSection extends StatelessWidget {
+  const _ManageHabitSection({
+    required this.canDelete,
+    required this.busy,
+    required this.onArchive,
+    required this.onDelete,
+  });
+
+  final bool canDelete;
+  final bool busy;
+  final VoidCallback onArchive;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TactileButton(
+          label: 'Archive Habit',
+          icon: Icons.archive_outlined,
+          backgroundColor: AppColors.white,
+          onPressed: busy ? null : onArchive,
+        ),
+        const SizedBox(height: AppSpacing.unit),
+        Text(
+          'Hides it from today on. Its history stays, and you can restore it '
+          'from Archived habits.',
+          style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
+          textAlign: TextAlign.center,
+        ),
+        if (canDelete) ...[
+          const SizedBox(height: AppSpacing.stackMd),
+          TactileButton(
+            label: 'Delete Habit',
+            icon: Icons.delete_outline,
+            backgroundColor: AppColors.errorContainer,
+            foregroundColor: AppColors.onErrorContainer,
+            onPressed: busy ? null : onDelete,
+          ),
+        ],
+      ],
     );
   }
 }

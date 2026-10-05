@@ -58,10 +58,13 @@ class MockAchievementRepository implements AchievementRepository {
     final perHabitCompletions = <String, int>{};
     var reachedMinNotFull = false;
     var anyMissedDay = false;
-    for (var back = 0; back < _historyWindowDays; back++) {
-      final habitsForDay = await _habits.getHabitsForDate(
-        today.subtract(Duration(days: back)),
-      );
+    // One batched fetch for the whole window — against Firestore, a
+    // getHabitsForDate per day was ~180 sequential round trips.
+    final byDay = await _habits.getHabitsForRange(
+      today.subtract(const Duration(days: _historyWindowDays - 1)),
+      today,
+    );
+    for (final habitsForDay in byDay.values) {
       if (habitsForDay.isEmpty) {
         continue;
       }
@@ -89,10 +92,14 @@ class MockAchievementRepository implements AchievementRepository {
   }
 
   Future<int> _perfectDayStreak(DateTime today) async {
+    final byDay = await _habits.getHabitsForRange(
+      today.subtract(const Duration(days: _historyWindowDays)),
+      today,
+    );
     var streak = 0;
     var day = today;
     while (streak < 7 && today.difference(day).inDays <= _historyWindowDays) {
-      final scheduled = await _habits.getHabitsForDate(day);
+      final scheduled = byDay[dateOnly(day)] ?? const [];
       if (scheduled.isNotEmpty) {
         final isToday = dateOnly(day) == today;
         final allClaimed = scheduled.every((h) => h.isCompletedToday);

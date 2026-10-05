@@ -3,6 +3,7 @@ import 'package:nori/data/app_data.dart';
 import 'package:nori/data/username_repository.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/nori_avatar.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
@@ -25,7 +26,8 @@ class EditProfileScreen extends StatefulWidget {
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> {
+class _EditProfileScreenState extends State<EditProfileScreen>
+    with RemoteLoadState<EditProfileScreen> {
   late final _nameController = TextEditingController(text: widget.user.name);
   late final _usernameController = TextEditingController(
     text: widget.user.username,
@@ -100,12 +102,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     }
 
-    await AppData.user.updateProfile(
-      name: name,
-      username: username,
-      email: email,
+    final ok = await guardedAction(
+      () => AppData.user.updateProfile(
+        name: name,
+        username: username,
+        email: email,
+      ),
     );
     if (!mounted) return;
+    if (!ok) {
+      setState(() => _saving = false);
+      return;
+    }
     Navigator.pop(context, true);
   }
 

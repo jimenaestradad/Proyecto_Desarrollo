@@ -9,7 +9,10 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 ## Habit mechanics
 - Specific-days-of-week vs. X-times-per-period scheduling — support both, or just one? (they
   behave differently for streaks)
-- Per-habit pause vs. a global Vacation Mode — likely both, not formally decided
+- Hard-deleting a habit that has real history (more than 2 active days): when its logs are
+  wiped, do the XP/coins they earned stay or get taken back? Deferred 2026-09-30, so such a
+  habit can only be archived for now. Keeping them is simpler; taking them back is consistent
+  with bucket-list delete but could drop several levels and de-evolve the pet.
 - Retroactive logging (can a missed day be logged after the fact?)
 - Editing an active habit's schedule/target — effect on history/streak?
 - Negative/limit-habit implementation details
@@ -22,6 +25,12 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Adaptive-XP formula and adjustment window (how much history, how fast it moves)
 - Adaptive-XP multiplier bounds (~0.5×–1.5× was an example)
 - Exact cadence multipliers (weekly vs. daily vs. other frequencies)
+- **What's actually live while these stay open (noted 2026-10-05):** `functions/src/rewards.ts`
+  pays Easy/Medium/Hard = **10/20/30 XP**, coins = **XP ÷ 2** (5/10/15), times the habit's
+  `adaptiveMultiplier` clamped to 0.5–1.5. No cadence multiplier exists (a weekly habit pays the
+  same as a daily one), and nothing ever moves `adaptiveMultiplier` off 1.0 (KNOWN_ISSUES.md,
+  "Adaptive XP is promised in the UI but never adjusts"). So the "examples" above are the shipped
+  values by default, not by decision; confirming or changing them is a one-file change.
 - Resolved 2026-09-16: **`xpForNextLevel = 100 × currentLevel`** (cumulative to reach level n is
   `50 × n × (n − 1)`). New accounts start at level 1 / 0 XP / 100 to next. The formula lives only
   in the Cloud Function, which writes level/xpIntoLevel/xpForNextLevel to the user doc — the
@@ -100,8 +109,12 @@ progress, rewards moment, pet care screen, shop, profile.
   canonical day key is computed **device-local** by `dayKey()` and passed explicitly to Cloud
   Functions, which never derive the day from (UTC) server time. See [BACKEND.md](BACKEND.md).
   Still open: what happens when a user travels across timezones, and DST edges.
-- Resolved 2026-09-16: **deleting a habit archives it** (new `archived` flag) and never deletes
-  its `habitLogs` — streaks, calendar days and achievements are all derived from those logs.
+- Resolved 2026-09-30 (supersedes 2026-09-16's "deleting always archives"): a habit with
+  history is **archived** (hidden from today on, restorable, `habitLogs` kept); one with at most
+  2 active days can be **deleted** outright, taking back its rewards. See BACKEND.md,
+  "Deleting vs. archiving a habit".
+- Resolved 2026-09-30: **per-habit pause is out of MVP scope.** Vacation Mode (global) is the
+  only pause.
 - Missed-period handling
 - Cheating / duplicate-completion prevention
 - Data history retention

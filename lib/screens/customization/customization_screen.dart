@@ -3,7 +3,9 @@ import 'package:nori/data/accessory_catalog.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/accessory_art.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
@@ -14,7 +16,8 @@ class CustomizationScreen extends StatefulWidget {
   State<CustomizationScreen> createState() => _CustomizationScreenState();
 }
 
-class _CustomizationScreenState extends State<CustomizationScreen> {
+class _CustomizationScreenState extends State<CustomizationScreen>
+    with RemoteLoadState<CustomizationScreen> {
   Inventory? _inventory;
   String? _draftEquippedId;
   bool _isSaving = false;
@@ -26,11 +29,13 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
   }
 
   Future<void> _loadInventory() async {
-    final inventory = await AppData.inventory.getInventory();
-    if (!mounted) return;
-    setState(() {
-      _inventory = inventory;
-      _draftEquippedId = inventory.equippedAccessoryId;
+    await guardedLoad(hasData: _inventory != null, () async {
+      final inventory = await AppData.inventory.getInventory();
+      if (!mounted) return;
+      setState(() {
+        _inventory = inventory;
+        _draftEquippedId = inventory.equippedAccessoryId;
+      });
     });
   }
 
@@ -45,12 +50,11 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
   Future<void> _saveLook() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
-    try {
-      await AppData.inventory.setEquippedAccessory(_draftEquippedId);
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-    if (!mounted) return;
+    final ok = await guardedAction(
+      () => AppData.inventory.setEquippedAccessory(_draftEquippedId),
+    );
+    if (mounted) setState(() => _isSaving = false);
+    if (!ok || !mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(content: Text('Look saved!')));
@@ -60,12 +64,15 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
   Widget build(BuildContext context) {
     final inventory = _inventory;
     final draftEquippedId = _draftEquippedId;
+    final error = loadError;
 
     return Scaffold(
       backgroundColor: AppColors.linen,
       body: SafeArea(
         child: inventory == null
-            ? const Center(child: CircularProgressIndicator())
+            ? error != null
+                ? LoadErrorView(error: error, onRetry: _loadInventory)
+                : const Center(child: CircularProgressIndicator())
             : LayoutBuilder(
                 builder: (context, constraints) {
                   final isWide = constraints.maxWidth >= 700;

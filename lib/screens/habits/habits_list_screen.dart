@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
-import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/data/habit_history_store.dart' show dateOnly;
 import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/models/pet.dart';
 import 'package:nori/screens/bucket_list/bucket_list_screen.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
+import 'package:nori/screens/habits/archived_habits_screen.dart';
 import 'package:nori/screens/notifications/notifications_screen.dart';
 import 'package:nori/screens/pet/evolution_screen.dart';
 import 'package:nori/screens/pet/level_up_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/date_labels.dart';
+import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/habit_progress_card.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
 import 'package:nori/widgets/streak_chip.dart';
@@ -31,7 +34,8 @@ class HabitsListScreen extends StatefulWidget {
   State<HabitsListScreen> createState() => _HabitsListScreenState();
 }
 
-class _HabitsListScreenState extends State<HabitsListScreen> {
+class _HabitsListScreenState extends State<HabitsListScreen>
+    with RemoteLoadState<HabitsListScreen> {
   NoriUser? _user;
   List<Habit>? _habits;
   bool _completedToBottom = false;
@@ -60,7 +64,9 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
     if (!oldWidget.active && widget.active) _loadData();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData() => guardedLoad(_fetchData, hasData: _habits != null);
+
+  Future<void> _fetchData() async {
     final user = await AppData.user.getCurrentUser();
     final habits = await AppData.habits.getHabitsForDate(_selectedDate);
     if (!mounted) return;
@@ -91,99 +97,93 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
     setState(() => _user = user);
   }
 
-  /// The claimHabit/unclaimHabit Cloud Function already applied this
-  /// server-side — reload the user, then use [reward]'s own flags (not a
-  /// before/after snapshot) to decide whether to celebrate.
-  Future<void> _applyReward(HabitRewardResult reward) async {
-    if (reward.xpDelta == 0 && reward.coinsDelta == 0) return;
-    await _reloadUser();
-    if (!mounted || !(reward.leveledUp || reward.evolved)) return;
-    final user = _user;
-    if (user == null) return;
-    final pet = await AppData.pet.getPet();
-    if (!mounted) return;
-    if (reward.evolved) {
-      await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
-    } else {
-      await showLevelUpCelebration(context, level: user.level, petName: pet.name);
-    }
-  }
-
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Future<void> _toggleBinary(Habit habit, bool completed) async {
-    try {
-      final reward = await AppData.habits.setHabitCompletedForDate(
-        habit.id,
-        _selectedDate,
-        completed,
-      );
-      await _applyReward(reward);
+  /// Runs one claim-style call (optionally followed by [then], e.g. setting
+  /// a new progress value). The claimHabit/unclaimHabit Cloud Function
+  /// already applied the reward server-side — reload the user, then use the
+  /// reward's own flags (not a before/after snapshot) to decide whether to
+  /// celebrate. The celebration runs after the guarded block on purpose: it
+  /// awaits a dialog the user may leave open past [remoteTimeout].
+  Future<void> _runClaim(
+    Future<HabitRewardResult> Function() claim, {
+    Future<void> Function()? then,
+  }) async {
+    HabitRewardResult? reward;
+    Pet? pet;
+    final ok = await guardedAction(() async {
+      final result = reward = await claim();
+      if (result.xpDelta != 0 || result.coinsDelta != 0) {
+        await _reloadUser();
+        if (result.leveledUp || result.evolved) {
+          pet = await AppData.pet.getPet();
+        }
+      }
+      if (then != null) await then();
       await _reloadHabits();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
+    });
+    final result = reward;
+    final celebratedPet = pet;
+    final user = _user;
+    if (!ok || !mounted || result == null || celebratedPet == null || user == null) {
+      return;
+    }
+    if (result.evolved) {
+      await showEvolutionCelebration(
+        context,
+        petName: celebratedPet.name,
+        stage: celebratedPet.stage,
+      );
+    } else if (result.leveledUp) {
+      await showLevelUpCelebration(
+        context,
+        level: user.level,
+        petName: celebratedPet.name,
+      );
     }
   }
+
+  Future<void> _toggleBinary(Habit habit, bool completed) => _runClaim(
+    () => AppData.habits.setHabitCompletedForDate(
+      habit.id,
+      _selectedDate,
+      completed,
+    ),
+  );
 
   Future<void> _logProgress(Habit habit, double amount) async {
-    await AppData.habits.logProgressForDate(habit.id, _selectedDate, amount);
-    await _reloadHabits();
+    await guardedAction(() async {
+      await AppData.habits.logProgressForDate(habit.id, _selectedDate, amount);
+      await _reloadHabits();
+    });
   }
 
-  Future<void> _claim(Habit habit) async {
-    try {
-      final reward = await AppData.habits.claimHabitForDate(
-        habit.id,
-        _selectedDate,
-      );
-      await _applyReward(reward);
-      await _reloadHabits();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
-  }
+  Future<void> _claim(Habit habit) => _runClaim(
+    () => AppData.habits.claimHabitForDate(habit.id, _selectedDate),
+  );
 
   /// Reverses the viewed day's claim (reward included) without touching the
   /// logged value — the claim button turns into this once a habit is
   /// completed.
-  Future<void> _unclaim(Habit habit) async {
-    try {
-      final reward = await AppData.habits.unclaimHabitForDate(
-        habit.id,
-        _selectedDate,
-      );
-      await _applyReward(reward);
-      await _reloadHabits();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
-  }
+  Future<void> _unclaim(Habit habit) => _runClaim(
+    () => AppData.habits.unclaimHabitForDate(habit.id, _selectedDate),
+  );
 
   /// Un-claims first (reversing the viewed day's reward) whenever the habit
   /// was already completed, then applies the new absolute value — powers the
   /// progress-card's tap-to-edit / undo / reset-to-0 dialog.
   Future<void> _editProgress(Habit habit, double value) async {
-    try {
-      if (habit.isCompletedToday) {
-        final reward = await AppData.habits.unclaimHabitForDate(
-          habit.id,
-          _selectedDate,
-        );
-        await _applyReward(reward);
-      }
-      await AppData.habits.setProgressForDate(habit.id, _selectedDate, value);
-      await _reloadHabits();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
+    Future<void> setValue() =>
+        AppData.habits.setProgressForDate(habit.id, _selectedDate, value);
+    if (habit.isCompletedToday) {
+      await _runClaim(
+        () => AppData.habits.unclaimHabitForDate(habit.id, _selectedDate),
+        then: setValue,
+      );
+      return;
     }
+    await guardedAction(() async {
+      await setValue();
+      await _reloadHabits();
+    });
   }
 
   Future<void> _openAddHabit() async {
@@ -191,7 +191,7 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => const AddHabitScreen()));
     if (!mounted) return;
-    if (added == true) await _reloadHabits();
+    if (added == true) await guardedAction(_reloadHabits);
   }
 
   Future<void> _openEditHabit(Habit habit) async {
@@ -199,7 +199,7 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
       MaterialPageRoute(builder: (_) => AddHabitScreen(habit: habit)),
     );
     if (!mounted) return;
-    if (edited == true) await _reloadHabits();
+    if (edited == true) await guardedAction(_reloadHabits);
   }
 
   Future<void> _onReorder(int oldIndex, int newIndex) async {
@@ -210,8 +210,10 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
     // Persist before updating the displayed order — on failure (once a real
     // backend can fail) the UI simply doesn't move instead of silently
     // diverging from what's actually stored.
-    await AppData.habits.reorderHabits([for (final h in habits) h.id]);
-    if (!mounted) return;
+    final ok = await guardedAction(
+      () => AppData.habits.reorderHabits([for (final h in habits) h.id]),
+    );
+    if (!ok || !mounted) return;
     setState(() => _habits = habits);
   }
 
@@ -219,6 +221,14 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+  }
+
+  Future<void> _openArchived() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const ArchivedHabitsScreen()),
+    );
+    if (!mounted) return;
+    if (changed == true) await guardedAction(_reloadHabits);
   }
 
   void _openBucketList() {
@@ -241,11 +251,14 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
   Widget build(BuildContext context) {
     final user = _user;
     final habits = _habits;
+    final error = loadError;
 
     return Scaffold(
       body: SafeArea(
         child: user == null || habits == null
-            ? const Center(child: CircularProgressIndicator())
+            ? error != null
+                ? LoadErrorView(error: error, onRetry: _loadData)
+                : const Center(child: CircularProgressIndicator())
             : _buildContent(user, habits),
       ),
     );
@@ -270,6 +283,12 @@ class _HabitsListScreenState extends State<HabitsListScreen> {
         Row(
           children: [
             Expanded(child: Text('Habits', style: AppTextStyles.headlineMd)),
+            CircularIconButton(
+              icon: Icons.inventory_2_outlined,
+              tooltip: 'Archived Habits',
+              onPressed: _openArchived,
+            ),
+            const SizedBox(width: 6),
             CircularIconButton(
               icon: Icons.flag,
               tooltip: 'Bucket List',

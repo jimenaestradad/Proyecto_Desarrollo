@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_avatar.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
@@ -23,7 +25,8 @@ class SocialScreen extends StatefulWidget {
   State<SocialScreen> createState() => _SocialScreenState();
 }
 
-class _SocialScreenState extends State<SocialScreen> {
+class _SocialScreenState extends State<SocialScreen>
+    with RemoteLoadState<SocialScreen> {
   NoriUser? _user;
 
   @override
@@ -33,9 +36,11 @@ class _SocialScreenState extends State<SocialScreen> {
   }
 
   Future<void> _loadUser() async {
-    final user = await AppData.user.getCurrentUser();
-    if (!mounted) return;
-    setState(() => _user = user);
+    await guardedLoad(hasData: _user != null, () async {
+      final user = await AppData.user.getCurrentUser();
+      if (!mounted) return;
+      setState(() => _user = user);
+    });
   }
 
   void _showComingSoon() {
@@ -47,11 +52,14 @@ class _SocialScreenState extends State<SocialScreen> {
   @override
   Widget build(BuildContext context) {
     final user = _user;
+    final error = loadError;
 
     return Scaffold(
       body: SafeArea(
         child: user == null
-            ? const Center(child: CircularProgressIndicator())
+            ? error != null
+                ? LoadErrorView(error: error, onRetry: _loadUser)
+                : const Center(child: CircularProgressIndicator())
             : NoriScrollScaffold(
                 maxWidth: 900,
                 children: [

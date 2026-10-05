@@ -2,6 +2,38 @@
 
 Trimmed historical fix log for Nori, split out of `docs/KNOWN_ISSUES.md` on 2026-09-16 to keep the working file scannable. Full narrative detail from before the split was intentionally condensed; this log favors terse entries going forward.
 
+### 2026-10-05 — stale "calendar makes ~430 sequential reads" entry closed
+
+The 2026-09-10 audit flagged `MockCalendarRepository` awaiting one habit read per day. The live app uses `FirestoreCalendarRepository`, which reads a whole range in one `logsInRange` query (and, since 2026-09-30, `getHabitsForRange` for Achievements/Profile), so the cost never reached Firestore. The mock still walks per day, which is harmless in memory. Removed from KNOWN_ISSUES.
+
+### 2026-10-05 — add-habit form rejected valid input with the wrong message
+
+Found by valevasqc creating "drink 1000 ml daily". The Ideal Target field's placeholder (`1000`) read as a pre-filled value, so the field was left empty. Typing 250 or 25% into Quick-Log then failed with "Enter a target greater than 0", which doesn't say which field it means. Separately, Quick-Log's own hint says "25% of target", but typing `25%` failed the number parse and was silently saved as blank (the default), as was any unparseable minimum threshold. Now the placeholders read `e.g. 1000`/`e.g. 750`, the error names the Ideal Target field, Quick-Log accepts `25%` (stored as the absolute amount), and an unparseable Quick-Log or minimum value shows an error instead of being dropped.
+
+### 2026-09-30 — habits can be archived, restored, and (with almost no history) deleted
+
+Habits had an unused `archived` flag that, once set, would have hidden the habit from *every* date, erasing its past days. Archiving now records `archivedRanges`, and `Habit.isActiveOn` skips only the days inside them. The habit leaves Home and the Habits list from today, keeps its history, can be restored from the new Archived Habits screen, and the archived stretch never counts as missed. `claimHabit` enforces the same rule. A habit with at most 2 active days can be deleted through the new `deleteHabit` Cloud Function, which takes back what its claims paid. Hard delete for habits with real history is deferred (OPEN_DECISIONS.md). Deployed 2026-10-04.
+
+### 2026-09-30 — ended habits no longer vanish from past calendar days
+
+`FirestoreCalendarRepository` took its habit list from `getTodayHabits()`, which leaves out any habit not active today. So once a habit's `endDate` passed, it disappeared from every past calendar day, streak and stat it had been part of. The calendar now uses every definition (`fetchAllDefinitions`) and lets `isActiveOn` decide per day. Today is hydrated from `habitLogs` like any other day.
+
+### 2026-09-30 — Achievements and Profile no longer make ~200 sequential Firestore reads
+
+`MockAchievementRepository` (which computes real achievements from the real repositories, despite the name) called `getHabitsForDate` once per day across a 90-day window, twice: about 200 sequential round trips per Achievements or Profile load, and enough to hit the new 20s screen timeout. The new `HabitRepository.getHabitsForRange` fetches a whole window in two queries. Achievements and Profile's weekly completion now use it.
+
+### 2026-09-30 — unlimited bucket-list items accepted as honor system
+
+The 2026-09-28 audit flagged that nothing limits how many maxed-out bucket-list items someone can create and complete. Decided by valevasqc: no item-count cap, it's a self-reward feature that relies on the user's honesty. The per-item 500 XP / 250 coin cap stays. Recorded in BACKEND.md next to that cap.
+
+### 2026-09-30 — bucket-list rewards now evolve the pet; deleting a completed item takes its reward back
+
+`completeBucketListItem`/`uncompleteBucketListItem` changed the level without touching `pet.stage`. The client can't write `stage`, and `FirestorePetRepository.syncEvolution` does nothing on purpose, so a bucket-list reward could cross level 7 without evolving the pet. Both now call the same `syncPetStage` helper as `claimHabit`. Deleting a completed item used to keep its reward. The new `deleteBucketListItem` reverses the stored payout and deletes in one transaction, `firestore.rules` now rejects a direct client delete of a completed item, and the app asks for confirmation first. Deployed 2026-10-04.
+
+### 2026-09-30 — screens no longer hang or fail silently when Firestore/Cloud Functions fail
+
+Every screen that awaits a repository now goes through one shared helper, `RemoteLoadState` (`lib/utils/remote_errors.dart`). It has `guardedLoad` for loads and `guardedAction` for user actions, both with a 20s timeout. If a screen's first load fails, it shows `LoadErrorView` (a message plus "Try again") instead of spinning forever. If a reload or action fails, the screen keeps its current data and shows a snackbar. Level-up/evolution celebrations now run after the guarded block, never inside it, because the dialog can stay open longer than the timeout. `main.dart` also finally turns off Firestore offline persistence, as BACKEND.md's "Online only" decision required: before, offline writes queued silently instead of failing.
+
 ### 2026-09-28 — shop items could be made free; bucket-list NaN; functions cleanup
 
 `purchaseCareItem`/`purchaseAccessory` looked items up with a plain `catalog[id]`, so an id like `"constructor"` matched an inherited key, its price was undefined, the coin check passed against NaN, and `coins` was saved as NaN — making every later purchase free. They now require an own catalog key. `completeBucketListItem` read client-writable `xpReward`/`coinReward` with `Number()`, which turned a string into NaN past both caps; it now uses `asNumber` and rounds. Both bucket-list functions now use the shared `readLevelState`/`levelFields` helpers instead of hand-built copies, `onUserCreate` uses `create()` so a duplicate trigger can't reset an account, and the server's dead 75% `min` reward tier was removed.

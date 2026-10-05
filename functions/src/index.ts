@@ -5,7 +5,8 @@
  * the Cloud-Functions-vs-direct-write rule of thumb, and the concrete
  * function list. Jimena's functions, all in this file: onUserCreate,
  * purchaseCareItem, purchaseAccessory, completeBucketListItem,
- * uncompleteBucketListItem. Valeria's: claimHabit, unclaimHabit, in their
+ * uncompleteBucketListItem, deleteBucketListItem. Valeria's: claimHabit, unclaimHabit,
+ * deleteHabit, in their
  * own files, re-exported below (see docs/BACKEND.md "Division of labor").
  * Everything deploys from this one entry point — a second functions/
  * folder would make each side's `firebase deploy` delete the other's.
@@ -22,11 +23,21 @@
  */
 
 import * as admin from "firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import {
+  DocumentData,
+  DocumentReference,
+  FieldValue,
+  Transaction,
+} from "firebase-admin/firestore";
 import * as functionsV1 from "firebase-functions/v1";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 
-import { asNumber, levelFields, readLevelState } from "./habitTransaction";
+import {
+  asNumber,
+  levelFields,
+  readLevelState,
+  syncPetStage,
+} from "./habitTransaction";
 import { applyXpDelta } from "./xpCurve";
 
 admin.initializeApp();
@@ -34,6 +45,7 @@ const db = admin.firestore();
 
 export { claimHabit } from "./claimHabit";
 export { unclaimHabit } from "./unclaimHabit";
+export { deleteHabit } from "./deleteHabit";
 
 /**
  * Server-side mirror of lib/data/care_item_catalog.dart's price/grants.
@@ -293,34 +305,20 @@ export const purchaseAccessory = onCall(async (request) => {
  * the item's current (possibly since-edited) `xpReward`/`coinReward`.
  * No-op (mirrors MockBucketListRepository.completeItem) if already
  * completed, so a duplicate tap/retry is harmless rather than an error.
- * Does not sync `pet.stage` -- that seam is Valeria's claimHabit
- * transaction only (../docs/BACKEND.md, "Division of labor"); see
- * lib/data/firestore_pet_repository.dart's syncEvolution doc comment.
+ * Syncs `pet.stage` in the same transaction, exactly like claimHabit:
+ * a bucket-list reward can cross the evolution level too, and the client
+ * can't write `stage` itself (firestore_pet_repository.dart's
+ * syncEvolution is a deliberate no-op).
  */
 export const completeBucketListItem = onCall(async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid) {
-    throw new HttpsError("unauthenticated", "Sign in required.");
-  }
+  const { uid, itemId } = requireBucketListCall(request);
 
-  const itemId = request.data?.itemId;
-  if (typeof itemId !== "string" || itemId.length === 0) {
-    throw new HttpsError("invalid-argument", "itemId is required.");
-  }
-
-  const userRef = db.collection("users").doc(uid);
-  const itemRef = userRef.collection("bucketList").doc(itemId);
+  const { userRef, itemRef, petRef } = bucketListRefs(uid, itemId);
 
   return db.runTransaction(async (tx) => {
-    const [userSnap, itemSnap] = await Promise.all([
-      tx.get(userRef),
-      tx.get(itemRef),
-    ]);
-    const userData = userSnap.data();
-    const itemData = itemSnap.data();
-    if (!userData || !itemData) {
-      throw new HttpsError("not-found", "Bucket list item not found.");
-    }
+    const { userData, itemData, petData } = await readBucketListDocs(
+      tx, userRef, itemRef, petRef
+    );
 
     if (itemData.isCompleted === true) {
       return { xpDelta: 0, coinsDelta: 0 };
@@ -346,60 +344,125 @@ export const completeBucketListItem = onCall(async (request) => {
       awardedCoins: coinsAwarded,
     });
     tx.update(userRef, { ...levelFields(nextLevelState), coins: newCoins });
+    syncPetStage(tx, petRef, petData, nextLevelState.level);
 
     return { xpDelta: xpAwarded, coinsDelta: coinsAwarded };
   });
 });
 
-/**
- * Reverses [completeBucketListItem] exactly -- reads back the stored
- * `awardedXp`/`awardedCoins` (never the item's current `xpReward`/
- * `coinReward`) and subtracts them from the user, mirroring
- * `unclaimHabit`'s reasoning. No-op if not currently completed.
- */
-export const uncompleteBucketListItem = onCall(async (request) => {
+function requireBucketListCall(request: { auth?: { uid: string }; data?: { itemId?: unknown } }) {
   const uid = request.auth?.uid;
   if (!uid) {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
-
   const itemId = request.data?.itemId;
   if (typeof itemId !== "string" || itemId.length === 0) {
     throw new HttpsError("invalid-argument", "itemId is required.");
   }
+  return { uid, itemId };
+}
 
+function bucketListRefs(uid: string, itemId: string) {
   const userRef = db.collection("users").doc(uid);
-  const itemRef = userRef.collection("bucketList").doc(itemId);
+  return {
+    userRef,
+    itemRef: userRef.collection("bucketList").doc(itemId),
+    petRef: userRef.collection("pet").doc("main"),
+  };
+}
+
+async function readBucketListDocs(
+  tx: Transaction,
+  userRef: DocumentReference,
+  itemRef: DocumentReference,
+  petRef: DocumentReference,
+) {
+  const [userSnap, itemSnap, petSnap] = await Promise.all([
+    tx.get(userRef),
+    tx.get(itemRef),
+    tx.get(petRef),
+  ]);
+  const userData = userSnap.data();
+  const itemData = itemSnap.data();
+  if (!userData || !itemData) {
+    throw new HttpsError("not-found", "Bucket list item not found.");
+  }
+  return { userData, itemData, petData: petSnap.data() };
+}
+
+/**
+ * Subtracts exactly what [completeBucketListItem] paid -- the stored
+ * `awardedXp`/`awardedCoins`, never the item's current (possibly
+ * since-edited) `xpReward`/`coinReward`, mirroring `unclaimHabit` -- and
+ * re-syncs `pet.stage`. Shared by uncomplete and delete so the two can't
+ * drift. Caller must have checked `isCompleted === true`.
+ */
+function reverseBucketListReward(
+  tx: Transaction,
+  refs: { userRef: DocumentReference; petRef: DocumentReference },
+  userData: DocumentData,
+  itemData: DocumentData,
+  petData: DocumentData | undefined,
+) {
+  const xpToReverse = asNumber(itemData.awardedXp, 0);
+  const coinsToReverse = asNumber(itemData.awardedCoins, 0);
+
+  const nextLevelState = applyXpDelta(readLevelState(userData), -xpToReverse);
+  const newCoins = Math.max(0, asNumber(userData.coins, 0) - coinsToReverse);
+
+  tx.update(refs.userRef, { ...levelFields(nextLevelState), coins: newCoins });
+  syncPetStage(tx, refs.petRef, petData, nextLevelState.level);
+
+  return { xpDelta: -xpToReverse, coinsDelta: -coinsToReverse };
+}
+
+/**
+ * Reverses [completeBucketListItem] exactly (see
+ * [reverseBucketListReward]). No-op if not currently completed.
+ */
+export const uncompleteBucketListItem = onCall(async (request) => {
+  const { uid, itemId } = requireBucketListCall(request);
+  const refs = bucketListRefs(uid, itemId);
 
   return db.runTransaction(async (tx) => {
-    const [userSnap, itemSnap] = await Promise.all([
-      tx.get(userRef),
-      tx.get(itemRef),
-    ]);
-    const userData = userSnap.data();
-    const itemData = itemSnap.data();
-    if (!userData || !itemData) {
-      throw new HttpsError("not-found", "Bucket list item not found.");
-    }
+    const { userData, itemData, petData } = await readBucketListDocs(
+      tx, refs.userRef, refs.itemRef, refs.petRef
+    );
 
     if (itemData.isCompleted !== true) {
       return { xpDelta: 0, coinsDelta: 0 };
     }
 
-    const xpToReverse = asNumber(itemData.awardedXp, 0);
-    const coinsToReverse = asNumber(itemData.awardedCoins, 0);
-
-    const nextLevelState = applyXpDelta(readLevelState(userData), -xpToReverse);
-    const newCoins = Math.max(0, asNumber(userData.coins, 0) - coinsToReverse);
-
-    tx.update(itemRef, {
+    tx.update(refs.itemRef, {
       isCompleted: false,
       completedAt: null,
       awardedXp: 0,
       awardedCoins: 0,
     });
-    tx.update(userRef, { ...levelFields(nextLevelState), coins: newCoins });
+    return reverseBucketListReward(tx, refs, userData, itemData, petData);
+  });
+});
 
-    return { xpDelta: -xpToReverse, coinsDelta: -coinsToReverse };
+/**
+ * Deletes a bucket list item, first taking back its reward if it was
+ * completed -- in one transaction, so deleting can't be used to keep a
+ * reward and free the slot. firestore.rules only lets the client delete
+ * an item directly while it's *not* completed; a completed one has to
+ * come through here.
+ */
+export const deleteBucketListItem = onCall(async (request) => {
+  const { uid, itemId } = requireBucketListCall(request);
+  const refs = bucketListRefs(uid, itemId);
+
+  return db.runTransaction(async (tx) => {
+    const { userData, itemData, petData } = await readBucketListDocs(
+      tx, refs.userRef, refs.itemRef, refs.petRef
+    );
+
+    const result = itemData.isCompleted === true
+      ? reverseBucketListReward(tx, refs, userData, itemData, petData)
+      : { xpDelta: 0, coinsDelta: 0 };
+    tx.delete(refs.itemRef);
+    return result;
   });
 });

@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
-import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/data/habit_repository.dart';
 import 'package:nori/models/calendar_day.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/models/pet.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
 import 'package:nori/screens/pet/evolution_screen.dart';
 import 'package:nori/screens/pet/level_up_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/date_labels.dart';
+import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/habit_progress_card.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_avatar.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
@@ -28,7 +30,8 @@ class CalendarScreen extends StatefulWidget {
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class _CalendarScreenState extends State<CalendarScreen>
+    with RemoteLoadState<CalendarScreen> {
   NoriUser? _user;
   CalendarMonthStats? _stats;
   late int _year;
@@ -49,7 +52,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (!oldWidget.active && widget.active) _loadData();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData() => guardedLoad(_fetchData, hasData: _stats != null);
+
+  Future<void> _fetchData() async {
     final user = await AppData.user.getCurrentUser();
     final stats = await AppData.calendar.getMonth(_year, _month);
     if (!mounted) return;
@@ -102,11 +107,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget build(BuildContext context) {
     final user = _user;
     final stats = _stats;
+    final error = loadError;
 
     return Scaffold(
       body: SafeArea(
         child: user == null || stats == null
-            ? const Center(child: CircularProgressIndicator())
+            ? error != null
+                ? LoadErrorView(error: error, onRetry: _loadData)
+                : const Center(child: CircularProgressIndicator())
             : NoriScrollScaffold(
                 maxWidth: 1200,
                 children: [
@@ -484,14 +492,17 @@ class _DayDetailSheet extends StatefulWidget {
   State<_DayDetailSheet> createState() => _DayDetailSheetState();
 }
 
-class _DayDetailSheetState extends State<_DayDetailSheet> {
+class _DayDetailSheetState extends State<_DayDetailSheet>
+    with RemoteLoadState<_DayDetailSheet> {
   List<Habit>? _habits;
 
   @override
   void initState() {
     super.initState();
-    _reload();
+    _load();
   }
+
+  Future<void> _load() => guardedLoad(_reload, hasData: _habits != null);
 
   Future<void> _reload() async {
     final habits = await AppData.habits.getHabitsForDate(widget.date);
@@ -499,98 +510,97 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
     setState(() => _habits = habits);
   }
 
-  /// The claimHabit/unclaimHabit Cloud Function already applied this
-  /// server-side — [reward]'s own flags say whether to celebrate, so there's
-  /// no need to hold user/pet state here just to diff before vs. after.
-  Future<void> _applyReward(HabitRewardResult reward) async {
-    if (!mounted || !(reward.leveledUp || reward.evolved)) return;
-    final pet = await AppData.pet.getPet();
-    if (!mounted) return;
-    if (reward.evolved) {
-      await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
-    } else {
-      final user = await AppData.user.getCurrentUser();
-      if (!mounted) return;
-      await showLevelUpCelebration(context, level: user.level, petName: pet.name);
-    }
-  }
-
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Future<void> _toggleBinary(Habit habit, bool completed) async {
-    try {
-      final reward = await AppData.habits.setHabitCompletedForDate(
-        habit.id,
-        widget.date,
-        completed,
-      );
-      await _applyReward(reward);
+  /// Runs one claim-style call (optionally followed by [then]). The
+  /// claimHabit/unclaimHabit Cloud Function already applied the reward
+  /// server-side — its own flags say whether to celebrate, so there's no
+  /// need to hold user/pet state here just to diff before vs. after. The
+  /// celebration runs after the guarded block on purpose: it awaits a
+  /// dialog the user may leave open past [remoteTimeout].
+  Future<void> _runClaim(
+    Future<HabitRewardResult> Function() claim, {
+    Future<void> Function()? then,
+  }) async {
+    HabitRewardResult? reward;
+    Pet? pet;
+    NoriUser? user;
+    final ok = await guardedAction(() async {
+      final result = reward = await claim();
+      if (result.leveledUp || result.evolved) {
+        pet = await AppData.pet.getPet();
+        user = await AppData.user.getCurrentUser();
+      }
+      if (then != null) await then();
       await _reload();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
+    });
+    final result = reward;
+    final celebratedPet = pet;
+    final celebratedUser = user;
+    if (!ok ||
+        !mounted ||
+        result == null ||
+        celebratedPet == null ||
+        celebratedUser == null) {
+      return;
+    }
+    if (result.evolved) {
+      await showEvolutionCelebration(
+        context,
+        petName: celebratedPet.name,
+        stage: celebratedPet.stage,
+      );
+    } else if (result.leveledUp) {
+      await showLevelUpCelebration(
+        context,
+        level: celebratedUser.level,
+        petName: celebratedPet.name,
+      );
     }
   }
+
+  Future<void> _toggleBinary(Habit habit, bool completed) => _runClaim(
+    () => AppData.habits.setHabitCompletedForDate(
+      habit.id,
+      widget.date,
+      completed,
+    ),
+  );
 
   Future<void> _logProgress(Habit habit, double amount) async {
-    await AppData.habits.logProgressForDate(habit.id, widget.date, amount);
-    await _reload();
+    await guardedAction(() async {
+      await AppData.habits.logProgressForDate(habit.id, widget.date, amount);
+      await _reload();
+    });
   }
 
-  Future<void> _claim(Habit habit) async {
-    try {
-      final reward = await AppData.habits.claimHabitForDate(
-        habit.id,
-        widget.date,
-      );
-      await _applyReward(reward);
-      await _reload();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
-  }
+  Future<void> _claim(Habit habit) => _runClaim(
+    () => AppData.habits.claimHabitForDate(habit.id, widget.date),
+  );
 
-  Future<void> _unclaim(Habit habit) async {
-    try {
-      final reward = await AppData.habits.unclaimHabitForDate(
-        habit.id,
-        widget.date,
-      );
-      await _applyReward(reward);
-      await _reload();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
-  }
+  Future<void> _unclaim(Habit habit) => _runClaim(
+    () => AppData.habits.unclaimHabitForDate(habit.id, widget.date),
+  );
 
   Future<void> _editProgress(Habit habit, double value) async {
-    try {
-      if (habit.isCompletedToday) {
-        final reward = await AppData.habits.unclaimHabitForDate(
-          habit.id,
-          widget.date,
-        );
-        await _applyReward(reward);
-      }
-      await AppData.habits.setProgressForDate(habit.id, widget.date, value);
-      await _reload();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
+    Future<void> setValue() =>
+        AppData.habits.setProgressForDate(habit.id, widget.date, value);
+    if (habit.isCompletedToday) {
+      await _runClaim(
+        () => AppData.habits.unclaimHabitForDate(habit.id, widget.date),
+        then: setValue,
+      );
+      return;
     }
+    await guardedAction(() async {
+      await setValue();
+      await _reload();
+    });
   }
 
   Future<void> _editHabitDefinition(Habit habit) async {
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => AddHabitScreen(habit: habit)),
     );
-    await _reload();
+    await _load();
   }
 
   String get _title {
@@ -601,6 +611,7 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
   @override
   Widget build(BuildContext context) {
     final habits = _habits;
+    final error = loadError;
     return DraggableScrollableSheet(
       initialChildSize: 0.62,
       minChildSize: 0.35,
@@ -624,7 +635,9 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
             AppSpacing.gutter,
           ),
           child: habits == null
-              ? const Center(child: CircularProgressIndicator())
+              ? error != null
+                    ? LoadErrorView(error: error, onRetry: _load)
+                    : const Center(child: CircularProgressIndicator())
               : ListView(
                   controller: scrollController,
                   children: [
