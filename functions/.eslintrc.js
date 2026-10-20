@@ -10,7 +10,7 @@ module.exports = {
     project: ["tsconfig.json"],
     sourceType: "module",
   },
-  ignorePatterns: ["lib/**/*", ".eslintrc.js"],
+  ignorePatterns: ["lib/**/*", ".eslintrc.js", "server.js"],
   plugins: ["@typescript-eslint"],
   rules: {
     quotes: ["error", "double"],
