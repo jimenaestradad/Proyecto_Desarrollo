@@ -65,7 +65,10 @@ class NoriAvatar extends StatelessWidget {
         ),
       );
     } else {
-      child = Image.asset('assets/images/default_avatar.png', fit: BoxFit.cover);
+      child = Image.asset(
+        'assets/images/default_avatar.png',
+        fit: BoxFit.cover,
+      );
     }
 
     return Container(

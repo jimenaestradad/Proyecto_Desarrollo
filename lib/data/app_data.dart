@@ -5,13 +5,17 @@ import 'bucket_list_repository.dart';
 import 'calendar_repository.dart';
 import 'firestore_bucket_list_repository.dart';
 import 'firestore_inventory_repository.dart';
+import 'firestore_notification_repository.dart';
 import 'firestore_pet_repository.dart';
 import 'firestore_user_repository.dart';
 import 'habit_category_repository.dart';
 import 'habit_repository.dart';
 import 'inventory_repository.dart';
+import 'mock_social_repository.dart';
+import 'social_account.dart';
 import 'notification_repository.dart';
 import 'pet_repository.dart';
+import 'social_repository.dart';
 import 'user_repository.dart';
 import 'username_repository.dart';
 import 'vacation_log.dart';
@@ -45,7 +49,19 @@ class AppData {
       MockHabitCategoryRepository();
   static BucketListRepository bucketList = MockBucketListRepository();
   static NotificationRepository notifications = MockNotificationRepository();
-  static PetRepository pet = MockPetRepository();
+
+  /// Social tab data — frontend-only, in-memory (docs/BACKEND.md lists social
+  /// as a non-goal). Friends/posts/competitions are seed data; "you" is the
+  /// signed-in account (see [LiveSocialAccount]). Not rebuilt in
+  /// [bindToUser]/[unbindUser] — just told the account changed.
+  static SocialRepository social = MockSocialRepository(
+    account: LiveSocialAccount(
+      user: () => user,
+      pet: () => pet,
+      habits: () => habits,
+    ),
+  );
+  static PetRepository pet = MockPetRepository(inventory);
   static InventoryRepository inventory = MockInventoryRepository();
   static AchievementRepository achievements = MockAchievementRepository(
     habits,
@@ -53,6 +69,7 @@ class AppData {
     bucketList,
     pet,
     inventory,
+    social,
   );
 
   /// Points the per-account repositories at [uid]'s real Firestore data.
@@ -76,7 +93,7 @@ class AppData {
   /// achievement_repository.dart), so swapping those without also
   /// rebuilding [achievements] would leave it silently reading the old
   /// Mock instances. This depends on 'onUserCreate' (the Auth-trigger
-  /// Cloud Function in functions/src/index.ts) having run for [uid] —
+  /// Cloud Function in functions/src/onUserCreate.ts) having run for [uid] —
   /// that's what creates the '/users/{uid}' doc (and its pet/inventory
   /// subdocs) these repositories read; a signed-up account whose
   /// onUserCreate call failed or hasn't landed yet will hit each
@@ -97,7 +114,14 @@ class AppData {
       bucketList,
       pet,
       inventory,
+      social,
     );
+    notifications = FirestoreNotificationRepository(
+      uid: uid,
+      user: user,
+      achievements: achievements,
+    );
+    social.accountChanged();
   }
 
   /// Reverses [bindToUser] on sign-out, so a second account signing in on
@@ -106,8 +130,8 @@ class AppData {
   static void unbindUser() {
     user = MockUserRepository(calendar, vacationLog);
     habitCategories = MockHabitCategoryRepository();
-    pet = MockPetRepository();
     inventory = MockInventoryRepository();
+    pet = MockPetRepository(inventory);
     bucketList = MockBucketListRepository();
     achievements = MockAchievementRepository(
       habits,
@@ -115,6 +139,9 @@ class AppData {
       bucketList,
       pet,
       inventory,
+      social,
     );
+    notifications = MockNotificationRepository();
+    social.accountChanged();
   }
 }

@@ -14,7 +14,12 @@ abstract class HabitCategoryRepository {
 }
 
 class MockHabitCategoryRepository implements HabitCategoryRepository {
-  final List<String> _categories = ['Health', 'Fitness', 'Learning', 'Mindfulness'];
+  final List<String> _categories = [
+    'Health',
+    'Fitness',
+    'Learning',
+    'Mindfulness',
+  ];
 
   @override
   Future<List<String>> getCategories() async => List.unmodifiable(_categories);
@@ -100,7 +105,8 @@ class FirestoreHabitCategoryRepository implements HabitCategoryRepository {
     await _firestore.runTransaction((transaction) async {
       final snapshot = await transaction.get(_doc);
       final categories = List<String>.from(
-        (snapshot.data()?['habitCategories'] as List<dynamic>?)?.cast<String>() ??
+        (snapshot.data()?['habitCategories'] as List<dynamic>?)
+                ?.cast<String>() ??
             const <String>[],
       );
       final index = categories.indexOf(oldName);

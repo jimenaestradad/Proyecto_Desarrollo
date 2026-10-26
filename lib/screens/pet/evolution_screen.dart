@@ -19,7 +19,11 @@ import 'package:nori/widgets/tactile_button.dart';
 /// Push with [showEvolutionCelebration] rather than a bare
 /// `Navigator.push`, so every call site gets the same fade+scale entrance.
 class EvolutionScreen extends StatefulWidget {
-  const EvolutionScreen({super.key, required this.petName, required this.stage});
+  const EvolutionScreen({
+    super.key,
+    required this.petName,
+    required this.stage,
+  });
 
   final String petName;
   final PetEvolutionStage stage;

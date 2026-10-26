@@ -11,11 +11,15 @@ export function requireAuth(uid: string | undefined): string {
 }
 
 // A "/" would let the id address a different document path.
-export function parseHabitId(value: unknown): string {
+export function parseDocId(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0 || value.length > 200 || value.includes("/")) {
-    throw new HttpsError("invalid-argument", "habitId must be a non-empty document id.");
+    throw new HttpsError("invalid-argument", `${field} must be a non-empty document id.`);
   }
   return value;
+}
+
+export function parseHabitId(value: unknown): string {
+  return parseDocId(value, "habitId");
 }
 
 export interface DayArgs {

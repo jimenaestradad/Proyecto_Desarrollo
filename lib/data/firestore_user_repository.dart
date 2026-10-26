@@ -17,7 +17,7 @@ import 'vacation_log.dart';
 /// Wired into [AppData] via `AppData.bindToUser`, called right after
 /// sign-up/login/auto-login succeeds (see login_screen.dart,
 /// sign_up_screen.dart, main.dart). This still depends on `onUserCreate`
-/// (the Auth-trigger Cloud Function in functions/src/index.ts) being
+/// (the Auth-trigger Cloud Function in functions/src/onUserCreate.ts) being
 /// deployed to the `nori-pet` Firebase project -- that's what actually
 /// creates the `/users/{uid}` document, and it has to be a Cloud Function
 /// specifically: the deployed security rules only grant `read`/`update` on

@@ -104,10 +104,7 @@ class _EmailVerificationBannerState extends State<EmailVerificationBanner> {
           ),
           child: Row(
             children: [
-              const Icon(
-                Icons.mark_email_unread,
-                color: AppColors.mustardDark,
-              ),
+              const Icon(Icons.mark_email_unread, color: AppColors.mustardDark),
               const SizedBox(width: AppSpacing.unit),
               Expanded(
                 child: Text(

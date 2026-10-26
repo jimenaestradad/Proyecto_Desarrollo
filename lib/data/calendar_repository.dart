@@ -42,7 +42,8 @@ class MockCalendarRepository implements CalendarRepository {
     final today = dateOnly(DateTime.now());
     final daysInMonth = DateTime(year, month + 1, 0).day;
     // Monday-first grid padding, matching the Mon..Sun header.
-    final leadingEmpty = (DateTime(year, month, 1).weekday - DateTime.monday) % 7;
+    final leadingEmpty =
+        (DateTime(year, month, 1).weekday - DateTime.monday) % 7;
 
     final statusByDay = <int, CalendarDayStatus>{};
     var perfectDays = 0;
@@ -206,7 +207,8 @@ class FirestoreCalendarRepository implements CalendarRepository {
   Future<CalendarMonthStats> getMonth(int year, int month) async {
     final today = dateOnly(DateTime.now());
     final daysInMonth = DateTime(year, month + 1, 0).day;
-    final leadingEmpty = (DateTime(year, month, 1).weekday - DateTime.monday) % 7;
+    final leadingEmpty =
+        (DateTime(year, month, 1).weekday - DateTime.monday) % 7;
 
     // Two queries total for the whole month — not one per day.
     final definitions = await _habits.fetchAllDefinitions();
@@ -281,7 +283,9 @@ class FirestoreCalendarRepository implements CalendarRepository {
     final key = dayKey(day);
     return [
       for (final definition in scheduled)
-        definition.hydrate(logs['${key}_${definition.id}'] ?? HabitDayState.empty),
+        definition.hydrate(
+          logs['${key}_${definition.id}'] ?? HabitDayState.empty,
+        ),
     ];
   }
 

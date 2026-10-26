@@ -121,7 +121,8 @@ class _ArchivedHabitsScreenState extends State<ArchivedHabitsScreen>
                   _ArchivedHabitCard(
                     habit: habit,
                     canDelete:
-                        (_activeDays[habit.id] ?? kMaxDeletableActiveDays + 1) <=
+                        (_activeDays[habit.id] ??
+                            kMaxDeletableActiveDays + 1) <=
                         kMaxDeletableActiveDays,
                     busy: _busy,
                     onRestore: () => _restore(habit),

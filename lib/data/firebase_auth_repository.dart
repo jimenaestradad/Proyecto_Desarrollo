@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../models/nori_user.dart';
 import 'auth_repository.dart';
+import 'cloud_functions_client.dart';
 import 'username_repository.dart';
 
 /// Real Firebase Authentication-backed [AuthRepository]: email/password and
@@ -23,11 +24,15 @@ class FirebaseAuthRepository implements AuthRepository {
     GoogleSignIn? googleSignIn,
     UsernameRepository? usernames,
   }) : _auth = auth ?? FirebaseAuth.instance,
-       _googleSignIn = googleSignIn ?? GoogleSignIn(),
+       // Web signs in with Google through Firebase's own popup (see
+       // _signInWithGoogle), so the plugin is never needed there -- and
+       // just constructing it on web kicks off an init that fails without
+       // a web client ID, logging a red assertion on every launch.
+       _googleSignIn = googleSignIn ?? (kIsWeb ? null : GoogleSignIn()),
        _usernames = usernames ?? FirestoreUsernameRepository();
 
   final FirebaseAuth _auth;
-  final GoogleSignIn _googleSignIn;
+  final GoogleSignIn? _googleSignIn;
   final UsernameRepository _usernames;
 
   @override
@@ -116,9 +121,8 @@ class FirebaseAuthRepository implements AuthRepository {
         email: email,
         password: password,
       );
-      final linkedCredential = await passwordCredential.user!.linkWithCredential(
-        pendingCredential,
-      );
+      final linkedCredential = await passwordCredential.user!
+          .linkWithCredential(pendingCredential);
       return _resultFor(linkedCredential);
     } on FirebaseAuthException catch (e) {
       throw AuthException(_logInMessage(e.code));
@@ -155,7 +159,7 @@ class FirebaseAuthRepository implements AuthRepository {
       // re-authenticates the last-used account without prompting. This
       // only clears the local selection, it doesn't revoke access, so
       // re-picking the same account below won't ask for consent again.
-      await _googleSignIn.signOut();
+      await _googleSignIn!.signOut();
       final googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         // Person closed the account picker — not a real error, just no
@@ -217,7 +221,7 @@ class FirebaseAuthRepository implements AuthRepository {
     // needed) -- and since nothing caught that, it silently broke this
     // entire method, logout included. Only exercise it on the platforms
     // that actually use it (see the native branch of _signInWithGoogle).
-    if (!kIsWeb && await _googleSignIn.isSignedIn()) {
+    if (!kIsWeb && await _googleSignIn!.isSignedIn()) {
       await _googleSignIn.signOut();
     }
     await _auth.signOut();
@@ -355,9 +359,7 @@ class FirebaseAuthRepository implements AuthRepository {
     }
     final email = user.email;
     if (email == null || email.isEmpty) {
-      throw const AuthException(
-        "Your account doesn't have an email on file.",
-      );
+      throw const AuthException("Your account doesn't have an email on file.");
     }
     try {
       await user.linkWithCredential(
@@ -383,5 +385,65 @@ class FirebaseAuthRepository implements AuthRepository {
       default:
         return 'Unable to set a password. Please try again.';
     }
+  }
+
+  @override
+  String? get currentEmail => _auth.currentUser?.email;
+
+  @override
+  Future<void> changeEmail({
+    required String newEmail,
+    required String password,
+  }) async {
+    final user = _auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null || email.isEmpty) {
+      throw const AuthException('You need to be signed in to do that.');
+    }
+    try {
+      // Re-checking the password up front avoids Firebase's
+      // requires-recent-login rejection, which an email change almost
+      // always hits on a session restored from a previous launch.
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: password),
+      );
+      await user.verifyBeforeUpdateEmail(newEmail);
+    } on FirebaseAuthException catch (e) {
+      throw AuthException(_changeEmailMessage(e.code));
+    }
+  }
+
+  String _changeEmailMessage(String code) {
+    switch (code) {
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Incorrect password. Try again.';
+      case 'invalid-email':
+        return 'That email address looks invalid.';
+      case 'email-already-in-use':
+        return 'That email already has an account.';
+      case 'too-many-requests':
+        return 'Too many attempts — please wait a moment and try again.';
+      case 'network-request-failed':
+        return 'No internet connection. Please try again.';
+      default:
+        return 'Unable to change your email. Please try again.';
+    }
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    try {
+      // Generous timeout: it deletes every doc the account owns.
+      await callCloudFunction(
+        'deleteAccount',
+        const {},
+        timeout: const Duration(seconds: 60),
+      );
+    } on CloudFunctionFailure catch (e) {
+      throw AuthException(e.message);
+    }
+    // The Auth user is gone server-side; this just clears the local session.
+    await logOut();
   }
 }

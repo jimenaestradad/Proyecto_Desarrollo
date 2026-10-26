@@ -167,10 +167,12 @@ class Habit {
 
   final bool allowVacationFreeze;
 
-  /// What today's completion actually paid out, so un-claiming can reverse
-  /// the reward exactly instead of recomputing it against since-changed state.
+  /// What today's first claim paid out. Kept after an unclaim, since each
+  /// day pays once (docs/BACKEND.md, unclaimHabit) — a re-claim pays nothing.
   final int lastAwardedXp;
   final int lastAwardedCoins;
+
+  bool get rewardPaid => lastAwardedXp > 0 || lastAwardedCoins > 0;
 
   /// Optional habit lifespan (the "Set End Date" control). Outside this
   /// window a habit acts archived (FEATURES.md §2) — see [isActiveOn] — by
@@ -436,7 +438,11 @@ class Habit {
     color: ColorRegistry.colorFor(json['colorKey'] as String),
     xpReward: json['xpReward'] as int,
     coinReward: json['coinReward'] as int,
-    repeat: _enumFromName(HabitRepeat.values, json['repeat'], HabitRepeat.daily),
+    repeat: _enumFromName(
+      HabitRepeat.values,
+      json['repeat'],
+      HabitRepeat.daily,
+    ),
     type: _enumFromName(HabitType.values, json['type'], HabitType.binary),
     difficulty: _enumFromName(
       HabitDifficulty.values,

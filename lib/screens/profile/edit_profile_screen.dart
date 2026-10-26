@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/auth_repository.dart';
 import 'package:nori/data/username_repository.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/theme/app_theme.dart';
@@ -32,11 +33,32 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   late final _usernameController = TextEditingController(
     text: widget.user.username,
   );
-  late final _emailController = TextEditingController(
-    text: widget.user.email,
-  );
+  // The login email, not the profile doc's copy -- they differ once a
+  // requested email change has been confirmed from the inbox.
+  late final String _loginEmail =
+      AppData.auth.currentEmail ?? widget.user.email;
+  late final _emailController = TextEditingController(text: _loginEmail);
 
   bool _saving = false;
+
+  /// Null while loading. A Google-only account's email belongs to Google,
+  /// so the field is read-only for it.
+  bool? _hasPasswordProvider;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPasswordProvider();
+  }
+
+  Future<void> _loadPasswordProvider() async {
+    try {
+      final hasPassword = await AppData.auth.hasPasswordProvider();
+      if (mounted) setState(() => _hasPasswordProvider = hasPassword);
+    } catch (_) {
+      // Leaves the field read-only; changing the email is the rare case.
+    }
+  }
 
   @override
   void dispose() {
@@ -71,7 +93,31 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       return;
     }
 
+    final emailChanged = email.toLowerCase() != _loginEmail.toLowerCase();
+    String? password;
+    if (emailChanged) {
+      password = await _promptForPassword();
+      if (password == null || password.isEmpty || !mounted) return;
+    }
+
     setState(() => _saving = true);
+
+    // First, since a wrong password should stop the whole save.
+    if (password != null) {
+      try {
+        await AppData.auth.changeEmail(newEmail: email, password: password);
+      } on AuthException catch (e) {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        _showMessage(e.message);
+        return;
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        _showMessage('Unable to change your email. Please try again.');
+        return;
+      }
+    }
 
     // Only touch the /usernames uniqueness index when the username
     // actually changed -- changeUsername is a no-op for that case anyway,
@@ -90,9 +136,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       } on UsernameTakenException {
         if (!mounted) return;
         setState(() => _saving = false);
-        _showMessage(
-          'That username is already taken — please choose another.',
-        );
+        _showMessage('That username is already taken — please choose another.');
         return;
       } catch (_) {
         if (!mounted) return;
@@ -103,10 +147,12 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     }
 
     final ok = await guardedAction(
+      // The profile keeps the login email; a new one is written here on
+      // the first save after it's confirmed.
       () => AppData.user.updateProfile(
         name: name,
         username: username,
-        email: email,
+        email: _loginEmail,
       ),
     );
     if (!mounted) return;
@@ -114,7 +160,54 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       setState(() => _saving = false);
       return;
     }
+    if (emailChanged) {
+      _showMessage(
+        'We sent a link to $email. Your login email changes once you open it.',
+      );
+    }
     Navigator.pop(context, true);
+  }
+
+  Future<String?> _promptForPassword() async {
+    final controller = TextEditingController();
+    final password = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+        ),
+        title: const Text('Confirm Your Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Enter your current password to change your email.'),
+            const SizedBox(height: AppSpacing.gutter),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              obscureText: true,
+              decoration: const InputDecoration(hintText: 'Current password'),
+              onSubmitted: (value) => Navigator.pop(dialogContext, value),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return password;
   }
 
   @override
@@ -189,6 +282,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.done,
                     autofillHints: const [AutofillHints.email],
+                    readOnly: _hasPasswordProvider != true,
+                    helperText: _hasPasswordProvider == false
+                        ? 'Managed by your Google account.'
+                        : null,
                     onSubmitted: (_) => _save(),
                   ),
                 ],

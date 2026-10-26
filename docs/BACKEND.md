@@ -64,7 +64,7 @@ while closing the one real cheat vector (a client overwriting its own XP/coins f
 | `logProgress` / `setProgress` (non-claiming) | Direct client write | Data | FEATURES.md §3: logging progress alone never earns XP |
 | `claimHabit` / `unclaimHabit` (today or a past date) | **Cloud Function (callable)** | Backend | Mints/burns XP + coins, must update habit + user + pet atomically |
 | Feed / groom / play (+ stat decay) | Direct client write (client-side transaction) | Data | Spends an already-owned consumable for a pet stat, not currency; pet "cannot die" so stakes are low |
-| `consumeCareItem` as part of feed/groom/play | Direct client write, same transaction as above | Data | Same reasoning |
+| Spending the care item | Direct client write, same transaction as above (`PetRepository.useCareItem` reads and writes `pet/main` + `inventory/main` together since 2026-10-06; they were two transactions before) | Data | Same reasoning |
 | Buying a care item or accessory from the shop | **Cloud Function (callable)** | Backend | Spends coins to mint an owned item — currency-affecting |
 | Equip/unequip an already-owned accessory | Direct client write | Data | No currency involved |
 | Profile edit, vacation mode toggle | Direct client write | Data | No currency involved |
@@ -208,8 +208,11 @@ a stored copy already went stale once (see the comment in `user_repository.dart`
 filling the gaps in passing means the eventual real answer has to be un-picked from the code.
 OPEN_DECISIONS.md tracks what's genuinely unresolved. The level curve is the one that *has* been
 settled — see below.
-- `adaptiveMultiplier` is a **static stored field clamped 0.5–1.5**, not an algorithm. Adaptive
-  XP isn't built yet and isn't part of this round.
+- `adaptiveMultiplier` is **computed by `claimHabit` on every claim** since 2026-10-06
+  (`functions/src/adaptiveXp.ts`) from the habit's last 14 days, within per-difficulty caps, and
+  stored on the habit doc only so the app can preview the next reward. The client never writes
+  it (`FirestoreHabitRepository._definitionFields` leaves it out). Rule and numbers:
+  OPEN_DECISIONS.md "XP balancing".
 - Claims pay `full` (1.0×) or `none` — no partial tier since 2026-09-28: the minimum threshold
   keeps streaks but pays nothing (FEATURES.md §3). The Dart mock's `HabitRewardTier.min` (0.75×)
   is a leftover, see KNOWN_ISSUES.md.
@@ -223,10 +226,36 @@ Only the Cloud Function needs this formula. It writes `level`, `xpIntoLevel` and
 `xpForNextLevel` to the user doc, and the client just displays the stored values — so the curve
 lives in exactly one place and the two languages can't drift apart. Don't reimplement it in Dart.
 
-**Notifications aren't in scope yet.** `notification_repository.dart` is hardcoded demo data,
-and whether notifications exist at all is still an open product question in OPEN_DECISIONS.md —
-so `MockNotificationRepository` stays wired in `app_data.dart` for now. A half-built
-notifications collection would be worse than none until that question is answered.
+**In-app notifications (2026-10-21).** In-app only, no push. The feed lives at
+`/users/{uid}/notifications/{id}` (`kind`, `message`, `createdAt`, `isRead`), and
+`/users/{uid}/notificationState/main` records what has already been notified so nothing repeats.
+Whoever can see the event writes the notification, in the same transaction as the event when there
+is one:
+
+| Kind | Written by | When |
+|---|---|---|
+| `levelUp`, `petEvolved`, `gift` | `claimHabit`, `completeBucketListItem` (`functions/src/notifications.ts`) | The reward crosses a level, evolves the pet, or grants the first-completion gift |
+| `petCare` | `petCareCheck`, a scheduled function that runs every hour | A pet vital (after lazy decay) is below 30, at most once per 24h |
+| `achievement`, `streak` | The app (`FirestoreNotificationRepository`), when Notifications opens | A new unlocked achievement, or the streak reaches 3/7/14/30/60/100/180/365 |
+
+Things to know:
+- **Streaks and achievements stay on the client** because only the client computes them today
+  (the streak is derived and never stored; achievements come from `MockAchievementRepository`).
+  Moving them means porting those calculations to the server first. Until then they appear
+  when Notifications is opened, timestamped then, and the rules only let the client create those
+  two kinds.
+- **No duplicates.** Level and evolution ratchet in `notificationState` (server-only fields
+  `level`, `petEvolved`, `petCareAt`), so unclaiming and re-claiming doesn't repeat them.
+  Achievements ratchet too. The streak milestone resets when the streak breaks, but not on the
+  same day. The client's first sync only records a baseline, so an existing account isn't
+  flooded.
+- **Unread dot.** The bell on Habits listens to a `limit(1)` unread query, so server-written
+  notifications show up live.
+- **Icon, label and color come from `kind`** on the client, so restyling doesn't need a
+  migration.
+- **Cost.** `petCareCheck` reads every pet once an hour (24 reads per user per day), which is
+  fine at this scale. `PET_DECAY_PER_HOUR` in `notifications.ts` must match
+  `FirestorePetRepository._decayPerHour`.
 
 **Mocks stay until their replacement works.** Swap one repository at a time in `app_data.dart`
 (that's the only file that decides mock vs. real). Don't delete the `Mock*` classes — they're
@@ -318,7 +347,7 @@ currency, so it needs no Cloud Function). If the user skips onboarding, the name
   default from this decision, so change it in both `habit_repository.dart` and
   `functions/src/deleteHabit.ts` if it's wrong. Delete goes through the `deleteHabit` Cloud
   Function: it removes the habit and all its logs and takes back whatever those claims paid
-  (exact stored amounts, coins clamped at 0, `pet.stage` re-synced, the sunglasses gift kept),
+  (exact stored amounts, including days later unclaimed, rejected if those coins were already spent, `pet.stage` re-synced, the sunglasses gift kept),
   all in one transaction. The client can never delete a habit doc directly.
 - **Hard delete of a habit with real history is deferred**: whether its earned XP/coins
   should stay or be taken back is undecided. See OPEN_DECISIONS.md.
@@ -381,8 +410,10 @@ currency, so it needs no Cloud Function). If the user skips onboarding, the name
    - **Base XP/coins come from `difficulty`, not the habit doc's `xpReward`/`coinReward`.**
      `firestore.rules` lets clients edit those two fields, so trusting them would let anyone
      mint arbitrary XP. The add-habit screen already writes exactly `difficulty.baseXp`/
-     `baseCoins`, so real habits see no change. `adaptiveMultiplier` is clamped 0.5–1.5
-     server-side for the same reason.
+     `baseCoins`, so real habits see no change. The stored `adaptiveMultiplier` is ignored
+     for the same reason: since 2026-10-06 `claimHabit` recomputes it from the last 14 days'
+     logs (read with `getAll` on their known doc ids, so no index is needed) and writes the new
+     value back in the same transaction.
    - **Level math uses `applyXpDelta` from `functions/src/xpCurve.ts`** — the single shared
      curve implementation, also used by the bucket-list functions (merged 2026-09-28; an
      earlier separate `levelStateForTotalXp` was removed so the curve lives in one place).
@@ -398,8 +429,14 @@ currency, so it needs no Cloud Function). If the user skips onboarding, the name
    (`functions/src/unclaimHabit.ts`; shared refs/result type/pet sync in
    `functions/src/habitTransaction.ts`). Keeps the log's `value` (so progress stays editable),
    demotes the pet if the level drops below its threshold, never revokes the sunglasses gift.
-   Not claimed → no-op. Coins clamp at 0 like the mock, so `coinsDelta` reports what was
-   *actually* removed — see docs/KNOWN_ISSUES.md for the spend-then-unclaim exploit that allows.
+   Not claimed → no-op. **Pay once per day (2026-10-26):** unclaim no longer reverses
+   anything. It only sets `claimed: false` and keeps `awardedXp`/`awardedCoins` on the log, and
+   `claimHabit` pays nothing for a log that already paid (`rewardPaid` in
+   `habitTransaction.ts`). This replaced exact reversal clamped at 0, which let claim → spend →
+   unclaim → re-claim mint coins. Bucket-list complete/uncomplete follow the same rule. Deletes
+   (`deleteHabit`, `deleteBucketListItem`) still reverse every stored payout, and are rejected
+   if those coins were already spent (`coinsAfterReversal`), so create → claim → delete can't
+   mint either.
    Both functions return the same shape: `{changed, xpDelta, coinsDelta, previousLevel, level,
    previousPetStage, petStage, giftedAccessoryId}`.
 4. ~~`setHabitCompleted`~~ — **removed 2026-09-28** as a duplicate endpoint: it only dispatched
@@ -413,18 +450,29 @@ currency, so it needs no Cloud Function). If the user skips onboarding, the name
    `awardedXp`/`awardedCoins`** on the item. Syncs `pet.stage` in the same transaction, like
    `claimHabit` (added 2026-09-30: before that a bucket-list reward could cross the evolution
    level without evolving the pet, since the client can't write `stage`).
-8. `uncompleteBucketListItem(itemId)` — reverses using those stored values, never the item's
-   current `xpReward`/`coinReward`, and re-syncs `pet.stage`.
+8. `uncompleteBucketListItem(itemId)` — un-marks the item but keeps what it paid (pay once,
+   2026-10-26, see #3); completing it again pays nothing. Before that it reversed the stored
+   values.
 9. `deleteBucketListItem(itemId)` — added 2026-09-30. Deletes the item, first reversing its
-   reward (same shared reversal as #8) if it was completed, in one transaction. Before this,
-   deleting a completed item kept the reward. `firestore.rules` now only lets the client
-   delete an item directly while it isn't completed.
+   stored payout if it ever paid one (completed now or earlier), in one transaction.
+   `firestore.rules` only lets the client delete an item directly while it isn't completed and
+   has never paid (`awardedXp`/`awardedCoins` both 0).
 10. `deleteHabit(habitId)` — added 2026-09-30 (Valeria's). Deletes a habit with at most 2
    active days plus all its logs, taking back what its claims paid, in one transaction. Rejects
    anything with more history with "archive it instead". See "Deleting vs. archiving a habit".
+11. `petCareCheck` (scheduled, hourly) — added 2026-10-21 (Valeria's). Writes a "pet needs you"
+   notification when a pet's decayed vital is below 30, at most once per 24h. See "In-app
+   notifications". 2 and 7 also write level-up/evolution/gift notifications inside their
+   transactions now.
+12. `deleteAccount()` — added 2026-10-26 (Valeria's). Deletes the caller's `/usernames`
+   entries, the whole `/users/{uid}` tree (`recursiveDelete`), then the Auth user. Data goes
+   first so a failure leaves a signed-in user who can retry; every step is idempotent.
+   Settings → Delete Account, behind typing the username. Verified live 2026-10-26 on throwaway
+   accounts (Auth user and `pet/main` both gone afterwards).
 
-That's the whole server-side surface for this phase — nine functions, all callable except #1
-(#4 removed, #9 and #10 added). Functions 1, 5, 6, 7, 8, 9 are Jimena's; 2, 3, 10 are Valeria's.
+That's the whole server-side surface for this phase — eleven functions, all callable except #1
+(Auth trigger) and #11 (scheduled) (#4 removed, #9–#12 added). Functions 1, 5, 6, 7, 8, 9 are
+Jimena's; 2, 3, 10, 11, 12 are Valeria's.
 
 **Why 7 and 8 store what they paid:** bucket-list rewards are editable by the user at any time
 (the add/edit sheet has free-text XP and coin fields). Reversing an un-completion against the
@@ -646,7 +694,9 @@ confirmed via `firebase functions:list`), Blaze plan therefore active. `firestor
 deployed the same pass. **2026-10-04:** the 2026-09-30 changes deployed too — `deleteBucketListItem`
 and `deleteHabit` (9 functions live, confirmed via `firebase functions:list`), the `pet.stage` sync
 in the two other bucket-list functions, `claimHabit`'s archived-day check, and the matching
-`firestore.rules` changes (bucket-list delete, habit `archivedRanges`). Left: CI/CD básico; explicit cost-awareness check-in (still
+`firestore.rules` changes (bucket-list delete, habit `archivedRanges`). **2026-10-26:** adaptive
+XP (morning deploy), then the coin-reversal rule and the new `deleteAccount` (11 functions live,
+confirmed via `firebase deploy` output). Left: CI/CD básico; explicit cost-awareness check-in (still
 free-tier-eligible at this scale, not yet watched). Firebase Local Emulator Suite deliberately
 not used for this project (see "Local dev").
 
@@ -738,7 +788,7 @@ complete, confirm with Jimena or run it once" rather than fully proven.
 
 - [x] `FirestoreUserRepository` — profile fields + `habitCategories` + vacation toggle only;
       `addXp`/`addCoins` correctly throw (Cloud-Function-only).
-- [x] `FirestorePetRepository` — `getPet`, `feed`, `groom`, `play`; `syncEvolution` is a
+- [x] `FirestorePetRepository` — `getPet`, `useCareItem` (replaced `feed`/`groom`/`play` 2026-10-06); `syncEvolution` is a
       deliberate no-op (stage is Cloud-Function-only, set inside `claimHabit`).
 - [x] `FirestoreInventoryRepository` — `getInventory`, `consumeCareItem`, accessory/equip methods.
 - [x] `FirestoreBucketListRepository` — CRUD, payout goes through the Cloud Functions below;
@@ -765,7 +815,7 @@ complete, confirm with Jimena or run it once" rather than fully proven.
       "New-account provisioning" above exactly.
 - [x] Onboarding writes the chosen pet name to `pet/main` — `name_pet_screen.dart`.
 - [x] `purchaseCareItem` / `purchaseAccessory` Cloud Functions — deployed, validate cost ≤ coins
-      server-side against the duplicated catalog (see functions/src/index.ts's own comment on
+      server-side against the duplicated catalog (see functions/src/shop.ts's own comment on
       why prices are hand-synced rather than trusted from the client).
 
 ### Valeria — Core habit loop
@@ -805,10 +855,10 @@ complete, confirm with Jimena or run it once" rather than fully proven.
 ## Explicit non-goals this phase
 
 Matches FEATURES.md's MVP boundary — don't build backend for: friends/social, activity feed,
-leaderboards, competitions, proof uploads (all vision-only, no UI wired beyond the static
-`SocialScreen` preview). Also not this phase: push notifications/FCM (OPEN_DECISIONS.md still
-has "whether any exist at all" as unresolved — the backlog lists FCM under a later QA & Release
-epic, don't build it now), Apple Health/Fitbit/Duolingo integrations, analytics, store listing.
+leaderboards, competitions, proof uploads (the Social tab's frontend exists since 2026-10-21 but
+runs entirely on `MockSocialRepository` — see KNOWN_ISSUES.md — so there is still no backend for it). Also not this phase: push notifications/FCM (the in-app feed exists since
+2026-10-21; phone notifications are still open in OPEN_DECISIONS.md, and the backlog lists FCM
+under a later QA & Release epic), Apple Health/Fitbit/Duolingo integrations and health wearables (watch/ring — FEATURES.md §12), analytics, store listing.
 
 ## Gaps/risks found while planning this
 
@@ -818,9 +868,9 @@ epic, don't build it now), Apple Health/Fitbit/Duolingo integrations, analytics,
    day-detail sheet) no longer call `AppData.user.addXp`/`addCoins`/`AppData.pet.syncEvolution`
    after a claim — they reload and let the function's own before/after result decide whether to
    celebrate.
-2. **Notifications/FCM**: OPEN_DECISIONS.md says whether notifications exist at all is
-   undecided. Treated as out-of-scope here (see non-goals) — resolve the product question
-   before building any FCM wiring, whichever sprint it'd land in.
+2. **Notifications/FCM**: in-app feed built 2026-10-21 (see "In-app notifications"). Phone
+   notifications (local reminders or FCM push) are still undecided in OPEN_DECISIONS.md and
+   out of scope here.
 3. **~~The habit schema originally stored `currentValue`/`isCompletedToday`/`lastAwardedXp`/
    `lastAwardedCoins` on the habit doc, which didn't survive a day change~~ — found 2026-09-23,
    fixed 2026-09-24.** Habit docs are now pure definitions; that state lives in `habitLogs` for

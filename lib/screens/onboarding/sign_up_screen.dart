@@ -363,7 +363,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       ),
     );
   }
-
 }
 
 class _SignUpHeader extends StatelessWidget {
@@ -394,9 +393,7 @@ class _SignUpHeader extends StatelessWidget {
         const SizedBox(height: AppSpacing.unit),
         Text(
           'Start building better habits today.',
-          style: AppTextStyles.bodyMd.copyWith(
-            color: AppColors.inkMuted,
-          ),
+          style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
           textAlign: TextAlign.center,
         ),
       ],

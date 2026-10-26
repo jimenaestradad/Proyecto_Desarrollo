@@ -20,6 +20,7 @@ class NoriTextField extends StatelessWidget {
     this.suffixIcon,
     this.helperText,
     this.helperColor,
+    this.readOnly = false,
   });
 
   final TextEditingController controller;
@@ -47,6 +48,10 @@ class NoriTextField extends StatelessWidget {
   final String? helperText;
   final Color? helperColor;
 
+  /// Shows the value without letting it be edited (e.g. a Google account's
+  /// email, which belongs to Google).
+  final bool readOnly;
+
   @override
   Widget build(BuildContext context) {
     const border = OutlineInputBorder(
@@ -66,6 +71,7 @@ class NoriTextField extends StatelessWidget {
           const SizedBox(height: AppSpacing.unit),
           TextField(
             controller: controller,
+            readOnly: readOnly,
             obscureText: obscureText,
             enableSuggestions: !obscureText,
             autocorrect: !obscureText,
@@ -83,7 +89,7 @@ class NoriTextField extends StatelessWidget {
               prefixIcon: Icon(icon, color: AppColors.ink),
               suffixIcon: suffixIcon,
               filled: true,
-              fillColor: AppColors.linenAlt,
+              fillColor: readOnly ? AppColors.linen : AppColors.linenAlt,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.gutter,
                 vertical: AppSpacing.stackSm,

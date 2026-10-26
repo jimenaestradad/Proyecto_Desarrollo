@@ -68,10 +68,7 @@ class NoriRoomStage extends StatelessWidget {
             // so both are shifted up to match (see the rug band's own
             // pixel fraction if retuning again after a future background
             // swap).
-            Align(
-              alignment: const Alignment(0, 0.44),
-              child: _ContactShadow(),
-            ),
+            Align(alignment: const Alignment(0, 0.44), child: _ContactShadow()),
             Align(
               alignment: const Alignment(0, 0.28),
               child: FractionallySizedBox(

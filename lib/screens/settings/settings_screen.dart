@@ -77,9 +77,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Add a password so you can also log in without Google.',
-            ),
+            const Text('Add a password so you can also log in without Google.'),
             const SizedBox(height: AppSpacing.gutter),
             TextField(
               controller: passwordController,
@@ -131,6 +129,85 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (!mounted) return;
       _showMessage('Unable to set a password. Please try again.');
     }
+  }
+
+  /// Asks for the username typed back before deleting -- deletion is
+  /// permanent and wipes habits, pet and coins, so a single tap shouldn't
+  /// be able to do it.
+  Future<void> _deleteAccount() async {
+    final user = _user;
+    if (user == null) return;
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+        ),
+        title: const Text('Delete Account?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This permanently deletes your account, habits, history, pet, '
+              'coins and items. It can\'t be undone.',
+            ),
+            const SizedBox(height: AppSpacing.gutter),
+            Text('Type ${user.username} to confirm.'),
+            const SizedBox(height: AppSpacing.unit),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              autocorrect: false,
+              decoration: InputDecoration(hintText: user.username),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: AppColors.onError,
+            ),
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              controller.text.trim().toLowerCase() ==
+                  user.username.toLowerCase(),
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (confirmed == null || !mounted) return;
+    if (!confirmed) {
+      _showMessage("The username didn't match — nothing was deleted.");
+      return;
+    }
+
+    _showMessage('Deleting your account...');
+    try {
+      await AppData.auth.deleteAccount();
+    } on AuthException catch (e) {
+      if (mounted) _showMessage(e.message);
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      _showMessage('Unable to delete your account. Please try again.');
+      return;
+    }
+    // Same teardown as ProfileScreen._logOut.
+    AppData.unbindUser();
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false);
   }
 
   Future<void> _loadCategories() async {
@@ -270,21 +347,27 @@ class _SettingsScreenState extends State<SettingsScreen>
                     onRename: _renameCategory,
                     onDelete: _deleteCategory,
                   ),
-                  if (_hasPasswordProvider == false) ...[
-                    const SizedBox(height: AppSpacing.stackMd),
-                    Text(
-                      'Account',
-                      style: AppTextStyles.labelLg.copyWith(
-                        color: AppColors.inkMuted,
-                      ),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  Text(
+                    'Account',
+                    style: AppTextStyles.labelLg.copyWith(
+                      color: AppColors.inkMuted,
                     ),
-                    const SizedBox(height: AppSpacing.unit),
+                  ),
+                  const SizedBox(height: AppSpacing.unit),
+                  if (_hasPasswordProvider == false) ...[
                     NoriListRow(
                       icon: Icons.password,
                       label: 'Set a Password',
                       onTap: _addPassword,
                     ),
+                    const SizedBox(height: AppSpacing.unit),
                   ],
+                  NoriListRow(
+                    icon: Icons.delete_forever,
+                    label: 'Delete Account',
+                    onTap: _deleteAccount,
+                  ),
                   const SizedBox(height: AppSpacing.stackMd),
                   Text(
                     'Plan',

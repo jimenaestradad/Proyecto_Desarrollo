@@ -62,7 +62,8 @@ class MockBucketListRepository implements BucketListRepository {
       const BucketListItem(
         id: 'dev-level-up',
         title: 'DEV: Level Up',
-        description: 'Testing only — grants XP/coins to exercise leveling '
+        description:
+            'Testing only — grants XP/coins to exercise leveling '
             'and evolution without grinding real habits.',
         icon: Icons.bug_report,
         color: AppColors.terracotta,
@@ -97,7 +98,10 @@ class MockBucketListRepository implements BucketListRepository {
     if (index == -1) return HabitRewardResult.none;
     final item = _items[index];
     if (item.isCompleted) return HabitRewardResult.none;
-    _items[index] = item.copyWith(isCompleted: true, completedAt: DateTime.now());
+    _items[index] = item.copyWith(
+      isCompleted: true,
+      completedAt: DateTime.now(),
+    );
     return HabitRewardResult(item.xpReward, item.coinReward);
   }
 

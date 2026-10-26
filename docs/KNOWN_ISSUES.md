@@ -36,17 +36,6 @@ re-running the audit.
 
 ## 🟠 Important
 
-### Adaptive XP is promised in the UI but never adjusts (2026-10-05)
-
-The add-habit form tells users "Adaptive XP scales between 0.5x–1.5x depending on your
-consistency over time", and FEATURES.md's MVP boundary includes "adaptive XP (some working
-form)". But nothing ever changes a habit's `adaptiveMultiplier`: new habits are written at 1.0
-and stay there. `claimHabit` applies the stored value (clamped to 0.5–1.5) and the reward preview
-shows it, so the plumbing exists; only the adjustment rule is missing, and its formula is still an
-open decision (OPEN_DECISIONS.md, "XP balancing"). Either decide a simple rule (e.g. recompute from
-the last N scheduled days when a habit is claimed, inside `claimHabit`, so a client can't set it)
-or soften the banner's wording until it exists.
-
 ### Vacation mode has never been exercised live (2026-10-05, replaces a 2026-09-23 entry)
 
 The 2026-09-23 blocker is gone: `onUserCreate` now creates `/users/{uid}` with
@@ -56,12 +45,19 @@ has ever saved a vacation range (checked 2026-10-05), so starting/ending a freez
 and streak treating frozen days as safe, are untested end to end. One manual pass on
 `demo@test.com` closes this.
 
-### Live Cloud Functions are ahead of the committed code (2026-10-05)
+### Live Cloud Functions are ahead of the committed code (2026-10-05, updated 2026-10-26)
 
-`deleteHabit`, `deleteBucketListItem`, the bucket-list `pet.stage` sync, `claimHabit`'s archive
-check and the matching `firestore.rules` were deployed to `nori-pet` on 2026-10-04 from
-`valevasqc-dev`'s uncommitted working tree. A `firebase deploy --only functions` from any checkout
-without those files would delete the two new functions from the live project (Firebase treats
+**Also not deployed yet (2026-10-26):** the pay-once change (`claimHabit`, `unclaimHabit`,
+`deleteHabit`, the bucket-list functions) and its `firestore.rules` bucket-delete tightening.
+Live still runs the earlier "reject the unclaim if the coins were spent" version, so the app's
+reward pill and the server disagree until `firebase deploy --only functions,firestore:rules`.
+
+Every deploy since 2026-10-04 (latest 2026-10-26: adaptive XP, the coin-reversal rule,
+`deleteAccount`, plus `petCareCheck` and the notification writes) went out from
+`valevasqc-dev`'s uncommitted working tree — `deleteAccount.ts`, `bucketList.ts`, `shop.ts`,
+`onUserCreate.ts`, `petCareCheck.ts` and `adaptiveXp.ts` aren't in git at all. A
+`firebase deploy --only functions` from any checkout without those files would delete those
+functions from the live project (Firebase treats
 local source as the full desired state; this already happened once, see RESOLVED_LOG.md
 2026-09-28). Resolved by committing and merging into the branch both people deploy from.
 
@@ -94,27 +90,39 @@ are toggled per-stat, not via tapping the pet itself. Not a bug.)
 
 ---
 
+### Email sign-in fails in the release web build under Playwright (2026-10-26, unconfirmed cause)
+
+Found while testing notifications. A `flutter build web --release` served locally (from both
+`localhost` and `127.0.0.1`) shows "Unable to sign in. Please try again." for `demo@test.com`, and
+no request ever reaches `identitytoolkit.googleapis.com`. The same credentials work against the Auth
+REST API. Only `firebase-app.js` was fetched from gstatic, and the page has `window.firebase_core`
+but no `firebase_auth`. So the Auth JS SDK apparently never loaded, and `login_screen.dart`'s
+`catch (_)` hides the real error. **Does not reproduce in `flutter run -d chrome`**: valevasqc signs
+in fine there (confirmed 2026-10-26). So it is limited to the release build and/or headless
+Playwright. Low priority unless the release web build matters. If it does, check first that
+FlutterFire's web plugin registration includes auth. (The `google_sign_in_web` "ClientID not set"
+assertion in the debug console was a separate, harmless problem, fixed the same day; see
+RESOLVED_LOG.md.)
+
 ### Sign-up can fail if onUserCreate cold-starts slowly (2026-09-30, found reviewing Jimena's flow)
 
 `sign_up_screen.dart` writes the profile (`updateProfile`) right after the account is created, but `/users/{uid}` comes from the asynchronous `onUserCreate` trigger. `_updateWithRetry` (and `renamePet`) retry 5 × 400ms, about 2s total, while a cold-started v1 function can take longer. If it does, the user sees "Unable to create your account" even though the account and username claim already exist, and retrying fails with email-already-in-use. Not reproduced yet, so worth a deliberate check in QA (first sign-up after the function has been idle). A longer or backoff retry would cover it.
 
 ## 🟡 Minor / polish / backlog
 
-### Claim → spend → unclaim → re-claim mints coins (2026-09-24, found while implementing unclaimHabit)
+### No "change password" while logged in (2026-10-06, split out 2026-10-26)
 
-`unclaimHabit` clamps coins at 0, same as `MockUserRepository.addCoins`. So: claim a habit
-(+15 coins), spend them in the shop, unclaim (coins can't go below 0, so nothing is taken
-back), claim again (+15 again) — repeat for free shop items. Ported as-is rather than decided
-unilaterally, because both fixes change something users see: **(a)** let coins go negative
-(exact reversal, shop already blocks buying with too few coins, but the UI would show a
-negative balance), or **(b)** reject the unclaim with "you already spent those coins" (the
-user can't correct a mistaken claim after shopping). Needs a call from valevasqc/Jimena; the
-change itself is one line in `functions/src/unclaimHabit.ts`.
+Password accounts can only reset through the login screen's emailed link; Settings only offers
+"Set a Password" to Google-only accounts. Probably fine for MVP, but it's what users will look
+for in Settings.
 
-The same loop works on the bucket list (2026-09-28 audit): `uncompleteBucketListItem` clamps
-coins at 0 too, so complete (+250), spend, uncomplete, complete again. Deleting a completed
-item goes through the same clamp (`reverseBucketListReward`, shared since 2026-09-30). Whichever
-fix is chosen applies there once, in `functions/src/index.ts`.
+### Profile email is only synced to a confirmed email change on the next Edit Profile save (2026-10-26)
+
+Edit Profile shows the login email (`AppData.auth.currentEmail`) and writes it to the
+`/users/{uid}` doc on save, so after the confirmation link is clicked the Firestore `email`
+field stays stale until the user next saves that screen. Nothing else displays it today. Also
+note Firebase signs the user out once the change is confirmed, so they log back in with the new
+address — worth confirming in QA on a real inbox.
 
 ### Bucket-list card shows a reward the server won't pay (2026-09-30)
 
@@ -144,6 +152,16 @@ so a modified client can keep the pet at 100 without spending coins on food/care
 the trust level chosen for cosmetic stats (docs/BACKEND.md); logged only because the shop economy
 depends on it. Fix if it ever matters: allow only decreases from the client (like
 `careItemCounts`) and move restoring into a `consumeCareItem` Cloud Function.
+
+### Achievements: 3 of 27 are "coming soon" placeholders, and none checked on real data (2026-10-06, updated 2026-10-26)
+
+`achievement_repository.dart` defines 27 achievements. 24 compute real progress: 19 from the live
+repositories (`AppData.bindToUser` points them at Firestore) and the 5 Social ones from mock social
+data (see "Social tab is frontend-only"). 3 are `_soon` placeholders that never progress: Balanced
+Life, Pet's Best Friend, Growing Family. Growing Family depends on multi-pet support, which is
+vision-only, so it can stay a placeholder; Balanced Life and Pet's Best Friend look buildable from
+existing data if wanted. No achievement has been checked against real Firestore data yet;
+`demo@test.com` (30 seeded days) is a good account to do it on.
 
 ### Two parallel icon/color registries (2026-09-28 merge, logged 2026-10-05)
 
@@ -213,16 +231,6 @@ along with `getHabitStats` in both, walk backward by subtracting a fixed
 local midnight minus 24 hours lands at 23:00 two calendar days back, silently skipping
 a day. This predates the Firestore work in the mock; it was found during this audit,
 not introduced by it.
-
-### Notifications "Do it now" CTA doesn't take the user anywhere (2026-09-15 audit)
-
-`notifications_screen.dart`'s CTA button (e.g. on the "Drink Water" reminder) just calls
-`Navigator.pop(context)` — it closes Notifications but doesn't open the referenced habit
-or care action. Since Notifications is pushed on top of whichever tab the user was
-already on, popping is a no-op from the user's point of view, not a shortcut. Low value
-to fix properly (needs either a habit id on `NotificationItem` and a deep link into the
-Habits tab, or a switch-to-tab mechanism `NoriShell` doesn't currently expose) — flagging
-rather than fixing this pass.
 
 ### Evolution stage 2 has no real art yet (deliberate placeholder, not a bug)
 
@@ -408,11 +416,30 @@ Material-icon badge treatment. Whoever's driving has more art to generate for th
 pick up by dropping new source images in `assets/source/achievements/` and following the
 same wiring (`Achievement.imageAsset`, see `achievement_repository.dart`).
 
-### Social screen should read more like a dashboard (dictated 2026-09-10, not yet investigated)
+### Social tab is frontend-only; what a backend would still need (2026-10-21)
 
-Currently a plain list. Needs a layout pass (cards/summary stats up top, etc.) — Social is
-vision-only per `docs/OPEN_DECISIONS.md`, so keep additions light and scope before
-building.
+The whole tab runs on `MockSocialRepository` (`lib/data/mock_social_repository.dart`), behind the
+`SocialRepository` interface on `AppData.social`. Nothing persists and nobody else's data is
+real. When social gets a backend: implement that interface (don't touch the screens), add
+cross-user Firestore rules (friend-scoped reads — BACKEND.md says none exist), and move score-like
+fields (weekly XP, competition progress, proof counts) behind Cloud Functions rather than letting
+clients write their own numbers. Proof photos have nowhere to live (no Storage in the stack), so
+`ProofPhoto` is a placeholder panel. "You" is real (2026-10-21): `getMe()` reads the signed-in
+account's name, username, level, XP, streak and pet, plus XP awarded over the last 7 days
+(`lib/data/social_account.dart`, reads only; falls back to the seeded "Hannah Walker" if a read
+fails), and the proof composer lists your habits completed today (sample list if none). Not yet
+verified against live Firestore with a real account. Because weekly XP is real and the friends are
+seeded at 400–1,450, a light week ranks you last. `proofCount` and your side of friend-streak
+days are still seed data. Mock-only
+leftovers to delete with the mock: `resetDemo` and the hub menu's "Preview: no friends yet" items,
+and `tool/social_preview.dart` (renders any social screen without sign-in: `flutter run -d chrome
+-t tool/social_preview.dart`, `?screen=<name>` / `?empty=1`).
+
+Social achievements (2026-10-26): the separate "Social badges" section was removed (it duplicated
+Achievements). The Social category in `achievement_repository.dart` now has five live achievements
+— Better Together, Helping Hand, Proof Pal, Circle Starter, Accountability Duo — computed from
+`SocialRepository.getSocialActivity()`, i.e. from the mock social data, so their progress is
+placeholder until social has a backend (and resets on app restart).
 
 ### Onboarding tips needed, without cluttering the Habits screen (dictated 2026-09-10, not yet investigated)
 

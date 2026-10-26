@@ -9,6 +9,7 @@ import 'habit_history_store.dart' show dateOnly;
 import 'habit_repository.dart';
 import 'inventory_repository.dart';
 import 'pet_repository.dart';
+import 'social_repository.dart';
 
 abstract class AchievementRepository {
   /// Achievements grouped by category, in display order.
@@ -35,12 +36,16 @@ class MockAchievementRepository implements AchievementRepository {
     this._bucketList,
     this._pet,
     this._inventory,
+    this._social,
   );
   final HabitRepository _habits;
   final CalendarRepository _calendar;
   final BucketListRepository _bucketList;
   final PetRepository _pet;
   final InventoryRepository _inventory;
+
+  /// Source of the Social achievements' progress (mock data today).
+  final SocialRepository _social;
 
   // Mirrors HabitHistoryStore.seedDayCount — the seeded history window.
   static const _historyWindowDays = 90;
@@ -177,6 +182,7 @@ class MockAchievementRepository implements AchievementRepository {
     final goalGetterDone = bucketItems.any((item) => item.isCompleted);
     final pet = await _pet.getPet();
     final inventory = await _inventory.getInventory();
+    final social = await _social.getSocialActivity();
     final onTrackCurrent =
         todayHabits.isNotEmpty && todayHabits.every((h) => h.isCompletedToday)
         ? 1
@@ -418,21 +424,55 @@ class MockAchievementRepository implements AchievementRepository {
         ),
       ],
       'Social': [
-        _soon(
+        _a(
+          'better-together',
+          'Social',
+          'Better Together',
+          'Add your first friend',
+          Icons.person_add,
+          AppColors.mossDark,
+          social.friendCount,
+          1,
+        ),
+        _a(
           'helping-hand',
           'Social',
           'Helping Hand',
-          "React to a friend's progress",
+          "React to 5 friends' posts",
           Icons.thumb_up,
           AppColors.moss,
+          social.reactionsGiven,
+          5,
         ),
-        _soon(
+        _a(
+          'proof-pal',
+          'Social',
+          'Proof Pal',
+          'Share 5 proof posts',
+          Icons.verified,
+          AppColors.skyBlue,
+          social.proofPosts,
+          5,
+        ),
+        _a(
+          'circle-starter',
+          'Social',
+          'Circle Starter',
+          'Create your first circle',
+          Icons.groups,
+          AppColors.mustardDark,
+          social.circlesCreated,
+          1,
+        ),
+        _a(
           'accountability-duo',
           'Social',
           'Accountability Duo',
           'Complete a shared challenge with a friend',
           Icons.group,
-          AppColors.inkFaint,
+          AppColors.terracotta,
+          social.challengesCompleted,
+          1,
         ),
       ],
     };

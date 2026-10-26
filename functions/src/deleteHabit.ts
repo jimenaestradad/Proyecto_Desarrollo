@@ -2,7 +2,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { applyXpDelta } from "./xpCurve";
 import { parseHabitId, requireAuth } from "./requestArgs";
-import { asNumber, levelFields, readLevelState, syncPetStage } from "./habitTransaction";
+import { asNumber, coinsAfterReversal, levelFields, rewardPaid, readLevelState, syncPetStage } from "./habitTransaction";
 
 // A habit can only be fully deleted while it has almost no history — at most
 // this many days with any logged progress or a claim. Anything with more has
@@ -16,9 +16,10 @@ export interface DeleteHabitResult {
 }
 
 // Deletes the habit doc and every one of its habitLogs, taking back whatever
-// those logs' claims paid (their stored awardedXp/awardedCoins — the same exact
-// reversal unclaimHabit does) and re-syncing pet.stage, all in one transaction.
-// Rejects a habit with real history. The sunglasses gift stays, like unclaim.
+// those logs paid (their stored awardedXp/awardedCoins, rejected if the coins
+// were already spent) and re-syncing pet.stage, all in one transaction.
+// Unlike unclaim, this does reverse: otherwise create → claim → delete would
+// mint. Rejects a habit with real history. The sunglasses gift stays.
 export async function runDeleteHabit(uid: string, habitId: string): Promise<DeleteHabitResult> {
   const db = getFirestore();
   const userRef = db.collection("users").doc(uid);
@@ -47,11 +48,11 @@ export async function runDeleteHabit(uid: string, habitId: string): Promise<Dele
     for (const log of logsSnap.docs) {
       const data = log.data();
       const claimed = data.claimed === true;
-      if (claimed || asNumber(data.value, 0) > 0) activeDays++;
-      if (claimed) {
-        xpToReverse += asNumber(data.awardedXp, 0);
-        coinsToReverse += asNumber(data.awardedCoins, 0);
-      }
+      if (claimed || asNumber(data.value, 0) > 0 || rewardPaid(data)) activeDays++;
+      // Unclaimed days can still hold a payout (a day pays once and keeps
+      // it), so every log's award is taken back, claimed or not.
+      xpToReverse += asNumber(data.awardedXp, 0);
+      coinsToReverse += asNumber(data.awardedCoins, 0);
     }
     if (activeDays > MAX_DELETABLE_ACTIVE_DAYS) {
       throw new HttpsError(
@@ -62,7 +63,7 @@ export async function runDeleteHabit(uid: string, habitId: string): Promise<Dele
 
     if (xpToReverse !== 0 || coinsToReverse !== 0) {
       const nextLevelState = applyXpDelta(readLevelState(userData), -xpToReverse);
-      const newCoins = Math.max(0, asNumber(userData.coins, 0) - coinsToReverse);
+      const newCoins = coinsAfterReversal(userData, coinsToReverse);
       tx.update(userRef, { ...levelFields(nextLevelState), coins: newCoins });
       syncPetStage(tx, petRef, petSnap.data(), nextLevelState.level);
     }

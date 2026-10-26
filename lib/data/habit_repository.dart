@@ -143,8 +143,7 @@ class MockHabitRepository implements HabitRepository {
   /// [_habits] directly, as it always has — this only covers other days.
   final HabitHistoryStore history = HabitHistoryStore();
 
-  bool _isToday(DateTime date) =>
-      dateOnly(date) == dateOnly(DateTime.now());
+  bool _isToday(DateTime date) => dateOnly(date) == dateOnly(DateTime.now());
 
   final List<Habit> _habits = [
     const Habit(
@@ -253,6 +252,10 @@ class MockHabitRepository implements HabitRepository {
     final habit = _habits[index];
 
     if (completed) {
+      if (habit.rewardPaid) {
+        _habits[index] = habit.copyWith(isCompletedToday: true);
+        return HabitRewardResult.none;
+      }
       final reward = habit.computeReward();
       _habits[index] = habit.copyWith(
         isCompletedToday: true,
@@ -262,14 +265,9 @@ class MockHabitRepository implements HabitRepository {
       return HabitRewardResult(reward.xp, reward.coins);
     }
 
-    final reversedXp = -habit.lastAwardedXp;
-    final reversedCoins = -habit.lastAwardedCoins;
-    _habits[index] = habit.copyWith(
-      isCompletedToday: false,
-      lastAwardedXp: 0,
-      lastAwardedCoins: 0,
-    );
-    return HabitRewardResult(reversedXp, reversedCoins);
+    // Pay once per day: the reward stays paid (docs/BACKEND.md, unclaimHabit).
+    _habits[index] = habit.copyWith(isCompletedToday: false);
+    return HabitRewardResult.none;
   }
 
   @override
@@ -281,7 +279,10 @@ class MockHabitRepository implements HabitRepository {
     final target = habit.targetValue;
     final nextValue = target == null
         ? habit.currentValue + amount
-        : (habit.currentValue + amount).clamp(0, habit.isInverted ? target * 2 : target);
+        : (habit.currentValue + amount).clamp(
+            0,
+            habit.isInverted ? target * 2 : target,
+          );
     _habits[index] = habit.copyWith(currentValue: nextValue.toDouble());
   }
 
@@ -294,7 +295,9 @@ class MockHabitRepository implements HabitRepository {
   double _claimValue(Habit habit) {
     if (habit.isInverted) return habit.currentValue;
     final target = habit.targetValue;
-    if (target == null || habit.currentValue >= target) return habit.currentValue;
+    if (target == null || habit.currentValue >= target) {
+      return habit.currentValue;
+    }
     return target;
   }
 
@@ -306,6 +309,10 @@ class MockHabitRepository implements HabitRepository {
     if (habit.isCompletedToday) return HabitRewardResult.none;
 
     final snapshot = habit.copyWith(currentValue: _claimValue(habit));
+    if (habit.rewardPaid) {
+      _habits[index] = snapshot.copyWith(isCompletedToday: true);
+      return HabitRewardResult.none;
+    }
     final reward = snapshot.computeReward();
     _habits[index] = snapshot.copyWith(
       isCompletedToday: true,
@@ -340,14 +347,8 @@ class MockHabitRepository implements HabitRepository {
     final habit = _habits[index];
     if (!habit.isCompletedToday) return HabitRewardResult.none;
 
-    final reversedXp = -habit.lastAwardedXp;
-    final reversedCoins = -habit.lastAwardedCoins;
-    _habits[index] = habit.copyWith(
-      isCompletedToday: false,
-      lastAwardedXp: 0,
-      lastAwardedCoins: 0,
-    );
-    return HabitRewardResult(reversedXp, reversedCoins);
+    _habits[index] = habit.copyWith(isCompletedToday: false);
+    return HabitRewardResult.none;
   }
 
   @override
@@ -404,7 +405,13 @@ class MockHabitRepository implements HabitRepository {
 
     if (completed) {
       if (previous.claimed) return HabitRewardResult.none;
-      final reward = definition.copyWith(isCompletedToday: true).computeReward();
+      if (previous.rewardPaid) {
+        history.write(habitId, day, previous.copyWith(claimed: true));
+        return HabitRewardResult.none;
+      }
+      final reward = definition
+          .copyWith(isCompletedToday: true)
+          .computeReward();
       history.write(
         habitId,
         day,
@@ -418,14 +425,8 @@ class MockHabitRepository implements HabitRepository {
     }
 
     if (!previous.claimed) return HabitRewardResult.none;
-    final reversedXp = -previous.awardedXp;
-    final reversedCoins = -previous.awardedCoins;
-    history.write(
-      habitId,
-      day,
-      previous.copyWith(claimed: false, awardedXp: 0, awardedCoins: 0),
-    );
-    return HabitRewardResult(reversedXp, reversedCoins);
+    history.write(habitId, day, previous.copyWith(claimed: false));
+    return HabitRewardResult.none;
   }
 
   @override
@@ -467,6 +468,14 @@ class MockHabitRepository implements HabitRepository {
     final completedValue = _claimValue(
       definition.copyWith(currentValue: previous.value),
     );
+    if (previous.rewardPaid) {
+      history.write(
+        habitId,
+        day,
+        previous.copyWith(value: completedValue, claimed: true),
+      );
+      return HabitRewardResult.none;
+    }
     final reward = definition
         .copyWith(currentValue: completedValue, isCompletedToday: true)
         .computeReward();
@@ -492,14 +501,8 @@ class MockHabitRepository implements HabitRepository {
     final day = dateOnly(date);
     final previous = history.stateFor(habitId, day);
     if (!previous.claimed) return HabitRewardResult.none;
-    final reversedXp = -previous.awardedXp;
-    final reversedCoins = -previous.awardedCoins;
-    history.write(
-      habitId,
-      day,
-      previous.copyWith(claimed: false, awardedXp: 0, awardedCoins: 0),
-    );
-    return HabitRewardResult(reversedXp, reversedCoins);
+    history.write(habitId, day, previous.copyWith(claimed: false));
+    return HabitRewardResult.none;
   }
 
   @override
@@ -528,9 +531,11 @@ class MockHabitRepository implements HabitRepository {
     DateTime end,
   ) async {
     final result = <DateTime, List<Habit>>{};
-    for (var day = dateOnly(start);
-        !day.isAfter(dateOnly(end));
-        day = day.add(const Duration(days: 1))) {
+    for (
+      var day = dateOnly(start);
+      !day.isAfter(dateOnly(end));
+      day = day.add(const Duration(days: 1))
+    ) {
       result[day] = await getHabitsForDate(day);
     }
     return result;
@@ -570,7 +575,10 @@ class MockHabitRepository implements HabitRepository {
     var count = today.currentValue > 0 || today.isCompletedToday ? 1 : 0;
     final now = dateOnly(DateTime.now());
     for (var back = 1; back <= history.seedDayCount; back++) {
-      final state = history.stateFor(habitId, now.subtract(Duration(days: back)));
+      final state = history.stateFor(
+        habitId,
+        now.subtract(Duration(days: back)),
+      );
       if (state.value > 0 || state.claimed) count++;
     }
     return count;
@@ -648,7 +656,8 @@ class FirestoreHabitRepository implements HabitRepository {
         .where('date', isLessThanOrEqualTo: dateOnly(end))
         .get();
     return {
-      for (final doc in snapshot.docs) doc.id: HabitDayState.fromJson(doc.data()),
+      for (final doc in snapshot.docs)
+        doc.id: HabitDayState.fromJson(doc.data()),
     };
   }
 
@@ -682,6 +691,9 @@ class FirestoreHabitRepository implements HabitRepository {
   /// `createdAt` are each owned by a different write path — `reorderHabits`,
   /// a future archive/delete flow, and [addHabit] respectively — not by
   /// editing a habit's own definition, so [updateHabit] excludes them too.
+  /// `adaptiveMultiplier` is left out as well: claimHabit recomputes and
+  /// stores it on every claim (functions/src/adaptiveXp.ts), so a client
+  /// write would only ever put back a stale value.
   Map<String, dynamic> _definitionFields(Map<String, dynamic> json) => {
     'name': json['name'],
     'subtitle': json['subtitle'],
@@ -696,7 +708,6 @@ class FirestoreHabitRepository implements HabitRepository {
     'unit': json['unit'],
     'minThreshold': json['minThreshold'],
     'quickLogAmount': json['quickLogAmount'],
-    'adaptiveMultiplier': json['adaptiveMultiplier'],
     'customDays': json['customDays'],
     'allowVacationFreeze': json['allowVacationFreeze'],
     'startDate': json['startDate'],
@@ -811,7 +822,8 @@ class FirestoreHabitRepository implements HabitRepository {
       asInt(result['coinsDelta']),
       leveledUp: asInt(result['level']) > asInt(result['previousLevel']),
       evolved:
-          stageIndex(result['petStage']) > stageIndex(result['previousPetStage']),
+          stageIndex(result['petStage']) >
+          stageIndex(result['previousPetStage']),
     );
   }
 
@@ -828,7 +840,9 @@ class FirestoreHabitRepository implements HabitRepository {
     final logs = await logsInRange(day, day);
     return [
       for (final definition in scheduled)
-        definition.hydrate(logs['${dayKey(day)}_${definition.id}'] ?? HabitDayState.empty),
+        definition.hydrate(
+          logs['${dayKey(day)}_${definition.id}'] ?? HabitDayState.empty,
+        ),
     ];
   }
 
@@ -842,7 +856,11 @@ class FirestoreHabitRepository implements HabitRepository {
       : unclaimHabitForDate(habitId, date);
 
   @override
-  Future<void> logProgressForDate(String habitId, DateTime date, double amount) async {
+  Future<void> logProgressForDate(
+    String habitId,
+    DateTime date,
+    double amount,
+  ) async {
     // A single doc read, not the whole collection — MockHabitRepository's
     // equivalent (`_habits.indexWhere`) is a free in-memory scan, but that's
     // not true here, and unlike firstWhere this also matches the mock's
@@ -884,11 +902,17 @@ class FirestoreHabitRepository implements HabitRepository {
       _callRewardFunction('claimHabit', habitId, date);
 
   @override
-  Future<HabitRewardResult> unclaimHabitForDate(String habitId, DateTime date) =>
-      _callRewardFunction('unclaimHabit', habitId, date);
+  Future<HabitRewardResult> unclaimHabitForDate(
+    String habitId,
+    DateTime date,
+  ) => _callRewardFunction('unclaimHabit', habitId, date);
 
   @override
-  Future<void> setProgressForDate(String habitId, DateTime date, double value) async {
+  Future<void> setProgressForDate(
+    String habitId,
+    DateTime date,
+    double value,
+  ) async {
     final definition = await _fetchDefinition(habitId);
     if (definition == null) return;
     final day = dateOnly(date);
@@ -923,9 +947,11 @@ class FirestoreHabitRepository implements HabitRepository {
     final definitions = await fetchAllDefinitions();
     final logs = await logsInRange(start, end);
     final result = <DateTime, List<Habit>>{};
-    for (var day = dateOnly(start);
-        !day.isAfter(dateOnly(end));
-        day = day.add(const Duration(days: 1))) {
+    for (
+      var day = dateOnly(start);
+      !day.isAfter(dateOnly(end));
+      day = day.add(const Duration(days: 1))
+    ) {
       final key = dayKey(day);
       result[day] = [
         for (final definition in definitions)
@@ -973,7 +999,9 @@ class FirestoreHabitRepository implements HabitRepository {
   @override
   Future<int> activeDayCount(String habitId) async {
     // Single-field equality — Firestore indexes it automatically.
-    final snapshot = await _habitLogs.where('habitId', isEqualTo: habitId).get();
+    final snapshot = await _habitLogs
+        .where('habitId', isEqualTo: habitId)
+        .get();
     return snapshot.docs.where((doc) {
       final state = HabitDayState.fromJson(doc.data());
       return state.value > 0 || state.claimed;

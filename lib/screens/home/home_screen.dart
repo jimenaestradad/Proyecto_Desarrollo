@@ -33,7 +33,11 @@ import 'package:nori/widgets/tactile_button.dart';
 /// item, not the full list (that lives on the Habits tab, reached via
 /// [onOpenHabits] or by dragging the panel's handle up).
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.active, required this.onOpenHabits});
+  const HomeScreen({
+    super.key,
+    required this.active,
+    required this.onOpenHabits,
+  });
 
   /// Whether this is the currently-shown tab in [NoriShell]'s [IndexedStack].
   /// [IndexedStack] keeps every tab's state alive even while offstage, so
@@ -191,19 +195,11 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _useCareItem(CareItem item) async {
     await guardedAction(() async {
-      final ok = await AppData.inventory.consumeCareItem(item.id);
+      final ok = await AppData.pet.useCareItem(item);
       if (!mounted) return;
       if (!ok) {
         _showSnack('Out of stock — buy more in the Shop.');
         return;
-      }
-      switch (item.category) {
-        case CareCategory.hunger:
-          await AppData.pet.feed(amount: item.restoreAmount);
-        case CareCategory.hygiene:
-          await AppData.pet.groom(amount: item.restoreAmount);
-        case CareCategory.love:
-          await AppData.pet.play(amount: item.restoreAmount);
       }
       final inventory = await AppData.inventory.getInventory();
       final pet = await AppData.pet.getPet();
@@ -258,7 +254,9 @@ class _HomeScreenState extends State<HomeScreen>
       );
     }
 
-    final completedCount = habits.where((habit) => habit.isCompletedToday).length;
+    final completedCount = habits
+        .where((habit) => habit.isCompletedToday)
+        .length;
     final completion = habits.isEmpty ? 0.0 : completedCount / habits.length;
     final equippedAccessory = inventory.equippedAccessoryId == null
         ? null
@@ -410,11 +408,17 @@ class _RoomHudState extends State<_RoomHud> {
             const SizedBox(width: AppSpacing.stackSm),
             Expanded(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.white.withValues(alpha: 0.88),
                   borderRadius: BorderRadius.circular(AppRadius.sm),
-                  border: Border.all(color: AppColors.ink, width: AppBorder.standard),
+                  border: Border.all(
+                    color: AppColors.ink,
+                    width: AppBorder.standard,
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -429,28 +433,40 @@ class _RoomHudState extends State<_RoomHud> {
                     ),
                     const SizedBox(height: 2),
                     InkWell(
-                      onTap: () => setState(() => _showEvolution = !_showEvolution),
+                      onTap: () =>
+                          setState(() => _showEvolution = !_showEvolution),
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('LEVEL ${user.level}', style: AppTextStyles.labelSm),
+                          Text(
+                            'LEVEL ${user.level}',
+                            style: AppTextStyles.labelSm,
+                          ),
                           const SizedBox(width: AppSpacing.unit),
-                          SizedBox(
-                            width: 44,
-                            child: ProgressBarPill(
-                              progress: user.levelProgress,
-                              height: 6,
-                              color: AppColors.moss,
-                              trackColor: AppColors.linen,
+                          Flexible(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 44),
+                              child: ProgressBarPill(
+                                progress: user.levelProgress,
+                                height: 6,
+                                color: AppColors.moss,
+                                trackColor: AppColors.linen,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 6),
-                          const Icon(Icons.star, size: 11, color: AppColors.mustardDark),
+                          const Icon(
+                            Icons.star,
+                            size: 11,
+                            color: AppColors.mustardDark,
+                          ),
                           const SizedBox(width: 2),
                           Text(
                             formatThousands(user.totalXp),
-                            style: AppTextStyles.labelSm.copyWith(color: AppColors.ink),
+                            style: AppTextStyles.labelSm.copyWith(
+                              color: AppColors.ink,
+                            ),
                           ),
                           const SizedBox(width: 3),
                           Icon(
@@ -514,7 +530,11 @@ class _RoomHudState extends State<_RoomHud> {
             ),
             const SizedBox(width: 14),
             PetVitalRing(
-              icon: const Icon(Icons.restaurant, size: 16, color: AppColors.ink),
+              icon: const Icon(
+                Icons.restaurant,
+                size: 16,
+                color: AppColors.ink,
+              ),
               label: 'Fed',
               value: pet.hunger,
               color: AppColors.terracotta,
@@ -549,7 +569,6 @@ class _RoomHudState extends State<_RoomHud> {
   }
 }
 
-
 class _CoinPill extends StatelessWidget {
   const _CoinPill({required this.coins});
 
@@ -571,7 +590,10 @@ class _CoinPill extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             '$coins',
-            style: AppTextStyles.labelSm.copyWith(color: AppColors.ink, fontSize: 11),
+            style: AppTextStyles.labelSm.copyWith(
+              color: AppColors.ink,
+              fontSize: 11,
+            ),
           ),
         ],
       ),
@@ -645,7 +667,9 @@ class _CareActionSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final owned = items.where((item) => inventory.countOf(item.id) > 0).toList();
+    final owned = items
+        .where((item) => inventory.countOf(item.id) > 0)
+        .toList();
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.gutter),
@@ -674,10 +698,17 @@ class _CareActionSheet extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(vitalLabel, style: AppTextStyles.headlineMd.copyWith(fontSize: 18)),
+                        Text(
+                          vitalLabel,
+                          style: AppTextStyles.headlineMd.copyWith(
+                            fontSize: 18,
+                          ),
+                        ),
                         Text(
                           '${vitalValue.round()}%',
-                          style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted),
+                          style: AppTextStyles.labelSm.copyWith(
+                            color: AppColors.inkMuted,
+                          ),
                         ),
                       ],
                     ),
@@ -690,7 +721,9 @@ class _CareActionSheet extends StatelessWidget {
               if (owned.isEmpty) ...[
                 Text(
                   'Out of stock — visit the Shop to buy more.',
-                  style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
+                  style: AppTextStyles.bodyMd.copyWith(
+                    color: AppColors.inkMuted,
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.stackMd),
                 TactileButton(
@@ -705,7 +738,8 @@ class _CareActionSheet extends StatelessWidget {
                     usesLeft: inventory.countOf(item.id),
                     onTap: () => onUseItem(item),
                   ),
-                  if (item != owned.last) const SizedBox(height: AppSpacing.stackSm),
+                  if (item != owned.last)
+                    const SizedBox(height: AppSpacing.stackSm),
                 ],
             ],
           ),
@@ -753,7 +787,10 @@ class _CareItemChoiceRow extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppColors.white,
                   shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+                  border: Border.all(
+                    color: AppColors.ink,
+                    width: AppBorder.thin,
+                  ),
                 ),
                 child: item.image != null
                     ? Image.asset(item.image!, fit: BoxFit.contain)
@@ -767,14 +804,18 @@ class _CareItemChoiceRow extends StatelessWidget {
                     Text(item.name, style: AppTextStyles.labelLg),
                     Text(
                       'x$usesLeft left',
-                      style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted),
+                      style: AppTextStyles.labelSm.copyWith(
+                        color: AppColors.inkMuted,
+                      ),
                     ),
                   ],
                 ),
               ),
               Text(
                 '+${item.restoreAmount.round()}',
-                style: AppTextStyles.labelLg.copyWith(color: AppColors.mossDark),
+                style: AppTextStyles.labelLg.copyWith(
+                  color: AppColors.mossDark,
+                ),
               ),
               const SizedBox(width: 4),
               const Icon(Icons.chevron_right, color: AppColors.inkMuted),
@@ -856,189 +897,223 @@ class _HabitPanelState extends State<_HabitPanel> {
     final maxExpandedListHeight = MediaQuery.sizeOf(context).height * 0.4;
 
     return ClipRRect(
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(26),
-          topRight: Radius.circular(26),
-        ),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(18, 20, 18, AppSpacing.stackMd),
-            decoration: BoxDecoration(
-              // Matches the design spec's rgba(255,255,255,.5) exactly —
-              // earlier "more transparent" tweaks had pushed this down to
-              // 0.18, which let too much of the warm blurred room floor
-              // show through and read as a flat tan card instead of
-              // frosted glass.
-              color: AppColors.white.withValues(alpha: 0.5),
-              // Top + sides only, no bottom: the panel sits flush against
-              // the bottom nav bar, which has its own top border right
-              // there — a bottom border on the panel doubled up with it
-              // and read as one extra-thick line. Top+left+right still
-              // share matching sides at both rounded top corners (the
-              // only rounded ones — bottom stays sharp), which is what
-              // avoids the tapering a mismatched single-side border
-              // caused before; the border here needs a borderRadius of
-              // its own to match the outer ClipRRect, since a
-              // BoxDecoration border with none draws as a sharp rectangle
-              // that gets clipped clean off at the curve otherwise.
-              border: Border(
-                top: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
-                left: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
-                right: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(26),
+        topRight: Radius.circular(26),
+      ),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 20, 18, AppSpacing.stackMd),
+          decoration: BoxDecoration(
+            // Matches the design spec's rgba(255,255,255,.5) exactly —
+            // earlier "more transparent" tweaks had pushed this down to
+            // 0.18, which let too much of the warm blurred room floor
+            // show through and read as a flat tan card instead of
+            // frosted glass.
+            color: AppColors.white.withValues(alpha: 0.5),
+            // Top + sides only, no bottom: the panel sits flush against
+            // the bottom nav bar, which has its own top border right
+            // there — a bottom border on the panel doubled up with it
+            // and read as one extra-thick line. Top+left+right still
+            // share matching sides at both rounded top corners (the
+            // only rounded ones — bottom stays sharp), which is what
+            // avoids the tapering a mismatched single-side border
+            // caused before; the border here needs a borderRadius of
+            // its own to match the outer ClipRRect, since a
+            // BoxDecoration border with none draws as a sharp rectangle
+            // that gets clipped clean off at the curve otherwise.
+            border: Border(
+              top: const BorderSide(
+                color: AppColors.ink,
+                width: AppBorder.standard,
               ),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(26),
-                topRight: Radius.circular(26),
+              left: const BorderSide(
+                color: AppColors.ink,
+                width: AppBorder.standard,
+              ),
+              right: const BorderSide(
+                color: AppColors.ink,
+                width: AppBorder.standard,
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onVerticalDragUpdate: _onDragUpdate,
-                  onVerticalDragEnd: _onDragEnd,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 38,
-                          height: 5,
-                          margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(
-                            color: AppColors.ink.withValues(alpha: 0.4),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(26),
+              topRight: Radius.circular(26),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragUpdate: _onDragUpdate,
+                onVerticalDragEnd: _onDragEnd,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 38,
+                        height: 5,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.ink.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(3),
                         ),
                       ),
-                      Row(
-                        children: [
-                          Text(
-                            "Today's Goal",
-                            style: AppTextStyles.headlineMd.copyWith(fontSize: 19),
+                    ),
+                    Row(
+                      children: [
+                        Text(
+                          "Today's Goal",
+                          style: AppTextStyles.headlineMd.copyWith(
+                            fontSize: 19,
                           ),
-                          if (widget.streak > 0) ...[
-                            const SizedBox(width: AppSpacing.unit),
-                            StreakChip(streak: widget.streak),
-                          ],
-                          const Spacer(),
-                          Text(
-                            '${widget.completedCount} / ${habits.length}',
-                            style: AppTextStyles.labelLg.copyWith(
-                              color: AppColors.terracottaDark,
+                        ),
+                        if (widget.streak > 0) ...[
+                          const SizedBox(width: AppSpacing.unit),
+                          StreakChip(streak: widget.streak),
+                        ],
+                        const Spacer(),
+                        Text(
+                          '${widget.completedCount} / ${habits.length}',
+                          style: AppTextStyles.labelLg.copyWith(
+                            color: AppColors.terracottaDark,
+                          ),
+                        ),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(AppRadius.full),
+                          onTap: widget.onOpenHabits,
+                          child: const Padding(
+                            padding: EdgeInsets.only(left: 2),
+                            child: Icon(
+                              Icons.chevron_right,
+                              color: AppColors.inkFaint,
                             ),
                           ),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(AppRadius.full),
-                            onTap: widget.onOpenHabits,
-                            child: const Padding(
-                              padding: EdgeInsets.only(left: 2),
-                              child: Icon(Icons.chevron_right, color: AppColors.inkFaint),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ProgressBarPill(
+                      progress: widget.completion,
+                      height: 8,
+                      color: AppColors.terracotta,
+                    ),
+                    const SizedBox(height: AppSpacing.stackSm),
+                  ],
+                ),
+              ),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                child: habits.isEmpty
+                    ? Text(
+                        'No habits scheduled for today.',
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.bodyMd.copyWith(
+                          color: AppColors.inkFaint,
+                        ),
+                      )
+                    : _expanded
+                    ? ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: maxExpandedListHeight,
+                        ),
+                        child: ShaderMask(
+                          shaderCallback: (rect) => LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: const [
+                              Colors.black,
+                              Colors.black,
+                              Colors.transparent,
+                            ],
+                            stops: const [0.0, 0.88, 1.0],
+                          ).createShader(rect),
+                          blendMode: _listOverflows
+                              ? BlendMode.dstIn
+                              : BlendMode.dst,
+                          child:
+                              NotificationListener<ScrollMetricsNotification>(
+                                onNotification: (notification) {
+                                  final overflows =
+                                      notification.metrics.maxScrollExtent > 0;
+                                  if (overflows != _listOverflows) {
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                          if (mounted) {
+                                            setState(
+                                              () => _listOverflows = overflows,
+                                            );
+                                          }
+                                        });
+                                  }
+                                  return false;
+                                },
+                                child: SingleChildScrollView(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      for (
+                                        var i = 0;
+                                        i < habits.length;
+                                        i++
+                                      ) ...[
+                                        HabitTile(
+                                          habit: habits[i],
+                                          onToggle: (completed) => widget
+                                              .onToggle(habits[i], completed),
+                                          onQuickLog: (amount) => widget
+                                              .onQuickLog(habits[i], amount),
+                                          onEdit: widget.onOpenHabits,
+                                        ),
+                                        const SizedBox(
+                                          height: AppSpacing.stackSm,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                        ),
+                      )
+                    : nextHabit == null
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.celebration,
+                            size: 18,
+                            color: AppColors.mossDark,
+                          ),
+                          const SizedBox(width: AppSpacing.unit),
+                          Text(
+                            'All done for today!',
+                            style: AppTextStyles.bodyMd.copyWith(
+                              color: AppColors.mossDark,
                             ),
                           ),
                         ],
+                      )
+                    : HabitTile(
+                        habit: nextHabit,
+                        onToggle: (completed) =>
+                            widget.onToggle(nextHabit!, completed),
+                        onQuickLog: (amount) =>
+                            widget.onQuickLog(nextHabit!, amount),
+                        onEdit: widget.onOpenHabits,
                       ),
-                      const SizedBox(height: 6),
-                      ProgressBarPill(
-                        progress: widget.completion,
-                        height: 8,
-                        color: AppColors.terracotta,
-                      ),
-                      const SizedBox(height: AppSpacing.stackSm),
-                    ],
-                  ),
-                ),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOut,
-                  alignment: Alignment.topCenter,
-                  child: habits.isEmpty
-                      ? Text(
-                          'No habits scheduled for today.',
-                          textAlign: TextAlign.center,
-                          style: AppTextStyles.bodyMd.copyWith(
-                            color: AppColors.inkFaint,
-                          ),
-                        )
-                      : _expanded
-                      ? ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: maxExpandedListHeight,
-                          ),
-                          child: ShaderMask(
-                            shaderCallback: (rect) => LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: const [Colors.black, Colors.black, Colors.transparent],
-                              stops: const [0.0, 0.88, 1.0],
-                            ).createShader(rect),
-                            blendMode: _listOverflows ? BlendMode.dstIn : BlendMode.dst,
-                            child: NotificationListener<ScrollMetricsNotification>(
-                              onNotification: (notification) {
-                                final overflows = notification.metrics.maxScrollExtent > 0;
-                                if (overflows != _listOverflows) {
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    if (mounted) setState(() => _listOverflows = overflows);
-                                  });
-                                }
-                                return false;
-                              },
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    for (var i = 0; i < habits.length; i++) ...[
-                                      HabitTile(
-                                        habit: habits[i],
-                                        onToggle: (completed) =>
-                                            widget.onToggle(habits[i], completed),
-                                        onQuickLog: (amount) =>
-                                            widget.onQuickLog(habits[i], amount),
-                                        onEdit: widget.onOpenHabits,
-                                      ),
-                                      const SizedBox(height: AppSpacing.stackSm),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      : nextHabit == null
-                      ? Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.celebration,
-                              size: 18,
-                              color: AppColors.mossDark,
-                            ),
-                            const SizedBox(width: AppSpacing.unit),
-                            Text(
-                              'All done for today!',
-                              style: AppTextStyles.bodyMd.copyWith(
-                                color: AppColors.mossDark,
-                              ),
-                            ),
-                          ],
-                        )
-                      : HabitTile(
-                          habit: nextHabit,
-                          onToggle: (completed) =>
-                              widget.onToggle(nextHabit!, completed),
-                          onQuickLog: (amount) =>
-                              widget.onQuickLog(nextHabit!, amount),
-                          onEdit: widget.onOpenHabits,
-                        ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-      );
+      ),
+    );
   }
 }

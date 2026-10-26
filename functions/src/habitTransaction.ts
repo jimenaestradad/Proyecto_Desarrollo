@@ -1,4 +1,5 @@
 import { DocumentData, DocumentReference, Firestore, Transaction } from "firebase-admin/firestore";
+import { HttpsError } from "firebase-functions/v2/https";
 import { PetStage, petStageForLevel } from "./rewards";
 import { LevelState, xpForLevel } from "./xpCurve";
 
@@ -41,6 +42,27 @@ export function isArchivedOn(archivedRanges: unknown, dayKey: string): boolean {
 
 export function asNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+// Whether a habit log or bucket-list item already paid its reward. Each pays
+// once: unclaiming keeps the payout, so re-claiming pays nothing and
+// claim → spend → unclaim → re-claim can't mint coins (2026-10-26).
+export function rewardPaid(data: DocumentData | undefined): boolean {
+  return asNumber(data?.awardedXp, 0) > 0 || asNumber(data?.awardedCoins, 0) > 0;
+}
+
+// The balance after taking back [amount] coins, for deletes, which do
+// reverse a payout. Rejects instead of clamping at 0, so a delete can't keep
+// coins that were already spent.
+export function coinsAfterReversal(userData: DocumentData, amount: number): number {
+  const coins = asNumber(userData.coins, 0);
+  if (coins < amount) {
+    throw new HttpsError(
+      "failed-precondition",
+      "You've already spent the coins this earned, so it can't be deleted.",
+    );
+  }
+  return coins - amount;
 }
 
 export function readLevelState(userData: DocumentData): LevelState {

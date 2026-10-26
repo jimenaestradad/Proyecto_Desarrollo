@@ -5,7 +5,12 @@ void main() {
   test('HabitDayState.toJson/fromJson round-trips', () {
     const states = [
       HabitDayState.empty,
-      HabitDayState(value: 42.5, claimed: true, awardedXp: 20, awardedCoins: 10),
+      HabitDayState(
+        value: 42.5,
+        claimed: true,
+        awardedXp: 20,
+        awardedCoins: 10,
+      ),
     ];
 
     for (final state in states) {

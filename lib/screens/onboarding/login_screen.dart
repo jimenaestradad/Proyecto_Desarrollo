@@ -309,7 +309,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               _socialButton(
                                 label: 'Continue with Google',
                                 icon: Icons.g_mobiledata,
-                                onPressed: _loading ? null : _handleGoogleSignIn,
+                                onPressed: _loading
+                                    ? null
+                                    : _handleGoogleSignIn,
                               ),
                               const SizedBox(height: AppSpacing.stackMd),
                               const _Divider(),
@@ -388,7 +390,10 @@ class _LoginScreenState extends State<LoginScreen> {
             vertical: AppSpacing.stackSm,
           ),
           textStyle: AppTextStyles.labelLg,
-          side: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
+          side: const BorderSide(
+            color: AppColors.ink,
+            width: AppBorder.standard,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.full),
           ),
@@ -506,9 +511,7 @@ class _LoginHeader extends StatelessWidget {
         const SizedBox(height: AppSpacing.unit),
         Text(
           'Sign in to continue your habit journey',
-          style: AppTextStyles.bodyMd.copyWith(
-            color: AppColors.inkMuted,
-          ),
+          style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
           textAlign: TextAlign.center,
         ),
       ],
@@ -546,4 +549,3 @@ class _Divider extends StatelessWidget {
     );
   }
 }
-

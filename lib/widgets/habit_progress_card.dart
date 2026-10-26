@@ -90,6 +90,11 @@ String _formatValue(Habit habit) {
 /// [MockHabitRepository._claimValue]), so the preview is always the full
 /// tier — not whatever the current partial value would earn on its own.
 ({int xp, int coins}) _previewReward(Habit habit) {
+  // A day pays once, so after an unclaim show what it already paid rather
+  // than promising a second payout.
+  if (habit.rewardPaid) {
+    return (xp: habit.lastAwardedXp, coins: habit.lastAwardedCoins);
+  }
   final target = habit.targetValue;
   if (target == null || habit.currentValue >= target) {
     return habit.computeReward();

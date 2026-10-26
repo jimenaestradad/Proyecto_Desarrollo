@@ -13,7 +13,7 @@ import 'inventory_repository.dart';
 /// already-owned accessory"). [addCareItem] and [addAccessory] are the two
 /// places a client write could otherwise mint an owned item for free, so
 /// per the same table they're Cloud-Function-only
-/// (`purchaseCareItem`/`purchaseAccessory` in functions/src/index.ts) --
+/// (`purchaseCareItem`/`purchaseAccessory` in functions/src/shop.ts) --
 /// this repository deliberately doesn't attempt a direct write for
 /// either, matching FirestoreUserRepository.addXp's UnsupportedError
 /// idiom. Screens call the Cloud Function directly instead (see
@@ -107,7 +107,8 @@ class FirestoreInventoryRepository implements InventoryRepository {
     final data = snapshot.data();
     if (data == null) return;
     final owned = {
-      for (final id in (data['ownedAccessoryIds'] as List<dynamic>? ?? const []))
+      for (final id
+          in (data['ownedAccessoryIds'] as List<dynamic>? ?? const []))
         id as String,
     };
     if (accessoryId != null && !owned.contains(accessoryId)) return;

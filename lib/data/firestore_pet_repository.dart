@@ -2,17 +2,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart' show FirebaseException;
 
 import '../models/pet.dart';
+import 'care_item_catalog.dart';
 import 'pet_repository.dart';
 
 /// Real Firestore-backed [PetRepository] for `/users/{uid}/pet/main` -- see
 /// docs/BACKEND.md, "Firestore schema" and the Architecture table.
 ///
-/// [getPet]/[feed]/[groom]/[play] are direct, rules-guarded client writes
+/// [getPet]/[useCareItem] are direct, rules-guarded client writes
 /// (Architecture table: "Feed / groom / play (+ stat decay)" -- spends an
-/// already-owned consumable for a pet stat, not currency). Each stat
-/// change reads-applies-decay-writes inside a single-document Firestore
-/// transaction so a decay tick racing a care action can't clobber the
-/// other's write.
+/// already-owned consumable for a pet stat, not currency). [useCareItem]
+/// decrements `inventory/main`'s count and applies decay + restore to
+/// `pet/main` in one transaction across both docs, so an item is never
+/// spent without the pet getting its restore (or the reverse).
 ///
 /// [syncEvolution] is deliberately a no-op here. `stage` is
 /// Cloud-Function-only (docs/BACKEND.md, "Security rules":
@@ -41,10 +42,15 @@ class FirestorePetRepository implements PetRepository {
   // the safe move until OPEN_DECISIONS.md settles a real one.
   static const double _decayPerHour = 2;
 
-  DocumentReference<Map<String, dynamic>> get _doc => _firestore
+  DocumentReference<Map<String, dynamic>> get _doc =>
+      _firestore.collection('users').doc(_uid).collection('pet').doc('main');
+
+  // Owned by FirestoreInventoryRepository; touched here only by
+  // [useCareItem], whose whole point is writing both docs atomically.
+  DocumentReference<Map<String, dynamic>> get _inventoryDoc => _firestore
       .collection('users')
       .doc(_uid)
-      .collection('pet')
+      .collection('inventory')
       .doc('main');
 
   Pet _fromData(Map<String, dynamic> data) {
@@ -59,9 +65,8 @@ class FirestorePetRepository implements PetRepository {
       id: 'main',
       name: data['name'] as String? ?? 'Nori',
       stage: stage,
-      evolutionLevelThreshold: (data['evolutionLevelThreshold'] as num?)
-              ?.toInt() ??
-          7,
+      evolutionLevelThreshold:
+          (data['evolutionLevelThreshold'] as num?)?.toInt() ?? 7,
       hunger: (data['hunger'] as num?)?.toDouble() ?? 100,
       hygiene: (data['hygiene'] as num?)?.toDouble() ?? 100,
       happiness: (data['happiness'] as num?)?.toDouble() ?? 100,
@@ -107,34 +112,27 @@ class FirestorePetRepository implements PetRepository {
     return decayed;
   }
 
-  /// Applies decay, then adds [amount] to whichever vital [field] names,
-  /// clamped 0-100, in one transaction -- shared by [feed]/[groom]/[play],
-  /// which differ only in which field they touch.
-  Future<void> _adjust(String field, double amount) {
-    return _firestore.runTransaction((tx) async {
-      final snapshot = await tx.get(_doc);
-      final data = snapshot.data();
-      if (data == null) _missingDoc();
-      final decayed = _applyDecay(_fromData(data));
-      final current = switch (field) {
-        'hunger' => decayed.hunger,
-        'hygiene' => decayed.hygiene,
-        'happiness' => decayed.happiness,
-        _ => throw ArgumentError('Unknown pet stat field: $field'),
-      };
-      final updated = (current + amount).clamp(0, 100);
-      tx.update(_doc, {..._decayFields(decayed), field: updated});
+  @override
+  Future<bool> useCareItem(CareItem item) {
+    return _firestore.runTransaction<bool>((tx) async {
+      final petSnapshot = await tx.get(_doc);
+      final inventorySnapshot = await tx.get(_inventoryDoc);
+      final petData = petSnapshot.data();
+      if (petData == null) _missingDoc();
+      final counts = Map<String, dynamic>.from(
+        inventorySnapshot.data()?['careItemCounts'] as Map<String, dynamic>? ??
+            const {},
+      );
+      final current = (counts[item.id] as num?)?.toInt() ?? 0;
+      if (current <= 0) return false;
+      counts[item.id] = current - 1;
+
+      final restored = applyCareRestore(_applyDecay(_fromData(petData)), item);
+      tx.update(_inventoryDoc, {'careItemCounts': counts});
+      tx.update(_doc, _decayFields(restored));
+      return true;
     });
   }
-
-  @override
-  Future<void> feed({required double amount}) => _adjust('hunger', amount);
-
-  @override
-  Future<void> groom({required double amount}) => _adjust('hygiene', amount);
-
-  @override
-  Future<void> play({required double amount}) => _adjust('happiness', amount);
 
   @override
   Future<void> syncEvolution(int userLevel) async {

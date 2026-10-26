@@ -16,6 +16,7 @@ before assuming anything is decided:
 - `docs/FEATURES.md` — the actual feature spec (habits, XP, streaks, pets, economy, social) and MVP boundary — source of truth for scope, not OVERVIEW.md
 - `docs/ROADMAP.md` — sprint structure and current phase
 - `docs/OPEN_DECISIONS.md` — unresolved product decisions (e.g. XP formulas) — check here before inventing a rule
+- `docs/DESIGN.md` — the "Flat Storybook" visual system (tokens, components, layout, checklist) — follow it for any UI work; tokens themselves live in `lib/theme/`
 
 ## Commands
 

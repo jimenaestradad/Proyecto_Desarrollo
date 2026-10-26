@@ -24,7 +24,9 @@ class NoriBottomNav extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.white,
-        border: Border(top: BorderSide(color: AppColors.ink, width: AppBorder.standard)),
+        border: Border(
+          top: BorderSide(color: AppColors.ink, width: AppBorder.standard),
+        ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       child: SafeArea(

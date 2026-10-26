@@ -44,9 +44,9 @@ void main() {
     // Same-day restore leaves an empty stretch, which is dropped.
     expect(archiveRangesAfterRestoring(archived), isEmpty);
 
-    final older = archiveRangesAfterRestoring(
-      const [ArchivedRange(start: '2020-01-01')],
-    );
+    final older = archiveRangesAfterRestoring(const [
+      ArchivedRange(start: '2020-01-01'),
+    ]);
     expect(older.single.start, '2020-01-01');
     expect(older.single.end, today);
   });

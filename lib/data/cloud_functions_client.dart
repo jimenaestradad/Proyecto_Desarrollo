@@ -47,8 +47,9 @@ Future<Map<String, dynamic>> callCloudFunction(
     // else (deadline-exceeded, unavailable, internal, ...) gets the
     // generic offline-friendly message from docs/BACKEND.md.
     final message = switch (e.code) {
-      'failed-precondition' || 'invalid-argument' || 'not-found' =>
-        e.message ?? "Couldn't complete that -- try again.",
+      'failed-precondition' ||
+      'invalid-argument' ||
+      'not-found' => e.message ?? "Couldn't complete that -- try again.",
       _ => "Couldn't reach the server -- try again.",
     };
     throw CloudFunctionFailure(message);

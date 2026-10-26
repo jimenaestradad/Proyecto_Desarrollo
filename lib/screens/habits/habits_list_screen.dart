@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/habit_history_store.dart' show dateOnly;
 import 'package:nori/data/habit_repository.dart';
+import 'package:nori/models/app_notification.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/models/pet.dart';
@@ -24,11 +25,19 @@ import 'package:nori/widgets/tactile_button.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
 class HabitsListScreen extends StatefulWidget {
-  const HabitsListScreen({super.key, required this.active});
+  const HabitsListScreen({
+    super.key,
+    required this.active,
+    required this.onOpenHome,
+  });
 
   /// See [HomeScreen.active] — same [IndexedStack] staleness problem, same
   /// fix: reload on the false→true transition.
   final bool active;
+
+  /// Switches the shell to the Home tab, where pet care lives — for a
+  /// notification's "Take care" button.
+  final VoidCallback onOpenHome;
 
   @override
   State<HabitsListScreen> createState() => _HabitsListScreenState();
@@ -36,6 +45,9 @@ class HabitsListScreen extends StatefulWidget {
 
 class _HabitsListScreenState extends State<HabitsListScreen>
     with RemoteLoadState<HabitsListScreen> {
+  // Created once: a new stream per build would resubscribe every rebuild.
+  late final Stream<bool> _hasUnreadNotifications = AppData.notifications
+      .watchHasUnread();
   NoriUser? _user;
   List<Habit>? _habits;
   bool _completedToBottom = false;
@@ -123,7 +135,11 @@ class _HabitsListScreenState extends State<HabitsListScreen>
     final result = reward;
     final celebratedPet = pet;
     final user = _user;
-    if (!ok || !mounted || result == null || celebratedPet == null || user == null) {
+    if (!ok ||
+        !mounted ||
+        result == null ||
+        celebratedPet == null ||
+        user == null) {
       return;
     }
     if (result.evolved) {
@@ -217,10 +233,17 @@ class _HabitsListScreenState extends State<HabitsListScreen>
     setState(() => _habits = habits);
   }
 
-  void _openNotifications() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+  Future<void> _openNotifications() async {
+    final action = await Navigator.of(context).push<NotificationAction>(
+      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+    );
+    if (!mounted) return;
+    switch (action) {
+      case NotificationAction.carePet:
+        widget.onOpenHome();
+      case null:
+        break;
+    }
   }
 
   Future<void> _openArchived() async {
@@ -257,8 +280,8 @@ class _HabitsListScreenState extends State<HabitsListScreen>
       body: SafeArea(
         child: user == null || habits == null
             ? error != null
-                ? LoadErrorView(error: error, onRetry: _loadData)
-                : const Center(child: CircularProgressIndicator())
+                  ? LoadErrorView(error: error, onRetry: _loadData)
+                  : const Center(child: CircularProgressIndicator())
             : _buildContent(user, habits),
       ),
     );
@@ -295,10 +318,19 @@ class _HabitsListScreenState extends State<HabitsListScreen>
               onPressed: _openBucketList,
             ),
             const SizedBox(width: 6),
-            CircularIconButton(
-              icon: Icons.notifications,
-              tooltip: 'Notifications',
-              onPressed: _openNotifications,
+            StreamBuilder<bool>(
+              stream: _hasUnreadNotifications,
+              builder: (context, snapshot) {
+                final hasUnread = snapshot.data ?? false;
+                return CircularIconButton(
+                  icon: Icons.notifications,
+                  tooltip: hasUnread
+                      ? 'Notifications (unread)'
+                      : 'Notifications',
+                  onPressed: _openNotifications,
+                  showDot: hasUnread,
+                );
+              },
             ),
             const SizedBox(width: 8),
             if (user.currentStreak > 0) ...[

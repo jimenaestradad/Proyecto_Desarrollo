@@ -35,8 +35,7 @@ class _AchievementsScreenState extends State<AchievementsScreen>
   @override
   Future<void> reload() => _loadData();
 
-  Future<void> _loadData() =>
-      guardedLoad(_fetchData, hasData: _user != null);
+  Future<void> _loadData() => guardedLoad(_fetchData, hasData: _user != null);
 
   Future<void> _fetchData() async {
     final user = await AppData.user.getCurrentUser();

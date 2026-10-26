@@ -22,14 +22,29 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
   moot for now: as of 2026-09-28 the minimum keeps streaks but pays nothing; a partial reward is a
   logged future idea (FEATURES.md §3)
 - Starting XP values per difficulty tier (Easy/Medium/Hard — 10/20/30 were examples)
-- Adaptive-XP formula and adjustment window (how much history, how fast it moves)
-- Adaptive-XP multiplier bounds (~0.5×–1.5× was an example)
+- Resolved 2026-10-06 (valevasqc asked for it built with caps so hard habits don't break the
+  system and easy ones stay rewarding; the specific numbers are defaults, change freely in
+  `functions/src/adaptiveXp.ts`): **adaptive XP** recomputes on every claim from the habit's last
+  14 days; ≤40% of scheduled days completed pays the max, ≥90% the min, linear between, 1.0× with
+  under 5 days of history. Per-difficulty bounds: easy 0.85–1.3×, medium 0.8–1.2×, hard
+  0.87–1.2× (9–13 / 16–24 / 26–36 XP), so the tiers never overlap. The spreads are capped so
+  that completing a habit more often always earns more XP per day (a unit test enforces it; the
+  first draft's wider easy/medium spreads paid a 90%-consistent user slightly less than an 80%
+  one). **XP only — coins stay flat** at the difficulty amount (5/10/15), so adaptation never
+  shifts the shop economy.
+  - Effect on pacing to the first evolution (2,100 XP), 5 medium habits: at 50% completion
+    ~42 → ~38 days, at 70% ~30 → ~32, at 90% ~23 → ~29. It narrows the gap between struggling and
+    consistent users rather than speeding everyone up; whether level 7 is the right evolution
+    point is a separate open question (below).
+  - **Open: allow a slight overlap between tiers?** Currently none, so the user-picked difficulty
+    always dominates and a struggling user can re-label a habit to earn more. Overlap would let a
+    struggled-with easy habit out-earn a mastered medium one, closer to "difficulty is personal".
+    Default kept: no overlap.
 - Exact cadence multipliers (weekly vs. daily vs. other frequencies)
 - **What's actually live while these stay open (noted 2026-10-05):** `functions/src/rewards.ts`
-  pays Easy/Medium/Hard = **10/20/30 XP**, coins = **XP ÷ 2** (5/10/15), times the habit's
-  `adaptiveMultiplier` clamped to 0.5–1.5. No cadence multiplier exists (a weekly habit pays the
-  same as a daily one), and nothing ever moves `adaptiveMultiplier` off 1.0 (KNOWN_ISSUES.md,
-  "Adaptive XP is promised in the UI but never adjusts"). So the "examples" above are the shipped
+  pays Easy/Medium/Hard = **10/20/30 XP**, coins = **XP ÷ 2** (5/10/15), times the adaptive
+  multiplier (see above, per-difficulty caps). No cadence multiplier exists (a weekly habit pays the
+  same as a daily one). So the base "examples" above are the shipped
   values by default, not by decision; confirming or changing them is a one-file change.
 - Resolved 2026-09-16: **`xpForNextLevel = 100 × currentLevel`** (cumulative to reach level n is
   `50 × n × (n − 1)`). New accounts start at level 1 / 0 XP / 100 to next. The formula lives only
@@ -40,6 +55,10 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Exact behavior for flexible/any-day-in-period schedules ("5x any day this week")
 
 ## Pet mechanics
+- **Open (raised 2026-10-06): is level 7 too late for the first evolution?** The 2026-09-16
+  pacing assumed ~100 XP/day; the seeded demo (6 habits, ~70% done) earned ~50 XP/day, putting
+  Evolution 1 at ~5–6 weeks instead of ~3. Suggested: move it to level 5 (1,000 XP) and keep the
+  curve, per FEATURES.md §6's "adjust the thresholds, not the curve". Not changed yet.
 - Resolved 2026-09-16: the XP curve is `100 × currentLevel` and evolution stages are Baby 1–6,
   Evolution 1 at **level 7**, Evolution 2 at **level 15** (MVP ships only the first evolution).
   See [FEATURES.md](FEATURES.md) §6. The level-7 threshold that was a placeholder in
@@ -77,6 +96,20 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Friend-streak rules
 - Privacy rules for feed/proof posts
 
+## Health wearable integration (vision-only — out of scope, see FEATURES.md §12)
+- Which route: Android's Health Connect (one integration, many brands) vs. a Wear OS companion app
+  (heavier). Health Connect looks like the sensible default, but nothing has been checked.
+- Which watches/rings must actually work, and what metrics they expose. Don't promise a device
+  until it's verified to reach the app.
+- What "stress" means in Nori: a vendor's own score if one is available, or something derived from
+  heart rate / HRV / sleep — and how to avoid implying a medical reading.
+- What Nori does with it: only mood/animation, or also suggested habits / lighter day lists /
+  Vacation Mode prompts? Default leaning: comfort only, never any effect on XP, coins, streaks or
+  stats.
+- Where the data lives (on-device only vs. stored per user) and whether any of it is ever visible
+  to friends — default leaning: private, never shown in Social.
+- Consent and Play Store health-data requirements before any permission prompt is added.
+
 ## Bucket list
 - Resolved 2026-09-10: it ships (see FEATURES.md §11). Still open: themed mementos per item
   instead of a flat XP/coin reward.
@@ -89,8 +122,13 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
   reuses `CalendarRepository.getMonth` aggregated across 12 months or needs a new query shape.
 
 ## Notifications
-- Whether any exist at all: habit reminders, streak warnings, pet-needs alerts, competition
-  notifications — nothing decided yet
+- **In-app feed: decided and built (2026-10-21, valevasqc).** Level-up, pet evolution,
+  first-completion gift, achievement unlocked, streak milestones (3/7/14/30/60/100/180/365
+  days), and a "pet needs you" at most once per 24h when a vital drops below 30. See BACKEND.md, "In-app notifications". The
+  event list and thresholds are defaults, open to change.
+- Still open: anything outside the app. That means phone notifications, either local habit
+  reminders (needs a reminder time on habits) or FCM push (streak warnings, social/competition
+  events).
 
 ## Monetization
 - End-user pricing model (free/premium/subscription/cosmetic purchases) — none chosen; don't

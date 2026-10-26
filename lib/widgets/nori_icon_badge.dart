@@ -33,7 +33,9 @@ class NoriIconBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: background,
         shape: circle ? BoxShape.circle : BoxShape.rectangle,
-        borderRadius: circle ? null : BorderRadius.circular(AppRadius.sm * 0.75),
+        borderRadius: circle
+            ? null
+            : BorderRadius.circular(AppRadius.sm * 0.75),
         border: Border.all(color: AppColors.ink, width: AppBorder.thin),
       ),
       child: Icon(icon, color: iconColor, size: iconSize),

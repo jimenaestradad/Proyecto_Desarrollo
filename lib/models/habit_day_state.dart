@@ -22,11 +22,13 @@ class HabitDayState {
   /// Whether the reward was claimed on this date.
   final bool claimed;
 
-  /// What the claim actually paid out, so un-claiming reverses it exactly
-  /// rather than recomputing against since-changed state — same contract as
+  /// What this date's first claim paid out. Kept after an unclaim: each
+  /// day pays once, so a re-claim pays nothing — same contract as
   /// [Habit.lastAwardedXp].
   final int awardedXp;
   final int awardedCoins;
+
+  bool get rewardPaid => awardedXp > 0 || awardedCoins > 0;
 
   HabitDayState copyWith({
     double? value,

@@ -78,7 +78,9 @@ class HabitTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     habit.subtitle,
-                    style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
+                    style: AppTextStyles.labelSm.copyWith(
+                      color: AppColors.inkFaint,
+                    ),
                   ),
                 ],
               ),

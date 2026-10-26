@@ -51,8 +51,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     if (!oldWidget.active && widget.active) _loadData();
   }
 
-  Future<void> _loadData() =>
-      guardedLoad(_fetchData, hasData: _user != null);
+  Future<void> _loadData() => guardedLoad(_fetchData, hasData: _user != null);
 
   Future<void> _fetchData() async {
     final user = await AppData.user.getCurrentUser();

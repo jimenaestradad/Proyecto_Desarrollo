@@ -71,8 +71,8 @@ class _CustomizationScreenState extends State<CustomizationScreen>
       body: SafeArea(
         child: inventory == null
             ? error != null
-                ? LoadErrorView(error: error, onRetry: _loadInventory)
-                : const Center(child: CircularProgressIndicator())
+                  ? LoadErrorView(error: error, onRetry: _loadInventory)
+                  : const Center(child: CircularProgressIndicator())
             : LayoutBuilder(
                 builder: (context, constraints) {
                   final isWide = constraints.maxWidth >= 700;
@@ -385,7 +385,6 @@ class _AccessorySlot extends StatelessWidget {
     );
   }
 }
-
 
 class _EmptyAccessorySlot extends StatelessWidget {
   const _EmptyAccessorySlot({required this.selected, required this.onTap});

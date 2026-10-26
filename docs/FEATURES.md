@@ -76,12 +76,14 @@ level / evolve / collect / customize pets → stay motivated
 - **Adaptive XP** (Habitica-inspired): a habit starts at a difficulty-based XP value (user picks
   Easy/Medium/Hard at creation) and the system nudges it up if the user struggles, down if it's
   consistently easy — because the same habit isn't equally hard for everyone. Needs a bounded
-  adjustment range (discussed ~0.5×–1.5×) so long neglect can't inflate XP indefinitely.
+  adjustment range so long neglect can't inflate XP indefinitely. **Built 2026-10-06:** bounds
+  are per difficulty so tiers never overlap (easy 9–13, medium 16–24, hard 26–36 XP; XP only, coins stay flat) — a hard
+  habit can't break the curve and an easy one never stops paying. Rule and numbers in
+  OPEN_DECISIONS.md "XP balancing".
 - **Cadence modifier**: less-frequent habits (weekly) should be worth more per completion than
   frequent ones (daily), but not proportionally more (a weekly shouldn't equal 7 dailies).
   Direction: `XP = base difficulty × cadence modifier × adaptive modifier`.
-- All exact numbers (starting XP per difficulty, adaptive bounds, cadence multipliers) are
-  undecided — see OPEN_DECISIONS.
+- Starting XP per difficulty and cadence multipliers are still undecided — see OPEN_DECISIONS.
 
 ## 5. Streaks
 
@@ -160,10 +162,19 @@ OPEN_DECISIONS.
   proof** to count, but proof needs no friend approval (accountability, not moderation).
 - Everything else here (scoring, leaderboard period, streak rules, privacy) is undecided and
   out of MVP scope regardless.
-- A design-only mock (`SocialScreen`) ships in the bottom nav (2026-09-10), replacing the old
-  Achievements tab slot — activity feed, leaderboard, competitions, circles, all static/unwired
-  behind a "Preview only" banner. This is a visual placeholder, not a scope change: none of the
-  above is built or decided by its existence. Achievements itself moved under Profile.
+- **Frontend built on mock data (2026-10-21, on explicit direction from valevasqc):** the Social
+  tab is now a full click-through frontend — hub, activity feed + post detail + proof composer,
+  friends/requests/add/invite, friend profile + pet visits, leaderboard, competitions (list,
+  create wizard, detail, invites, results, proof submission), circles (list, editor, detail),
+  friend streaks, notifications, privacy/blocking, and a first-run intro. All of
+  it reads and writes an in-memory `MockSocialRepository` (`AppData.social`, resets on restart):
+  **no backend work, no cross-user data.** (Social achievements live under Profile → Achievements, not on the tab.) (Only "you" is real: name, username, level, XP, streak, pet and weekly XP are read from the signed-in account's existing data; everyone else is seeded.) Scope is unchanged for the semester: the
+  backend for social is still a non-goal (see BACKEND.md), and every rule the screens show —
+  competition types and scoring, leaderboard metric/period, friend-streak rule, privacy options,
+  reward amounts — is a **mock placeholder, not a decision** (see OPEN_DECISIONS.md § Social).
+  Layouts came from two Stitch exports, rebuilt on our own design system (`docs/DESIGN.md`).
+  The earlier design-only mock (2026-09-10) it replaces took the old Achievements tab slot;
+  Achievements itself lives under Profile.
 
 ## 11. Bucket list
 
@@ -180,6 +191,55 @@ Japan-themed pet accessory) instead of a flat XP/coin reward — not built, plai
 Apple Health / Fitbit (auto-verify activity habits) and Duolingo-like services (achievement
 unlocks) are documented as future possibilities only. External APIs add disproportionate
 complexity for this semester's scope — do not build these without an explicit decision to do so.
+The one integration with a worked-out idea behind it is the health wearable below.
+
+### Health wearable (watch / ring) — vision only, **out of scope**
+
+**The idea (added 2026-10-21 by valevasqc):** connect a wearable — a smartwatch or a smart ring —
+so Nori can react to how the user's body is doing, most memorably their **stress**. A stressed
+day could show up as a pet that's a little subdued and comes to sit with you; a calm or
+well-rested one as a pet that's bright and playful. It makes the pet feel *aware* of the person
+rather than only of their checkbox history, which fits the "emotional attachment" goal in §6/§8.
+
+**Ways Nori could use the data (brainstorm — none decided):**
+- **Pet reacts to stress** — mood/animation and a gentle line ("rough day? I'm here"), plus an
+  optional nudge toward a calming habit (breathing, a walk, water). This is the headline idea.
+- **Sleep → energy** — a well-slept user gets a rested pet; a short night gets a sleepy one.
+- **Auto-verify activity habits** — steps, workouts and sleep habits complete themselves from
+  device data instead of a manual check-off (the older "Apple Health / Fitbit" idea above).
+- **Stress-aware suggestions** — on a high-stress day, surface the lighter habits first or offer
+  Vacation Mode (§2) rather than showing a long list.
+
+**Guardrails to carry over from existing decisions (INFERRED — these follow from §8 and §2, they
+aren't new rules):**
+- **Never punish.** §8 says the pet cannot die and coming back should never feel discouraging;
+  a high-stress reading must not drain stats, break a streak, or cut XP. Reacting = comfort, not
+  consequence.
+- **Don't let health data touch the economy.** XP, coins and streaks stay driven by habits, so
+  nobody is rewarded for (or locked out by) what their body happens to do.
+- **Opt-in, minimal and private.** Health data is among the most sensitive a user has. It would
+  need an explicit permission prompt, a plain "what we read and why" screen, no sharing to the
+  Social tab by default, and no medical claims — Nori reflects a signal, it doesn't diagnose.
+
+**Technical shape (INFERRED — nothing researched or prototyped yet):**
+- Android-only target (OVERVIEW.md), so Apple Health is moot; the natural route is **Android's
+  Health Connect**, which wearables sync into, read from a Flutter plugin — one integration
+  instead of one SDK per brand. The alternative (a Wear OS companion app) is a second app to
+  build and ship, which is far heavier.
+- Which watches and rings actually write to Health Connect, and which metrics they expose, is
+  **UNRESOLVED** and should be checked before promising a specific device.
+- **"Stress" is not a plain measurement.** Vendors compute their own stress/readiness scores,
+  and it's unverified whether those reach Health Connect at all; the standard signals are things
+  like heart rate, resting heart rate, heart-rate variability and sleep. A Nori-side "stress" would
+  likely be derived from those, which is a modeling decision, not a field to read (see
+  OPEN_DECISIONS.md).
+- Health data would need to be handled on-device or in a locked-down user-owned subtree
+  (BACKEND.md's `/users/{uid}` rule), and Google Play has its own review requirements for apps
+  that request health permissions — both are extra work beyond the code.
+
+Everything here is a direction for a later phase, not a commitment. Do not build any of it —
+including a permission prompt, a plugin dependency, or a "connect a device" placeholder screen —
+without an explicit decision from valevasqc.
 
 ## MVP boundary
 
@@ -193,8 +253,8 @@ possibly a few accessories/rewards.
 (Bucket list moved out of this list — see §11, built 2026-09-10.)
 
 **Vision/planning only — not this semester:** friend system, activity feed, proof uploads,
-reactions/comments, friend leaderboard, competitions, friend streaks, visiting pets, Apple
-Health, Fitbit, Duolingo/external integrations.
+reactions/comments, friend leaderboard, competitions, friend streaks, visiting pets, health
+wearable integration (watch/ring — §12), Apple Health, Fitbit, Duolingo/external integrations.
 
 Rationale: the course requires a functional MVP *plus* later data/deploy/QA phases — scope has
 to stay small enough to actually finish, not grow into a full social/game platform.

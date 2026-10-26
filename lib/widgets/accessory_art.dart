@@ -179,7 +179,8 @@ Widget positionedAccessoryArt({
     headWidth: headWidth,
     renderWidth: headWidth * placement.widthStretch,
   );
-  final dx = referenceSize * (_kFaceCenterOffsetFraction + placement.dxFraction);
+  final dx =
+      referenceSize * (_kFaceCenterOffsetFraction + placement.dxFraction);
   return Positioned(
     top: referenceSize * placement.topFraction,
     child: Transform.translate(offset: Offset(dx, 0), child: art),
@@ -325,19 +326,21 @@ const double _kTailXMean = 43.17;
 /// circular moving average turns those snaps into a gentle ramp without
 /// needing to hand-fix the underlying data.
 List<double>? _kSmoothedTailY;
-List<double> get _smoothedTailY => _kSmoothedTailY ??= _circularMovingAverage(
-  [for (final a in kNoriFrameAnchors) a.tail.dy],
-  window: 9,
-);
+List<double> get _smoothedTailY => _kSmoothedTailY ??= _circularMovingAverage([
+  for (final a in kNoriFrameAnchors) a.tail.dy,
+], window: 9);
 
-List<double> _circularMovingAverage(List<double> values, {required int window}) {
+List<double> _circularMovingAverage(
+  List<double> values, {
+  required int window,
+}) {
   final n = values.length;
   final half = window ~/ 2;
   return [
     for (var i = 0; i < n; i++)
-      [for (var k = -half; k <= half; k++) values[(i + k + n) % n]].reduce(
-            (a, b) => a + b,
-          ) /
+      [
+            for (var k = -half; k <= half; k++) values[(i + k + n) % n],
+          ].reduce((a, b) => a + b) /
           (2 * half + 1),
   ];
 }
@@ -386,15 +389,19 @@ Widget? animatedPositionedAccessoryArt({
       top = tailY * scale + placement.dyFrac * spriteWidth;
       anchorX = _kTailXMean;
   }
-  final left = anchorX * scale - renderWidth / 2 + placement.dxFrac * spriteWidth;
+  final left =
+      anchorX * scale - renderWidth / 2 + placement.dxFrac * spriteWidth;
 
   return Positioned(
     top: top,
     left: left,
-    child: AccessoryArt(item: item, headWidth: accWidth, renderWidth: renderWidth),
+    child: AccessoryArt(
+      item: item,
+      headWidth: accWidth,
+      renderWidth: renderWidth,
+    ),
   );
 }
-
 
 /// A small live render of Nori wearing [item] (or bare, if null): the same
 /// nori_front.png art plus [positionedAccessoryArt] the Customization
@@ -434,7 +441,8 @@ class NoriAccessoryPreview extends StatelessWidget {
         // leftover letterboxing -- keeps every placement correct at any
         // card size.
         final maxWidth = constraints.maxWidth;
-        final renderedHeight = maxWidth.isFinite && maxWidth / _imageAspect < height
+        final renderedHeight =
+            maxWidth.isFinite && maxWidth / _imageAspect < height
             ? maxWidth / _imageAspect
             : height;
         return SizedBox(
@@ -450,7 +458,10 @@ class NoriAccessoryPreview extends StatelessWidget {
                 fit: BoxFit.contain,
               ),
               if (item != null)
-                positionedAccessoryArt(item: item!, referenceSize: renderedHeight),
+                positionedAccessoryArt(
+                  item: item!,
+                  referenceSize: renderedHeight,
+                ),
             ],
           ),
         );

@@ -86,6 +86,25 @@ abstract class AuthRepository {
   /// message on failure (e.g. the account already has a password, or the
   /// password is too weak).
   Future<void> addPassword(String password);
+
+  /// The email the signed-in user actually logs in with, or null when
+  /// signed out. This, not the Firestore profile's copy, is the source of
+  /// truth: a [changeEmail] only lands here once the link is clicked.
+  String? get currentEmail;
+
+  /// Starts changing the login email of a password account: re-checks
+  /// [password], then emails a confirmation link to [newEmail]. The login
+  /// email only changes once that link is clicked. Throws [AuthException]
+  /// with a user-facing message on failure (wrong password, email taken).
+  Future<void> changeEmail({
+    required String newEmail,
+    required String password,
+  });
+
+  /// Permanently deletes the signed-in account and all of its data (the
+  /// deleteAccount Cloud Function), then signs out. Throws [AuthException]
+  /// with a user-facing message on failure.
+  Future<void> deleteAccount();
 }
 
 /// A message already safe to show in the UI — screens display
@@ -208,5 +227,22 @@ class MockAuthRepository implements AuthRepository {
   @override
   Future<void> addPassword(String password) async {
     await Future.delayed(const Duration(milliseconds: 300));
+  }
+
+  @override
+  String? get currentEmail => _currentUserId == null ? null : kDemoUser.email;
+
+  @override
+  Future<void> changeEmail({
+    required String newEmail,
+    required String password,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    _currentUserId = null;
   }
 }

@@ -20,11 +20,12 @@ class NoriShell extends StatefulWidget {
 class _NoriShellState extends State<NoriShell> {
   int _index = 0;
 
+  void _openHomeTab() => setState(() => _index = 0);
   void _openHabitsTab() => setState(() => _index = 1);
 
   List<Widget> get _tabs => [
     HomeScreen(active: _index == 0, onOpenHabits: _openHabitsTab),
-    HabitsListScreen(active: _index == 1),
+    HabitsListScreen(active: _index == 1, onOpenHome: _openHomeTab),
     CalendarScreen(active: _index == 2),
     const SocialScreen(),
     ProfileScreen(active: _index == 4),
@@ -40,7 +41,9 @@ class _NoriShellState extends State<NoriShell> {
       body: Column(
         children: [
           const EmailVerificationBanner(),
-          Expanded(child: IndexedStack(index: _index, children: _tabs)),
+          Expanded(
+            child: IndexedStack(index: _index, children: _tabs),
+          ),
         ],
       ),
       bottomNavigationBar: NoriBottomNav(

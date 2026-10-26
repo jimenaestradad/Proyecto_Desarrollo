@@ -1,13 +1,17 @@
 import '../models/pet.dart';
+import 'care_item_catalog.dart';
+import 'inventory_repository.dart';
 
 abstract class PetRepository {
   Future<Pet> getPet();
 
-  /// [amount] is the calling [CareItem]'s `restoreAmount` (see
-  /// care_item_catalog.dart) — different items restore different amounts.
-  Future<void> feed({required double amount});
-  Future<void> groom({required double amount});
-  Future<void> play({required double amount});
+  /// Spends one [item] from the inventory and restores the vital its
+  /// [CareItem.category] targets by [CareItem.restoreAmount] (after
+  /// decay), as one unit: either both happen or neither does. Returns false,
+  /// changing nothing, when the item is out of stock. Replaced separate
+  /// consume + feed/groom/play calls (2026-10-06), which could spend an item
+  /// without restoring anything if the second write failed.
+  Future<bool> useCareItem(CareItem item);
 
   /// Keeps the pet's evolution stage in sync with [userLevel] against its
   /// threshold — promotes on crossing it, demotes back if a claim gets
@@ -26,6 +30,10 @@ abstract class PetRepository {
 }
 
 class MockPetRepository implements PetRepository {
+  MockPetRepository(this._inventory);
+
+  final InventoryRepository _inventory;
+
   // ADOPTED-FROM-STITCH demo numbers.
   Pet _pet = Pet(
     id: 'nori-pet',
@@ -59,22 +67,13 @@ class MockPetRepository implements PetRepository {
     return _pet;
   }
 
+  // In memory nothing can fail between the two steps, so consuming
+  // through the inventory and then restoring is already all-or-nothing.
   @override
-  Future<void> feed({required double amount}) async {
-    _pet = _applyDecay(_pet);
-    _pet = _pet.copyWith(hunger: (_pet.hunger + amount).clamp(0, 100));
-  }
-
-  @override
-  Future<void> groom({required double amount}) async {
-    _pet = _applyDecay(_pet);
-    _pet = _pet.copyWith(hygiene: (_pet.hygiene + amount).clamp(0, 100));
-  }
-
-  @override
-  Future<void> play({required double amount}) async {
-    _pet = _applyDecay(_pet);
-    _pet = _pet.copyWith(happiness: (_pet.happiness + amount).clamp(0, 100));
+  Future<bool> useCareItem(CareItem item) async {
+    if (!await _inventory.consumeCareItem(item.id)) return false;
+    _pet = applyCareRestore(_applyDecay(_pet), item);
+    return true;
   }
 
   @override
@@ -93,4 +92,21 @@ class MockPetRepository implements PetRepository {
     if (trimmed.isEmpty) return;
     _pet = _pet.copyWith(name: trimmed);
   }
+}
+
+/// [pet] with [item]'s vital raised by its restoreAmount, clamped to 100.
+/// Shared by both repositories so the category → vital mapping lives once.
+Pet applyCareRestore(Pet pet, CareItem item) {
+  final amount = item.restoreAmount;
+  return switch (item.category) {
+    CareCategory.hunger => pet.copyWith(
+      hunger: (pet.hunger + amount).clamp(0, 100),
+    ),
+    CareCategory.hygiene => pet.copyWith(
+      hygiene: (pet.hygiene + amount).clamp(0, 100),
+    ),
+    CareCategory.love => pet.copyWith(
+      happiness: (pet.happiness + amount).clamp(0, 100),
+    ),
+  };
 }

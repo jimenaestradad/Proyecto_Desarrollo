@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/app_notification.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/date_labels.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_card.dart';
+import 'package:nori/widgets/nori_empty_state.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
 
@@ -68,6 +70,14 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               const Padding(
                 padding: EdgeInsets.all(AppSpacing.stackLg),
                 child: Center(child: CircularProgressIndicator()),
+              )
+            else if (notifications.isEmpty)
+              const NoriEmptyState(
+                icon: Icons.notifications_none,
+                title: 'All caught up',
+                message:
+                    'Level-ups, streaks, achievements and pet alerts show up here.',
+                tint: AppColors.mustardLight,
               )
             else
               for (var index = 0; index < notifications.length; index++) ...[
@@ -178,7 +188,10 @@ class _NotificationCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: AppSpacing.unit),
-                    Text(notification.timeAgo, style: AppTextStyles.labelSm),
+                    Text(
+                      _timeAgo(notification.createdAt),
+                      style: AppTextStyles.labelSm,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -186,7 +199,10 @@ class _NotificationCard extends StatelessWidget {
                 if (notification.ctaLabel case final ctaLabel?) ...[
                   const SizedBox(height: AppSpacing.stackSm),
                   FilledButton(
-                    onPressed: () => Navigator.pop(context),
+                    // Pops with the action; whoever pushed this screen
+                    // routes it (e.g. HabitsListScreen switches to Home).
+                    onPressed: () =>
+                        Navigator.pop(context, notification.action),
                     style: FilledButton.styleFrom(
                       backgroundColor: notification.color,
                       foregroundColor: AppColors.ink,
@@ -226,4 +242,14 @@ class _NotificationCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String _timeAgo(DateTime createdAt) {
+  final elapsed = DateTime.now().difference(createdAt);
+  if (elapsed.inMinutes < 1) return 'Just now';
+  if (elapsed.inHours < 1) return '${elapsed.inMinutes}m ago';
+  if (elapsed.inDays < 1) return '${elapsed.inHours}h ago';
+  if (elapsed.inDays == 1) return 'Yesterday';
+  if (elapsed.inDays < 7) return '${elapsed.inDays}d ago';
+  return '${monthAbbr(createdAt.month)} ${createdAt.day}';
 }

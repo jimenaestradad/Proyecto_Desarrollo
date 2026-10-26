@@ -20,11 +20,21 @@ class RewardPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('+$xp XP', style: AppTextStyles.labelSm.copyWith(color: AppColors.ink)),
+          Text(
+            '+$xp XP',
+            style: AppTextStyles.labelSm.copyWith(color: AppColors.ink),
+          ),
           const SizedBox(width: 4),
-          const Icon(Icons.monetization_on, size: 12, color: AppColors.mustardDark),
+          const Icon(
+            Icons.monetization_on,
+            size: 12,
+            color: AppColors.mustardDark,
+          ),
           const SizedBox(width: 2),
-          Text('$coins', style: AppTextStyles.labelSm.copyWith(color: AppColors.ink)),
+          Text(
+            '$coins',
+            style: AppTextStyles.labelSm.copyWith(color: AppColors.ink),
+          ),
         ],
       ),
     );

@@ -77,27 +77,29 @@ class ProgressBarPill extends StatelessWidget {
                 ),
                 if (thresholdFraction != null)
                   Positioned(
-                  // Not FractionallySizedBox here: it gives its child a
-                  // *tight* width of widthFactor × available width, which
-                  // overrides this line's own `width: AppBorder.standard`
-                  // instead of just capping it — the tick rendered as a
-                  // solid block from 0 to thresholdFraction instead of a
-                  // thin marker at that position.
-                  left:
-                      borderWidth +
-                      (thresholdFraction!.clamp(0, 1) * innerWidth -
-                              AppBorder.standard / 2)
-                          .clamp(
-                            0.0,
-                            (innerWidth - AppBorder.standard).clamp(
+                    // Not FractionallySizedBox here: it gives its child a
+                    // *tight* width of widthFactor × available width, which
+                    // overrides this line's own `width: AppBorder.standard`
+                    // instead of just capping it — the tick rendered as a
+                    // solid block from 0 to thresholdFraction instead of a
+                    // thin marker at that position.
+                    left:
+                        borderWidth +
+                        (thresholdFraction!.clamp(0, 1) * innerWidth -
+                                AppBorder.standard / 2)
+                            .clamp(
                               0.0,
-                              double.infinity,
+                              (innerWidth - AppBorder.standard).clamp(
+                                0.0,
+                                double.infinity,
+                              ),
                             ),
-                          ),
-                  top: 0,
-                  bottom: 0,
-                  width: AppBorder.standard,
-                  child: ColoredBox(color: AppColors.ink.withValues(alpha: 0.5)),
+                    top: 0,
+                    bottom: 0,
+                    width: AppBorder.standard,
+                    child: ColoredBox(
+                      color: AppColors.ink.withValues(alpha: 0.5),
+                    ),
                   ),
               ],
             );

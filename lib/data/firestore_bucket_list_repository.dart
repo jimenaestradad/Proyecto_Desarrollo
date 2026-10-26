@@ -21,7 +21,7 @@ import 'icon_registry.dart';
 /// [completeItem]/[uncompleteItem] are the currency-minting half --
 /// completing an item awards XP/coins, so per the Architecture table
 /// that's Cloud-Function-only (`completeBucketListItem`/
-/// `uncompleteBucketListItem` in functions/src/index.ts). This repository
+/// `uncompleteBucketListItem` in functions/src/bucketList.ts). This repository
 /// deliberately doesn't attempt a direct write for either, matching
 /// FirestoreUserRepository.addXp's UnsupportedError idiom -- screens call
 /// the Cloud Function directly instead (see bucket_list_screen.dart's

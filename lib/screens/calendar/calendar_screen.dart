@@ -113,8 +113,8 @@ class _CalendarScreenState extends State<CalendarScreen>
       body: SafeArea(
         child: user == null || stats == null
             ? error != null
-                ? LoadErrorView(error: error, onRetry: _loadData)
-                : const Center(child: CircularProgressIndicator())
+                  ? LoadErrorView(error: error, onRetry: _loadData)
+                  : const Center(child: CircularProgressIndicator())
             : NoriScrollScaffold(
                 maxWidth: 1200,
                 children: [
@@ -572,9 +572,8 @@ class _DayDetailSheetState extends State<_DayDetailSheet>
     });
   }
 
-  Future<void> _claim(Habit habit) => _runClaim(
-    () => AppData.habits.claimHabitForDate(habit.id, widget.date),
-  );
+  Future<void> _claim(Habit habit) =>
+      _runClaim(() => AppData.habits.claimHabitForDate(habit.id, widget.date));
 
   Future<void> _unclaim(Habit habit) => _runClaim(
     () => AppData.habits.unclaimHabitForDate(habit.id, widget.date),

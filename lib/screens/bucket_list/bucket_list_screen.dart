@@ -34,7 +34,8 @@ class _BucketListScreenState extends State<BucketListScreen>
     _loadItems();
   }
 
-  Future<void> _loadItems() => guardedLoad(_fetchItems, hasData: _items != null);
+  Future<void> _loadItems() =>
+      guardedLoad(_fetchItems, hasData: _items != null);
 
   Future<void> _fetchItems() async {
     final items = await AppData.bucketList.getItems();
@@ -151,8 +152,8 @@ class _BucketListScreenState extends State<BucketListScreen>
       body: SafeArea(
         child: items == null
             ? error != null
-                ? LoadErrorView(error: error, onRetry: _loadItems)
-                : const Center(child: CircularProgressIndicator())
+                  ? LoadErrorView(error: error, onRetry: _loadItems)
+                  : const Center(child: CircularProgressIndicator())
             : NoriScrollScaffold(
                 maxWidth: 900,
                 children: [

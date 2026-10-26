@@ -202,9 +202,7 @@ class _ChooseUsernameScreenState extends State<ChooseUsernameScreen> {
                             padding: const EdgeInsets.all(AppSpacing.stackMd),
                             decoration: BoxDecoration(
                               color: AppColors.white,
-                              borderRadius: BorderRadius.circular(
-                                AppRadius.lg,
-                              ),
+                              borderRadius: BorderRadius.circular(AppRadius.lg),
                               border: Border.all(
                                 color: AppColors.ink,
                                 width: AppBorder.standard,

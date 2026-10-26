@@ -2,6 +2,43 @@
 
 Trimmed historical fix log for Nori, split out of `docs/KNOWN_ISSUES.md` on 2026-09-16 to keep the working file scannable. Full narrative detail from before the split was intentionally condensed; this log favors terse entries going forward.
 
+### 2026-10-26 — account settings: delete account + real login-email change
+
+Settings has a Delete Account row (type your username to confirm) that calls the new
+`deleteAccount` Cloud Function: deletes `/usernames` entries, the `/users/{uid}` tree, then the
+Auth user. Verified live on throwaway accounts. Edit Profile's email field now changes the login
+email (`verifyBeforeUpdateEmail` after re-entering the password) instead of only the Firestore
+copy, and is read-only for Google-only accounts.
+
+### 2026-10-26 — claim → spend → unclaim → re-claim no longer mints coins
+
+Each habit-day and bucket-list item now pays once. Unclaim/uncomplete keep the stored
+`awardedXp`/`awardedCoins` and take nothing back, and a re-claim of something that already paid
+pays nothing (`rewardPaid` in `functions/src/habitTransaction.ts`). Deletes still reverse every
+stored payout and are rejected if the coins were spent, and `firestore.rules` no longer lets the
+client directly delete a bucket item that ever paid. The habit card's reward pill shows the
+day's paid amount once there is one. Mock repository follows the same rule. Unit-tested.
+
+### 2026-10-26 — "ClientID not set" assertion on every web login
+
+`FirebaseAuthRepository` always constructed `GoogleSignIn()`. On web that starts an init that needs a web client ID, so every first `AppData.auth` access (e.g. pressing Log In) logged a red `google_sign_in_web` assertion in debug. It was harmless, because the init isn't awaited and web Google sign-in uses Firebase's `signInWithPopup` anyway, but it looked like the cause of login failures. The plugin is now only constructed off web. `flutter analyze` clean.
+
+### 2026-10-21 — Notifications screen shows real, per-account notifications
+
+The screen used to show 4 hardcoded notifications for every account, and "Mark all as read" only lasted until a restart. It now reads `/users/{uid}/notifications`. `claimHabit` and `completeBucketListItem` write level-up, evolution and first-gift notifications inside their transactions. A new hourly scheduled function, `petCareCheck`, writes "pet needs you". The app adds streak-milestone and achievement notifications, since only it computes those (BACKEND.md, "In-app notifications"). Read state persists, and the bell on Habits shows a live unread dot. This also closes the 2026-09-15 "Do it now goes nowhere" issue: pet notifications have a "Take care" button that switches to the Home tab (the screen pops with a `NotificationAction`, and `NoriShell` passes `HabitsListScreen` an `onOpenHome`). Unit-tested (`functions/src/notifications.test.ts`) and `flutter analyze` clean. Needs a functions + rules deploy before it works live.
+
+### 2026-10-21 — Social tab: placeholder mock replaced with a full frontend on mock data
+
+The 2026-09-10 `SocialScreen` (static feed/leaderboard/competition/circle cards behind a "Preview only" banner, every button a "Coming soon" snackbar) is now a navigable ~25-screen frontend backed by an in-memory `SocialRepository` (`AppData.social`): hub, feed/post/proof composer, friends/add/invite/profile/pet visit, leaderboard, competitions (create wizard, detail, invite, results, proof), circles, friend streaks, notifications, badges, privacy/blocking. Layouts follow two Stitch exports but are rebuilt on our tokens and shared widgets (new: choice chip, segmented control, empty state, bottom sheet, post/reaction/proof widgets) and documented in the new `docs/DESIGN.md`. Frontend only: no new backend, rules shown are mock placeholders. Later the same day "you" was wired to the signed-in account (reads only, existing repositories): real name/username/level/XP/streak/pet, last-7-days XP on the leaderboard, and today's completed habits in the proof composer; friends and everything else stay seeded. Also closes the 2026-09-10 "Social should read like a dashboard" note. Verified with `flutter analyze` (clean for social) and a release web build rendered at 412×915; not run on a device.
+
+### 2026-10-06 — adaptive XP built (the UI promised it, nothing adjusted it)
+
+`adaptiveMultiplier` existed and was applied, but nothing ever changed it from 1.0, while the add-habit form promised it adapted. `claimHabit` now recomputes it on every claim from the habit's last 14 days (`functions/src/adaptiveXp.ts`): scheduled, non-vacation days completed at or below 40% pay the difficulty's max, at or above 90% its min, linear in between, 1.0× with fewer than 5 days of history. Per-difficulty caps (easy 0.85–1.3, medium 0.8–1.2, hard 0.87–1.2 → 9–13 / 16–24 / 26–36 XP) keep tiers from overlapping, per valevasqc's ask that hard habits not break the system and easy ones stay rewarding, and are narrow enough that more consistency always earns more XP per day (an earlier wider draft didn't; a test now enforces it). Coins are unaffected. Recomputed, not stepped, so unclaim/re-claim can't ratchet it; the app no longer writes the field. Needs a functions deploy to go live.
+
+### 2026-10-06 — using a care item could spend it without helping the pet
+
+Home spent the item in one transaction on `inventory/main`, then raised the stat in a second one on `pet/main`. If the second failed, or the user left Home in between (a `mounted` check sat between them), the item was gone and the pet got nothing. `PetRepository.useCareItem(item)` now does both in one Firestore transaction across the two docs and returns false, changing nothing, when out of stock. It replaces `feed`/`groom`/`play`, whose only caller was that flow. Tested on the mock (`test/data/pet_care_test.dart`); the Firestore path stays within the existing rules (counts only decrease, stat fields are client-writable) but hasn't been run live yet.
+
 ### 2026-10-05 — stale "calendar makes ~430 sequential reads" entry closed
 
 The 2026-09-10 audit flagged `MockCalendarRepository` awaiting one habit read per day. The live app uses `FirestoreCalendarRepository`, which reads a whole range in one `logsInRange` query (and, since 2026-09-30, `getHabitsForRange` for Achievements/Profile), so the cost never reached Firestore. The mock still walks per day, which is harmless in memory. Removed from KNOWN_ISSUES.

@@ -162,7 +162,8 @@ class _AddHabitScreenState extends State<AddHabitScreen>
       final newFixedUnit = _fixedUnits[type];
       if (newFixedUnit != null) {
         _unitController.text = newFixedUnit;
-      } else if (previousFixedUnit != null && currentUnit == previousFixedUnit) {
+      } else if (previousFixedUnit != null &&
+          currentUnit == previousFixedUnit) {
         // Only clear it if it still holds the auto-filled value from the
         // previous type — don't wipe something the user typed themselves.
         _unitController.clear();
@@ -256,14 +257,18 @@ class _AddHabitScreenState extends State<AddHabitScreen>
     if (_needsTarget && quickLogText.isNotEmpty) {
       quickLogAmount = _parseQuickLog(quickLogText, target!);
       if (quickLogAmount == null) {
-        showError('Quick-Log Amount must be a number above 0, like 250 or 25%.');
+        showError(
+          'Quick-Log Amount must be a number above 0, like 250 or 25%.',
+        );
         return;
       }
     }
 
     final minThresholdText = _minThresholdController.text.trim();
     double? minThreshold;
-    if (_minThresholdEnabled && _supportsThreshold && minThresholdText.isNotEmpty) {
+    if (_minThresholdEnabled &&
+        _supportsThreshold &&
+        minThresholdText.isNotEmpty) {
       minThreshold = double.tryParse(minThresholdText);
       if (minThreshold == null || minThreshold <= 0) {
         showError('Minimum Threshold must be a number above 0.');
@@ -280,7 +285,8 @@ class _AddHabitScreenState extends State<AddHabitScreen>
     final habit = Habit(
       id: existing?.id ?? generateId(),
       name: enteredName.isEmpty ? 'New Habit' : enteredName,
-      subtitle: _selectedCategory ?? (_categories.isEmpty ? '' : _categories.first),
+      subtitle:
+          _selectedCategory ?? (_categories.isEmpty ? '' : _categories.first),
       icon: _selectedIcon,
       color: _selectedColor,
       xpReward: _difficulty.baseXp,
@@ -418,7 +424,8 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                             _ColorChoice(
                               color: color,
                               selected: _selectedColor == color,
-                              onTap: () => setState(() => _selectedColor = color),
+                              onTap: () =>
+                                  setState(() => _selectedColor = color),
                             ),
                         ],
                       ),
@@ -485,7 +492,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                                         type: HabitType.values[row + 1],
                                         selected:
                                             _selectedType ==
-                                                HabitType.values[row + 1],
+                                            HabitType.values[row + 1],
                                         onTap: () => _selectType(
                                           HabitType.values[row + 1],
                                         ),
@@ -508,18 +515,23 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                               flex: 2,
                               child: TextField(
                                 controller: _targetController,
-                                keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                                 style: AppTextStyles.bodyLg,
-                                decoration: _fieldDecoration(hintText: 'e.g. 1000'),
+                                decoration: _fieldDecoration(
+                                  hintText: 'e.g. 1000',
+                                ),
                               ),
                             ),
                             const SizedBox(width: AppSpacing.stackSm),
                             Expanded(
                               child: TextField(
                                 controller: _unitController,
-                                enabled: !_fixedUnits.containsKey(_selectedType),
+                                enabled: !_fixedUnits.containsKey(
+                                  _selectedType,
+                                ),
                                 textAlign: TextAlign.center,
                                 style: AppTextStyles.bodyLg,
                                 decoration: _fieldDecoration(hintText: 'unit'),
@@ -536,13 +548,17 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                             decimal: true,
                           ),
                           style: AppTextStyles.bodyLg,
-                          decoration: _fieldDecoration(hintText: _quickLogHint()),
+                          decoration: _fieldDecoration(
+                            hintText: _quickLogHint(),
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           'What the quick-log button on Home/Habits adds per tap. '
                           'Leave blank for the default (${_quickLogHint()}).',
-                          style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
+                          style: AppTextStyles.labelSm.copyWith(
+                            color: AppColors.inkFaint,
+                          ),
                         ),
                       ],
                       if (_supportsThreshold) ...[
@@ -611,12 +627,13 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                       const _InfoBanner(
                         icon: Icons.bolt,
                         message:
-                            'Adaptive XP scales between 0.5x–1.5x depending on your consistency over time.',
+                            'Adaptive XP: a habit pays a bit more while you struggle with it and a bit less once it comes easy (Easy 9–13, Medium 16–24, Hard 26–36 XP).',
                       ),
                       const SizedBox(height: AppSpacing.stackSm),
                       _RewardPreview(
                         difficulty: _difficulty,
-                        adaptiveMultiplier: widget.habit?.adaptiveMultiplier ?? 1.0,
+                        adaptiveMultiplier:
+                            widget.habit?.adaptiveMultiplier ?? 1.0,
                       ),
                       const SizedBox(height: AppSpacing.stackMd),
                       _FieldLabel(label: 'Repeat'),
@@ -692,7 +709,10 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.date_range, color: AppColors.inkMuted),
+                                const Icon(
+                                  Icons.date_range,
+                                  color: AppColors.inkMuted,
+                                ),
                                 const SizedBox(width: AppSpacing.stackSm),
                                 Expanded(
                                   child: Text(
@@ -716,7 +736,8 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                       if (_isEditing) ...[
                         const SizedBox(height: AppSpacing.stackLg),
                         _ManageHabitSection(
-                          canDelete: (_activeDays ?? kMaxDeletableActiveDays + 1) <=
+                          canDelete:
+                              (_activeDays ?? kMaxDeletableActiveDays + 1) <=
                               kMaxDeletableActiveDays,
                           busy: _isManaging || _isSaving,
                           onArchive: _archiveHabit,
@@ -745,7 +766,11 @@ class _AddHabitScreenState extends State<AddHabitScreen>
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(content: Text('Archived "${habit.name}" — restore it from Archived habits.')),
+        SnackBar(
+          content: Text(
+            'Archived "${habit.name}" — restore it from Archived habits.',
+          ),
+        ),
       );
     Navigator.pop(context, true);
   }
@@ -773,15 +798,24 @@ class _AddHabitScreenState extends State<AddHabitScreen>
       ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        borderSide: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+        borderSide: const BorderSide(
+          color: AppColors.ink,
+          width: AppBorder.thin,
+        ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        borderSide: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+        borderSide: const BorderSide(
+          color: AppColors.ink,
+          width: AppBorder.thin,
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.sm),
-        borderSide: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
+        borderSide: const BorderSide(
+          color: AppColors.ink,
+          width: AppBorder.standard,
+        ),
       ),
     );
   }
@@ -827,11 +861,7 @@ class _IconChoice extends StatelessWidget {
         onTap: onTap,
         child: SizedBox.square(
           dimension: 64,
-          child: Icon(
-            icon,
-            size: 30,
-            color: AppColors.ink,
-          ),
+          child: Icon(icon, size: 30, color: AppColors.ink),
         ),
       ),
     );
@@ -860,10 +890,7 @@ class _ColorChoice extends StatelessWidget {
         ),
       ),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: const SizedBox.square(dimension: 40),
-      ),
+      child: InkWell(onTap: onTap, child: const SizedBox.square(dimension: 40)),
     );
   }
 }
@@ -903,11 +930,7 @@ class _TypeCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(
-                _typeIcon(type),
-                color: AppColors.ink,
-                size: 22,
-              ),
+              Icon(_typeIcon(type), color: AppColors.ink, size: 22),
               const SizedBox(width: AppSpacing.stackSm),
               Expanded(
                 child: Column(
@@ -967,9 +990,7 @@ class _DayCircle extends StatelessWidget {
           child: Center(
             child: Text(
               label,
-              style: AppTextStyles.labelLg.copyWith(
-                color: AppColors.ink,
-              ),
+              style: AppTextStyles.labelLg.copyWith(color: AppColors.ink),
             ),
           ),
         ),
@@ -1002,7 +1023,9 @@ class _ToggleRow extends StatelessWidget {
               Text(title, style: AppTextStyles.labelLg),
               Text(
                 subtitle,
-                style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
+                style: AppTextStyles.labelSm.copyWith(
+                  color: AppColors.inkFaint,
+                ),
               ),
             ],
           ),
@@ -1055,7 +1078,10 @@ class _InfoBanner extends StatelessWidget {
 }
 
 class _RewardPreview extends StatelessWidget {
-  const _RewardPreview({required this.difficulty, this.adaptiveMultiplier = 1.0});
+  const _RewardPreview({
+    required this.difficulty,
+    this.adaptiveMultiplier = 1.0,
+  });
 
   final HabitDifficulty difficulty;
 

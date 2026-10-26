@@ -181,11 +181,58 @@ service cloud.firestore {
 
         // Unlike habits, bucket list items have no archive-not-delete
         // rule in FEATURES.md -- a straight delete is fine, but only while
-        // the item is *not* completed. Deleting a completed one would keep
-        // its reward, so that goes through deleteBucketListItem (Cloud
-        // Function), which takes the reward back in the same transaction.
+        // the item has never paid a reward. An un-completed item keeps its
+        // payout (it pays once), so anything that paid goes through
+        // deleteBucketListItem (Cloud Function), which takes the reward
+        // back in the same transaction.
         allow delete: if request.auth.uid == uid
-          && resource.data.isCompleted != true;
+          && resource.data.isCompleted != true
+          && resource.data.get('awardedXp', 0) == 0
+          && resource.data.get('awardedCoins', 0) == 0;
+      }
+
+      // --- /users/{uid}/notifications/{notificationId} ----------------
+      // In-app feed. levelUp/petEvolved/gift/petCare are written by Cloud
+      // Functions (Admin SDK, functions/src/notifications.ts); the client
+      // may only create the two kinds only it can compute
+      // (FirestoreNotificationRepository). Not currency, so a spoofed one
+      // only fools your own feed. Created unread with a server timestamp,
+      // afterwards it can only be marked read.
+      match /notifications/{notificationId} {
+        allow read: if request.auth.uid == uid;
+
+        allow create: if request.auth.uid == uid
+          && request.resource.data.keys()
+               .hasOnly(['kind', 'message', 'createdAt', 'isRead'])
+          && request.resource.data.kind in ['achievement', 'streak']
+          && request.resource.data.message is string
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.isRead == false;
+
+        allow update: if request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['isRead']);
+
+        allow delete: if false;
+      }
+
+      // --- /users/{uid}/notificationState/main ------------------------
+      // What's already been notified, so the feed doesn't repeat itself.
+      // The client owns its three sync fields; level/petEvolved/petCareAt
+      // are Cloud-Function-only, so a client can't reset them to re-trigger
+      // server notifications.
+      match /notificationState/main {
+        allow read: if request.auth.uid == uid;
+
+        allow create: if request.auth.uid == uid
+          && request.resource.data.keys()
+               .hasOnly(['achievementIds', 'streakMilestone', 'streakMilestoneDay']);
+
+        allow update: if request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['achievementIds', 'streakMilestone', 'streakMilestoneDay']);
+
+        allow delete: if false;
       }
     }
 
