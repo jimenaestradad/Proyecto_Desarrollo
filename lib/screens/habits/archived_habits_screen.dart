@@ -58,13 +58,13 @@ class _ArchivedHabitsScreenState extends State<ArchivedHabitsScreen>
     setState(() => _busy = true);
     final ok = await guardedAction(() async {
       await AppData.habits.restoreHabit(habit.id);
+      // Set before the reload: the restore is already committed even if
+      // the refetch fails, and the parent still needs to reload.
+      _changed = true;
       await _fetch();
     });
     if (!mounted) return;
-    setState(() {
-      _busy = false;
-      if (ok) _changed = true;
-    });
+    setState(() => _busy = false);
     if (ok) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -75,15 +75,13 @@ class _ArchivedHabitsScreenState extends State<ArchivedHabitsScreen>
   Future<void> _delete(Habit habit) async {
     if (!await confirmDeleteHabit(context, habit) || !mounted) return;
     setState(() => _busy = true);
-    final ok = await guardedAction(() async {
+    await guardedAction(() async {
       await AppData.habits.deleteHabit(habit.id);
+      _changed = true;
       await _fetch();
     });
     if (!mounted) return;
-    setState(() {
-      _busy = false;
-      if (ok) _changed = true;
-    });
+    setState(() => _busy = false);
   }
 
   @override
@@ -102,7 +100,7 @@ class _ArchivedHabitsScreenState extends State<ArchivedHabitsScreen>
             maxWidth: 800,
             children: [
               NoriScreenHeader(
-                leading: NoriScreenHeader.backButton(context),
+                leading: NoriScreenHeader.backButton(context, result: _changed),
                 title: 'Archived Habits',
                 titleStyle: AppTextStyles.headlineLgMobile,
               ),

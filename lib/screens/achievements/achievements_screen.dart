@@ -38,8 +38,10 @@ class _AchievementsScreenState extends State<AchievementsScreen>
   Future<void> _loadData() => guardedLoad(_fetchData, hasData: _user != null);
 
   Future<void> _fetchData() async {
-    final user = await AppData.user.getCurrentUser();
-    final achievements = await AppData.achievements.getAchievementsByCategory();
+    final (user, achievements) = await (
+      AppData.user.getCurrentUser(),
+      AppData.achievements.getAchievementsByCategory(),
+    ).wait;
     if (!mounted) return;
     setState(() {
       _user = user;

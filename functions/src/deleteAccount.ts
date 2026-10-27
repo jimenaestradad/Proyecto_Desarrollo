@@ -1,7 +1,8 @@
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { onCall } from "firebase-functions/v2/https";
-import { requireAuth } from "./requestArgs";
+import { userDocRefs } from "./docRefs";
+import { requireAuth, requireRecentLogin } from "./requestArgs";
 
 // Deletes everything the caller owns, then the Firebase Auth user itself:
 // the whole /users/{uid} tree (habits, habitLogs, pet, inventory,
@@ -17,7 +18,7 @@ export async function runDeleteAccount(uid: string): Promise<void> {
   for (const doc of usernames.docs) batch.delete(doc.ref);
   await batch.commit();
 
-  await db.recursiveDelete(db.collection("users").doc(uid));
+  await db.recursiveDelete(userDocRefs(db, uid).user);
 
   try {
     await getAuth().deleteUser(uid);
@@ -29,6 +30,8 @@ export async function runDeleteAccount(uid: string): Promise<void> {
 
 export const deleteAccount = onCall(async (request) => {
   const uid = requireAuth(request.auth?.uid);
+  // Irreversible, so a session left open somewhere isn't enough.
+  requireRecentLogin(request.auth?.token);
   await runDeleteAccount(uid);
   return { deleted: true };
 });

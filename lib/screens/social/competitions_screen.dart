@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/utils/formatting.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/screens/social/social_load_state.dart';
@@ -260,7 +261,7 @@ class _CompetitionCard extends StatelessWidget {
                         place == 1
                             ? 'You won'
                             : place > 0
-                            ? 'You finished ${_ordinal(place)}'
+                            ? 'You finished ${ordinal(place)}'
                             : 'Final results',
                         style: AppTextStyles.labelLg,
                       ),
@@ -292,14 +293,4 @@ class _CompetitionCard extends StatelessWidget {
       ),
     );
   }
-}
-
-String _ordinal(int n) {
-  if (n % 100 >= 11 && n % 100 <= 13) return '${n}th';
-  return '$n${switch (n % 10) {
-    1 => 'st',
-    2 => 'nd',
-    3 => 'rd',
-    _ => 'th',
-  }}';
 }

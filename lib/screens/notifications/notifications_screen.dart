@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/app_notification.dart';
 import 'package:nori/theme/app_theme.dart';
-import 'package:nori/utils/date_labels.dart';
+import 'package:nori/utils/relative_time.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_card.dart';
@@ -30,6 +30,16 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   Future<void> _loadNotifications() async {
     await guardedLoad(hasData: _notifications != null, () async {
+      // Paint what's stored right away; the full call below also works out
+      // new streak/achievement notifications, which reads months of history
+      // and takes a few seconds.
+      if (_notifications == null) {
+        final stored = await AppData.notifications.getNotifications(
+          sync: false,
+        );
+        if (!mounted) return;
+        setState(() => _notifications = stored);
+      }
       final notifications = await AppData.notifications.getNotifications();
       if (!mounted) return;
       setState(() => _notifications = notifications);
@@ -41,9 +51,15 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     setState(() => _isMarkingRead = true);
     await guardedAction(() async {
       await AppData.notifications.markAllRead();
-      final notifications = await AppData.notifications.getNotifications();
       if (!mounted) return;
-      setState(() => _notifications = notifications);
+      // Updated locally rather than re-fetched: getNotifications re-runs the
+      // whole achievement/streak sync, which reads months of history.
+      setState(
+        () => _notifications = [
+          for (final n in _notifications ?? const <AppNotification>[])
+            n.copyWith(isRead: true),
+        ],
+      );
     });
     if (mounted) setState(() => _isMarkingRead = false);
   }
@@ -182,14 +198,20 @@ class _NotificationCard extends StatelessWidget {
                       child: Text(
                         notification.label.toUpperCase(),
                         style: AppTextStyles.labelSm.copyWith(
-                          color: notification.color,
+                          // The type color is a fill (moss is 2.8:1 on
+                          // white as text); pull it toward ink for the label.
+                          color: Color.lerp(
+                            notification.color,
+                            AppColors.ink,
+                            0.5,
+                          ),
                           letterSpacing: 0.8,
                         ),
                       ),
                     ),
                     const SizedBox(width: AppSpacing.unit),
                     Text(
-                      _timeAgo(notification.createdAt),
+                      relativeTimeLabel(notification.createdAt),
                       style: AppTextStyles.labelSm,
                     ),
                   ],
@@ -204,7 +226,13 @@ class _NotificationCard extends StatelessWidget {
                     onPressed: () =>
                         Navigator.pop(context, notification.action),
                     style: FilledButton.styleFrom(
-                      backgroundColor: notification.color,
+                      // Lightened: ink on the raw type color was 3.3:1 for the
+                      // mustardDark "Pet needs you" button.
+                      backgroundColor: Color.lerp(
+                        notification.color,
+                        AppColors.white,
+                        0.45,
+                      ),
                       foregroundColor: AppColors.ink,
                       side: const BorderSide(
                         color: AppColors.ink,
@@ -242,14 +270,4 @@ class _NotificationCard extends StatelessWidget {
       ),
     );
   }
-}
-
-String _timeAgo(DateTime createdAt) {
-  final elapsed = DateTime.now().difference(createdAt);
-  if (elapsed.inMinutes < 1) return 'Just now';
-  if (elapsed.inHours < 1) return '${elapsed.inMinutes}m ago';
-  if (elapsed.inDays < 1) return '${elapsed.inHours}h ago';
-  if (elapsed.inDays == 1) return 'Yesterday';
-  if (elapsed.inDays < 7) return '${elapsed.inDays}d ago';
-  return '${monthAbbr(createdAt.month)} ${createdAt.day}';
 }

@@ -164,33 +164,13 @@ class _SocialScreenState extends State<SocialScreen>
       children: [
         XpPill(xp: _user.totalXp, compact: true),
         const SizedBox(width: AppSpacing.unit),
-        Stack(
-          children: [
-            CircularIconButton(
-              icon: Icons.notifications_none,
-              tooltip: _unread > 0
-                  ? 'Notifications, $_unread unread'
-                  : 'Notifications',
-              onPressed: () => _open(const SocialNotificationsScreen()),
-            ),
-            if (_unread > 0)
-              Positioned(
-                right: 0,
-                top: 0,
-                child: Container(
-                  width: AppSpacing.stackSm,
-                  height: AppSpacing.stackSm,
-                  decoration: BoxDecoration(
-                    color: AppColors.terracottaDark,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: AppColors.ink,
-                      width: AppBorder.thin,
-                    ),
-                  ),
-                ),
-              ),
-          ],
+        CircularIconButton(
+          icon: Icons.notifications_none,
+          tooltip: _unread > 0
+              ? 'Notifications, $_unread unread'
+              : 'Notifications',
+          showDot: _unread > 0,
+          onPressed: () => _open(const SocialNotificationsScreen()),
         ),
         PopupMenuButton<_HubAction>(
           tooltip: 'Social options',

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/auth_repository.dart';
+import 'package:nori/data/tips_store.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/screens/onboarding/intro_screen.dart';
 import 'package:nori/screens/premium/nori_plus_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/remote_errors.dart';
@@ -11,6 +13,7 @@ import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_list_row.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
+import 'package:nori/widgets/nori_text_prompt.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -64,6 +67,14 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _addPassword() async {
     final passwordController = TextEditingController();
     final confirmController = TextEditingController();
+    void submit(BuildContext dialogContext) {
+      if (passwordController.text != confirmController.text) {
+        _showMessage('Passwords do not match.');
+        return;
+      }
+      Navigator.pop(dialogContext, passwordController.text);
+    }
+
     final password = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -90,8 +101,9 @@ class _SettingsScreenState extends State<SettingsScreen>
               controller: confirmController,
               obscureText: true,
               decoration: const InputDecoration(hintText: 'Confirm password'),
-              onSubmitted: (value) =>
-                  Navigator.pop(dialogContext, passwordController.text),
+              // Same check as Save — submitting from the keyboard used to
+              // skip the match check entirely.
+              onSubmitted: (_) => submit(dialogContext),
             ),
           ],
         ),
@@ -101,13 +113,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () {
-              if (passwordController.text != confirmController.text) {
-                _showMessage('Passwords do not match.');
-                return;
-              }
-              Navigator.pop(dialogContext, passwordController.text);
-            },
+            onPressed: () => submit(dialogContext),
             child: const Text('Save'),
           ),
         ],
@@ -133,69 +139,37 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   /// Asks for the username typed back before deleting -- deletion is
   /// permanent and wipes habits, pet and coins, so a single tap shouldn't
-  /// be able to do it.
+  /// be able to do it -- and for the password (or, for a Google-only
+  /// account, a fresh Google sign-in) because the server refuses a session
+  /// that signed in a while ago.
   Future<void> _deleteAccount() async {
     final user = _user;
     if (user == null) return;
-    final controller = TextEditingController();
-    final confirmed = await showDialog<bool>(
+    final hasPassword =
+        _hasPasswordProvider ?? await AppData.auth.hasPasswordProvider();
+    if (!mounted) return;
+    final request = await showDialog<DeleteAccountRequest>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-          side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
-        ),
-        title: const Text('Delete Account?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'This permanently deletes your account, habits, history, pet, '
-              'coins and items. It can\'t be undone.',
-            ),
-            const SizedBox(height: AppSpacing.gutter),
-            Text('Type ${user.username} to confirm.'),
-            const SizedBox(height: AppSpacing.unit),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              autocorrect: false,
-              decoration: InputDecoration(hintText: user.username),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.error,
-              foregroundColor: AppColors.onError,
-            ),
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              controller.text.trim().toLowerCase() ==
-                  user.username.toLowerCase(),
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
+      builder: (_) => DeleteAccountDialog(
+        username: user.username,
+        hasPassword: hasPassword,
       ),
     );
-    controller.dispose();
-    if (confirmed == null || !mounted) return;
-    if (!confirmed) {
+    // Cancel (or tapping outside) closes without a word.
+    if (request == null || !mounted) return;
+    if (!request.usernameMatches) {
       _showMessage("The username didn't match — nothing was deleted.");
+      return;
+    }
+    final password = request.password;
+    if (hasPassword && password.isEmpty) {
+      _showMessage('Enter your password to delete your account.');
       return;
     }
 
     _showMessage('Deleting your account...');
     try {
-      await AppData.auth.deleteAccount();
+      await AppData.auth.deleteAccount(password: hasPassword ? password : null);
     } on AuthException catch (e) {
       if (mounted) _showMessage(e.message);
       return;
@@ -230,6 +204,18 @@ class _SettingsScreenState extends State<SettingsScreen>
       await AppData.user.setVacationMode(!user.vacationModeEnabled);
       await _loadUser();
     });
+  }
+
+  /// Forgets what this account has seen, so the hint cards show again, then
+  /// plays the intro cards right away.
+  Future<void> _replayIntro() async {
+    final store = TipsStore.current();
+    await store.reset();
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => IntroScreen(store: store)),
+    );
   }
 
   Future<void> _addCategory() async {
@@ -268,38 +254,12 @@ class _SettingsScreenState extends State<SettingsScreen>
     required String title,
     String? hint,
     String? initialValue,
-  }) async {
-    final controller = TextEditingController(text: initialValue);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-          side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
-        ),
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: InputDecoration(hintText: hint),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    return result;
-  }
+  }) => showNoriTextPrompt(
+    context,
+    title: title,
+    hint: hint,
+    initialValue: initialValue,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -346,6 +306,19 @@ class _SettingsScreenState extends State<SettingsScreen>
                     onAdd: _addCategory,
                     onRename: _renameCategory,
                     onDelete: _deleteCategory,
+                  ),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  Text(
+                    'Help',
+                    style: AppTextStyles.labelLg.copyWith(
+                      color: AppColors.inkMuted,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.unit),
+                  NoriListRow(
+                    icon: Icons.lightbulb_outline,
+                    label: 'Replay intro and tips',
+                    onTap: _replayIntro,
                   ),
                   const SizedBox(height: AppSpacing.stackMd),
                   Text(
@@ -403,13 +376,9 @@ class VacationModeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.all(AppSpacing.stackSm),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
+      borderWidth: AppBorder.thin,
       child: Row(
         children: [
           Container(
@@ -592,6 +561,114 @@ class _PlanCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// What [DeleteAccountDialog] hands back when Delete is tapped.
+class DeleteAccountRequest {
+  const DeleteAccountRequest({
+    required this.usernameMatches,
+    required this.password,
+  });
+
+  final bool usernameMatches;
+  final String password;
+}
+
+/// The confirm-by-typing dialog for deleting the account. Its own widget so
+/// it owns its text controllers: disposing them right after `showDialog`
+/// returns (as the caller used to) frees them while the close animation is
+/// still drawing the fields.
+class DeleteAccountDialog extends StatefulWidget {
+  const DeleteAccountDialog({
+    super.key,
+    required this.username,
+    required this.hasPassword,
+  });
+
+  final String username;
+  final bool hasPassword;
+
+  @override
+  State<DeleteAccountDialog> createState() => DeleteAccountDialogState();
+}
+
+@visibleForTesting
+class DeleteAccountDialogState extends State<DeleteAccountDialog> {
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final username = widget.username;
+    return AlertDialog(
+      scrollable: true,
+      backgroundColor: AppColors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+      ),
+      title: const Text('Delete Account?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'This permanently deletes your account, habits, history, pet, '
+            'coins and items. It can\'t be undone.',
+          ),
+          const SizedBox(height: AppSpacing.gutter),
+          Text('Type $username to confirm.'),
+          const SizedBox(height: AppSpacing.unit),
+          TextField(
+            controller: _usernameController,
+            autofocus: true,
+            autocorrect: false,
+            decoration: InputDecoration(hintText: username),
+          ),
+          const SizedBox(height: AppSpacing.gutter),
+          if (widget.hasPassword) ...[
+            const Text('Enter your password to confirm it\'s you.'),
+            const SizedBox(height: AppSpacing.unit),
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(hintText: 'Password'),
+            ),
+          ] else
+            const Text("You'll be asked to sign in with Google again."),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.error,
+            foregroundColor: AppColors.onError,
+          ),
+          onPressed: () => Navigator.pop(
+            context,
+            DeleteAccountRequest(
+              usernameMatches:
+                  _usernameController.text.trim().toLowerCase() ==
+                  username.toLowerCase(),
+              password: _passwordController.text,
+            ),
+          ),
+          child: const Text('Delete'),
+        ),
+      ],
     );
   }
 }

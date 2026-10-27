@@ -2,6 +2,7 @@ import { DocumentData, DocumentReference, Firestore, Transaction } from "firebas
 import { HttpsError } from "firebase-functions/v2/https";
 import { PetStage, petStageForLevel } from "./rewards";
 import { LevelState, xpForLevel } from "./xpCurve";
+import { userDocRefs, habitLogId } from "./docRefs";
 
 const DEFAULT_EVOLUTION_THRESHOLD = 7;
 
@@ -17,13 +18,15 @@ export interface HabitRewardResult {
 }
 
 export function habitDocRefs(db: Firestore, uid: string, habitId: string, dayKey: string) {
-  const user = db.collection("users").doc(uid);
+  const { user, habits, habitLogs, pet, inventory } = userDocRefs(db, uid);
   return {
     user,
-    habit: user.collection("habits").doc(habitId),
-    log: user.collection("habitLogs").doc(`${dayKey}_${habitId}`),
-    pet: user.collection("pet").doc("main"),
-    inventory: user.collection("inventory").doc("main"),
+    habit: habits.doc(habitId),
+    log: habitLogs.doc(habitLogId(dayKey, habitId)),
+    // The whole collection, for a claim that also reads the habit's earlier days.
+    habitLogs,
+    pet,
+    inventory,
   };
 }
 

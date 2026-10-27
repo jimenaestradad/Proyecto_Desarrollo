@@ -20,6 +20,7 @@ import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/habit_tile.dart';
 import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_avatar.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_room_stage.dart';
 import 'package:nori/widgets/pet_vital_ring.dart';
@@ -162,6 +163,9 @@ class _HomeScreenState extends State<HomeScreen>
       final reward = await claim();
       if (reward.xpDelta != 0 || reward.coinsDelta != 0) {
         await _reloadUserAndPet();
+        // A paying claim can also grant (and auto-equip) the one-time
+        // first-completion accessory, which the pet stage shows.
+        await _reloadInventory();
       }
       await _reloadHabits();
     });
@@ -576,13 +580,10 @@ class _CoinPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.mustard,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
-      ),
+      color: AppColors.mustard,
+      radius: 14,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -673,13 +674,9 @@ class _CareActionSheet extends StatelessWidget {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.gutter),
-        child: Container(
+        child: NoriCard(
           padding: const EdgeInsets.all(AppSpacing.gutter),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: Border.all(color: AppColors.ink, width: AppBorder.standard),
-          ),
+          radius: AppRadius.lg,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,

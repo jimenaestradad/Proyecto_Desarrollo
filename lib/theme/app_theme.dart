@@ -75,6 +75,14 @@ class AppTheme {
           foregroundColor: WidgetStatePropertyAll(AppColors.ink),
         ),
       ),
+      // Material falls back to `primary` (moss) for TextButton text, which is
+      // only 2.4-2.8:1 on linen/white. DESIGN.md §7 already says text buttons
+      // use mossDark (4.1-4.9:1), so make that the default for all of them.
+      textButtonTheme: const TextButtonThemeData(
+        style: ButtonStyle(
+          foregroundColor: WidgetStatePropertyAll(AppColors.mossDark),
+        ),
+      ),
       splashFactory: InkRipple.splashFactory,
     );
   }

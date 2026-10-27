@@ -6,6 +6,7 @@ import 'package:nori/screens/onboarding/choose_username_screen.dart';
 import 'package:nori/screens/onboarding/name_pet_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/loading_overlay.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -54,14 +55,12 @@ class _LoginScreenState extends State<LoginScreen> {
       // Point AppData.user (etc.) at this uid's real Firestore data before
       // touching it below — see AppData.bindToUser.
       AppData.bindToUser(user.id);
-      // Keeps the stored name/email in sync with whatever this account's
-      // Firebase Auth record actually has, in case it changed since the
-      // last sign-in.
-      await AppData.user.updateProfile(
-        name: user.name,
-        username: user.username,
-        email: user.email,
-      );
+      // Keeps the stored email in sync with the login email, in case a
+      // confirmed email change happened since the last sign-in. Name and
+      // username are left alone: Edit Profile owns them in Firestore, and
+      // the Auth display name this would copy is only set at sign-up, so
+      // writing it here reverted every name edit on the next login.
+      await AppData.user.updateProfile(email: user.email);
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
     } on AuthException catch (e) {
@@ -138,9 +137,12 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _loading = true);
     }
 
+    // Name and username only for a brand-new account — for a returning one
+    // they'd overwrite what Edit Profile saved (see the email login above).
+    final isNew = result.needsUsername;
     await AppData.user.updateProfile(
-      name: result.user.name,
-      username: username,
+      name: isNew ? result.user.name : null,
+      username: isNew ? username : null,
       email: result.user.email,
     );
     if (!mounted) return;
@@ -260,7 +262,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await AppData.auth.sendPasswordResetEmail(email);
       if (!mounted) return;
-      _showMessage('Password reset email sent to $email.');
+      _showMessage('If $email has an account, a reset link is on its way.');
     } on AuthException catch (e) {
       if (!mounted) return;
       _showMessage(e.message);
@@ -286,21 +288,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
                       minHeight:
-                          constraints.maxHeight - (AppSpacing.stackMd * 2),
+                          (constraints.maxHeight - (AppSpacing.stackMd * 2))
+                              .clamp(0.0, double.infinity),
                     ),
                     child: Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 420),
-                        child: Container(
+                        child: NoriCard(
                           padding: const EdgeInsets.all(AppSpacing.stackMd),
-                          decoration: BoxDecoration(
-                            color: AppColors.white,
-                            borderRadius: BorderRadius.circular(AppRadius.lg),
-                            border: Border.all(
-                              color: AppColors.ink,
-                              width: AppBorder.standard,
-                            ),
-                          ),
+                          radius: AppRadius.lg,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [

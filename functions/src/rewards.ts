@@ -16,6 +16,10 @@ const DIFFICULTIES: readonly HabitDifficulty[] = ["easy", "medium", "hard"];
 
 const BASE_XP: Record<HabitDifficulty, number> = { easy: 10, medium: 20, hard: 30 };
 
+// The one-time accessory claimHabit grants on a first completed habit (and
+// seedHistory mirrors). Never taken back by unclaim or delete.
+export const FIRST_COMPLETION_GIFT = "sunglasses";
+
 export interface HabitDefinition {
   type: HabitType;
   difficulty: HabitDifficulty;

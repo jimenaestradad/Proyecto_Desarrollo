@@ -50,7 +50,12 @@ class FirebaseAuthRepository implements AuthRepository {
         email: email,
         password: password,
       );
-      await credential.user?.updateDisplayName(name);
+      // Best-effort like the verification email below: the account already
+      // exists, and failing here would leave it stranded (retrying sign-up
+      // says "email already in use"). The Firestore profile holds the name.
+      try {
+        await credential.user?.updateDisplayName(name);
+      } catch (_) {}
       try {
         await credential.user?.sendEmailVerification();
       } catch (_) {
@@ -154,24 +159,7 @@ class FirebaseAuthRepository implements AuthRepository {
           ..setCustomParameters({'prompt': 'select_account'});
         return await _auth.signInWithPopup(provider);
       }
-      // Forget any cached account selection first so the native picker is
-      // always shown too — GoogleSignIn.signIn() otherwise silently
-      // re-authenticates the last-used account without prompting. This
-      // only clears the local selection, it doesn't revoke access, so
-      // re-picking the same account below won't ask for consent again.
-      await _googleSignIn!.signOut();
-      final googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) {
-        // Person closed the account picker — not a real error, just no
-        // sign-in to complete.
-        throw const AuthException('Sign-in was canceled.');
-      }
-      final googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-      return await _auth.signInWithCredential(credential);
+      return await _auth.signInWithCredential(await _nativeGoogleCredential());
     } on FirebaseAuthException catch (e) {
       if (e.code == 'account-exists-with-different-credential') {
         // The only other sign-in method this app supports is
@@ -186,6 +174,28 @@ class FirebaseAuthRepository implements AuthRepository {
       }
       rethrow;
     }
+  }
+
+  /// Shows the native Google account picker and returns the chosen
+  /// account's credential, for a sign-in or a re-authentication.
+  Future<AuthCredential> _nativeGoogleCredential() async {
+    // Forget any cached account selection first so the native picker is
+    // always shown too — GoogleSignIn.signIn() otherwise silently
+    // re-authenticates the last-used account without prompting. This
+    // only clears the local selection, it doesn't revoke access, so
+    // re-picking the same account below won't ask for consent again.
+    await _googleSignIn!.signOut();
+    final googleUser = await _googleSignIn.signIn();
+    if (googleUser == null) {
+      // Person closed the account picker — not a real error, just no
+      // sign-in to complete.
+      throw const AuthException('Sign-in was canceled.');
+    }
+    final googleAuth = await googleUser.authentication;
+    return GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
   }
 
   /// Builds the [GoogleSignInResult] for a just-authenticated Google user:
@@ -232,6 +242,9 @@ class FirebaseAuthRepository implements AuthRepository {
     try {
       await _auth.sendPasswordResetEmail(email: email);
     } on FirebaseAuthException catch (e) {
+      // Reported the same as a sent email, so this form can't be used to
+      // check which addresses have an account (OWASP: generic auth errors).
+      if (e.code == 'user-not-found') return;
       throw AuthException(_resetMessage(e.code));
     }
   }
@@ -302,11 +315,12 @@ class FirebaseAuthRepository implements AuthRepository {
 
   String _logInMessage(String code) {
     switch (code) {
+      // One message for all three, so a failed login doesn't reveal
+      // whether the email has an account.
       case 'user-not-found':
       case 'invalid-credential':
-        return 'No account found with that email and password.';
       case 'wrong-password':
-        return 'Incorrect password. Try again.';
+        return 'Incorrect email or password.';
       case 'invalid-email':
         return 'That email address looks invalid.';
       case 'user-disabled':
@@ -322,8 +336,6 @@ class FirebaseAuthRepository implements AuthRepository {
 
   String _resetMessage(String code) {
     switch (code) {
-      case 'user-not-found':
-        return 'No account found with that email.';
       case 'invalid-email':
         return 'That email address looks invalid.';
       case 'network-request-failed':
@@ -391,6 +403,9 @@ class FirebaseAuthRepository implements AuthRepository {
   String? get currentEmail => _auth.currentUser?.email;
 
   @override
+  String? get currentDisplayName => _auth.currentUser?.displayName;
+
+  @override
   Future<void> changeEmail({
     required String newEmail,
     required String password,
@@ -431,8 +446,60 @@ class FirebaseAuthRepository implements AuthRepository {
     }
   }
 
+  /// Proves the signed-in user is still them, so the server's
+  /// "signed in recently" check on deleteAccount passes. Uses the password
+  /// when one is given, otherwise asks for Google again.
+  Future<void> _reauthenticate(User user, String? password) async {
+    if (password != null) {
+      final email = user.email;
+      if (email == null) {
+        throw const AuthException("Couldn't confirm your password.");
+      }
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: password),
+      );
+    } else if (kIsWeb) {
+      await user.reauthenticateWithPopup(
+        GoogleAuthProvider()..setCustomParameters({'prompt': 'select_account'}),
+      );
+    } else {
+      await user.reauthenticateWithCredential(await _nativeGoogleCredential());
+    }
+    // The callable sends the cached ID token: refresh it so its auth_time is
+    // the sign-in that just happened.
+    await user.getIdToken(true);
+  }
+
+  String _reauthMessage(String code) {
+    switch (code) {
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Incorrect password. Try again.';
+      case 'user-mismatch':
+        return "That isn't the account you're signed in with.";
+      case 'too-many-requests':
+        return 'Too many attempts — please wait a moment and try again.';
+      case 'network-request-failed':
+        return 'No internet connection. Please try again.';
+      case 'popup-closed-by-user':
+      case 'cancelled-popup-request':
+        return 'Sign-in was canceled.';
+      default:
+        return "Couldn't confirm it's you. Please try again.";
+    }
+  }
+
   @override
-  Future<void> deleteAccount() async {
+  Future<void> deleteAccount({String? password}) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw const AuthException('You need to be signed in to do that.');
+    }
+    try {
+      await _reauthenticate(user, password);
+    } on FirebaseAuthException catch (e) {
+      throw AuthException(_reauthMessage(e.code));
+    }
     try {
       // Generous timeout: it deletes every doc the account owns.
       await callCloudFunction(

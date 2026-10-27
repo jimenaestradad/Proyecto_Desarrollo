@@ -17,14 +17,15 @@
 
 import { initializeApp } from "firebase-admin/app";
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
+import { habitLogId, userDocRefs } from "./docRefs";
 import { applyXpDelta } from "./xpCurve";
+import { FIRST_COMPLETION_GIFT } from "./rewards";
 import { asNumber, levelFields, readLevelState, syncPetStage } from "./habitTransaction";
 import {
-  DEFAULT_OFF_DAY_RATE, SeedHabit, SeedLog, localMidnight, pastDays, planSeed,
+  DEFAULT_OFF_DAY_RATE, SeedHabit, SeedLog, localDayKey, localMidnight, pastDays, planSeed,
 } from "./seedPlan";
 
 const PROJECT_ID = "nori-pet";
-const FIRST_COMPLETION_GIFT = "sunglasses";
 // Firestore allows 500 writes per transaction; leave room for user/pet/inventory.
 const LOGS_PER_TRANSACTION = 400;
 
@@ -63,12 +64,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   initializeApp({ projectId: PROJECT_ID });
   const db = getFirestore();
-  const userRef = db.collection("users").doc(args.uid);
+  const { user: userRef, habits: habitsRef, habitLogs } = userDocRefs(db, args.uid);
 
-  const [userSnap, habitsSnap] = await Promise.all([
-    userRef.get(),
-    userRef.collection("habits").get(),
-  ]);
+  const [userSnap, habitsSnap] = await Promise.all([userRef.get(), habitsRef.get()]);
   const userData = userSnap.data();
   if (!userData) throw new Error(`No user doc for ${args.uid} — is the account provisioned?`);
   if (habitsSnap.empty) throw new Error("This account has no habits. Create some in the app first.");
@@ -81,9 +79,8 @@ async function main() {
   }));
 
   const days = pastDays(new Date(), args.days);
-  const existingSnap = await userRef
-    .collection("habitLogs")
-    .where("date", ">=", Timestamp.fromDate(days[0]))
+  const existingSnap = await habitLogs
+    .where("dayKey", ">=", localDayKey(days[0]))
     .get();
   const existingLogKeys = new Set(existingSnap.docs.map((doc) => doc.id));
 
@@ -120,7 +117,7 @@ async function main() {
     const earliest = plan.earliestDayByHabit.get(habit.id);
     const created = toDate(habit.data.createdAt);
     if (earliest && (!created || earliest < created)) {
-      backdate.update(userRef.collection("habits").doc(habit.id), {
+      backdate.update(habitsRef.doc(habit.id), {
         createdAt: Timestamp.fromDate(earliest),
       });
     }
@@ -139,9 +136,12 @@ async function main() {
 
 async function writeChunk(uid: string, logs: SeedLog[]) {
   const db = getFirestore();
-  const userRef = db.collection("users").doc(uid);
-  const petRef = userRef.collection("pet").doc("main");
-  const inventoryRef = userRef.collection("inventory").doc("main");
+  const {
+    user: userRef,
+    pet: petRef,
+    inventory: inventoryRef,
+    habitLogs,
+  } = userDocRefs(db, uid);
 
   await db.runTransaction(async (tx) => {
     const [userSnap, petSnap, inventorySnap] = await Promise.all([
@@ -156,7 +156,7 @@ async function writeChunk(uid: string, logs: SeedLog[]) {
     let coins = 0;
     let anyPaid = false;
     for (const log of logs) {
-      tx.set(userRef.collection("habitLogs").doc(`${log.dayKey}_${log.habitId}`), {
+      tx.set(habitLogs.doc(habitLogId(log.dayKey, log.habitId)), {
         habitId: log.habitId,
         dayKey: log.dayKey,
         date: Timestamp.fromDate(log.date),

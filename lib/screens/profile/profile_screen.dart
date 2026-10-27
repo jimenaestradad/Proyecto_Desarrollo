@@ -54,23 +54,26 @@ class _ProfileScreenState extends State<ProfileScreen>
   Future<void> _loadData() => guardedLoad(_fetchData, hasData: _user != null);
 
   Future<void> _fetchData() async {
-    final user = await AppData.user.getCurrentUser();
-    final achievementsByCategory = await AppData.achievements
-        .getAchievementsByCategory();
+    // Independent reads, fired together instead of one round trip after
+    // another.
+    final (user, achievementsByCategory, weeklyCompletion, habitStats) = await (
+      AppData.user.getCurrentUser(),
+      AppData.achievements.getAchievementsByCategory(),
+      _computeWeeklyCompletion(),
+      AppData.calendar.getHabitStats(),
+    ).wait;
     final achievements = achievementsByCategory.values
         .expand((category) => category)
         .take(4)
         .toList(growable: false);
-    final weeklyCompletion = await _computeWeeklyCompletion();
-    final monthStats = await AppData.calendar.getCurrentMonth();
-    final habitStats = await AppData.calendar.getHabitStats();
 
     if (!mounted) return;
     setState(() {
       _user = user;
       _achievementPreview = achievements;
       _weeklyCompletion = weeklyCompletion;
-      _currentStreak = monthStats.currentStreak;
+      // getCurrentUser already computed it — no second month fetch.
+      _currentStreak = user.currentStreak;
       _habitStats = habitStats;
     });
   }
@@ -232,6 +235,7 @@ class _ProfileHero extends StatelessWidget {
                 right: -4,
                 bottom: 2,
                 child: IconButton.filled(
+                  tooltip: 'Edit profile',
                   onPressed: onEdit,
                   style: IconButton.styleFrom(
                     backgroundColor: AppColors.moss,
@@ -470,6 +474,7 @@ class _HabitStatisticsCard extends StatelessWidget {
             value: '${(weeklyCompletion * 100).round()}%',
             progress: weeklyCompletion,
             color: AppColors.moss,
+            textColor: AppColors.mossDark,
           ),
           const SizedBox(height: AppSpacing.stackMd),
           _StatisticRow(
@@ -477,6 +482,7 @@ class _HabitStatisticsCard extends StatelessWidget {
             value: currentStreak == 1 ? '1 day' : '$currentStreak days',
             progress: streakProgress,
             color: AppColors.terracotta,
+            textColor: AppColors.terracottaDark,
           ),
           if (sortedStats.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.stackMd),
@@ -498,6 +504,10 @@ class _HabitStatisticsCard extends StatelessWidget {
                 tagColor: sortedStats.length > 1 && stat == sortedStats.first
                     ? AppColors.moss
                     : AppColors.terracotta,
+                tagTextColor:
+                    sortedStats.length > 1 && stat == sortedStats.first
+                    ? AppColors.mossDark
+                    : AppColors.terracottaDark,
               ),
               if (stat != sortedStats.last)
                 const SizedBox(height: AppSpacing.stackSm),
@@ -515,12 +525,16 @@ class _StatisticRow extends StatelessWidget {
     required this.value,
     required this.progress,
     required this.color,
+    required this.textColor,
   });
 
   final String label;
   final String value;
   final double progress;
+
+  /// Bar fill. Too light to read as text, so the value uses [textColor].
   final Color color;
+  final Color textColor;
 
   @override
   Widget build(BuildContext context) {
@@ -529,7 +543,10 @@ class _StatisticRow extends StatelessWidget {
         Row(
           children: [
             Expanded(child: Text(label, style: AppTextStyles.labelLg)),
-            Text(value, style: AppTextStyles.labelLg.copyWith(color: color)),
+            Text(
+              value,
+              style: AppTextStyles.labelLg.copyWith(color: textColor),
+            ),
           ],
         ),
         const SizedBox(height: AppSpacing.unit),
@@ -544,6 +561,7 @@ class _HabitStatRow extends StatelessWidget {
     required this.stat,
     this.tagLabel,
     required this.tagColor,
+    required this.tagTextColor,
   });
 
   final HabitStat stat;
@@ -552,6 +570,7 @@ class _HabitStatRow extends StatelessWidget {
   /// one, and only when there's more than one habit to compare against).
   final String? tagLabel;
   final Color tagColor;
+  final Color tagTextColor;
 
   @override
   Widget build(BuildContext context) {
@@ -597,7 +616,9 @@ class _HabitStatRow extends StatelessWidget {
                       ),
                       child: Text(
                         tagLabel!,
-                        style: AppTextStyles.labelSm.copyWith(color: tagColor),
+                        style: AppTextStyles.labelSm.copyWith(
+                          color: tagTextColor,
+                        ),
                       ),
                     ),
                   ],

@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart' show FirebaseException;
 
 import '../models/nori_user.dart';
+import '../utils/provisioning_retry.dart';
 import 'calendar_repository.dart';
 import 'user_repository.dart';
 import 'vacation_log.dart';
@@ -24,9 +24,9 @@ import 'vacation_log.dart';
 /// `/users/{uid}`, not `create`, on purpose -- a client provisioning its
 /// own starting level/XP/coins is exactly the self-granted-currency hole
 /// the whole Cloud-Functions boundary in this doc exists to close.
-/// [_getDataWithRetry]/[_updateWithRetry] retry briefly on a missing doc
-/// to absorb the normal race between sign-up returning and that trigger
-/// finishing.
+/// [_getDataWithRetry] and [retryWhileProvisioning] retry briefly on a
+/// missing doc to absorb the normal race between sign-up returning and that
+/// trigger finishing.
 class FirestoreUserRepository implements UserRepository {
   FirestoreUserRepository({
     required String uid,
@@ -53,7 +53,7 @@ class FirestoreUserRepository implements UserRepository {
     // never stored") -- same rule MockUserRepository already follows, via
     // whatever CalendarRepository AppData currently has wired (mock or,
     // eventually, Valeria's FirestoreCalendarRepository).
-    final streak = (await _calendar.getCurrentMonth()).currentStreak;
+    final streak = await _calendar.getCurrentStreak();
     return NoriUser(
       id: _uid,
       name: data['name'] as String? ?? '',
@@ -104,65 +104,28 @@ class FirestoreUserRepository implements UserRepository {
     String? email,
   }) async {
     final updates = <String, dynamic>{
-      if (name != null) 'name': name,
-      if (username != null) 'username': username,
-      if (email != null) 'email': email,
+      'name': ?name,
+      'username': ?username,
+      'email': ?email,
     };
     if (updates.isEmpty) return;
-    await _updateWithRetry(updates);
-  }
-
-  /// Writes to `/users/{uid}`, retrying on the same onUserCreate race
-  /// described on [_getDataWithRetry] -- this is the call sign-up/login
-  /// make right after auth succeeds, so it's the one most likely to land
-  /// before the trigger has provisioned the doc.
-  ///
-  /// A doc-not-yet-provisioned write can surface as either 'not-found'
-  /// (backend rejects the update outright) or 'permission-denied' (the
-  /// security rule's `resource.data.diff(...)` check on the /users/{uid}
-  /// update rule can only be evaluated once `resource` exists; before that
-  /// it's cleanly denied rather than erroring, per firestore.rules). Both
-  /// mean the same thing here -- the doc isn't there yet -- so both are
-  /// retried the same way.
-  Future<void> _updateWithRetry(
-    Map<String, dynamic> updates, {
-    int attempts = 5,
-    Duration delay = const Duration(milliseconds: 400),
-  }) async {
-    for (var attempt = 1; attempt <= attempts; attempt++) {
-      try {
-        await _doc.update(updates);
-        return;
-      } on FirebaseException catch (e) {
-        final isMissingDocRace =
-            e.code == 'not-found' || e.code == 'permission-denied';
-        if (!isMissingDocRace || attempt == attempts) rethrow;
-        await Future.delayed(delay);
-      }
-    }
+    // Right after sign-up/login this can land before onUserCreate has
+    // provisioned the doc — see retryWhileProvisioning.
+    await retryWhileProvisioning(() => _doc.update(updates));
   }
 
   @override
   Future<void> setVacationMode(bool enabled) async {
     final now = DateTime.now();
-    // Kept in sync with the shared in-memory VacationLog regardless of
-    // mock/real split -- whatever CalendarRepository is currently wired
-    // reads freeze history from this same instance to compute streaks
-    // (see vacation_log.dart's own doc comment for why it's a separate
-    // shared store rather than living on this repository).
+    // FirestoreVacationLog writes `vacationRanges` and `vacationModeEnabled`
+    // together in one update, and the calendar reads freeze history from
+    // that same shared instance. Awaited so a failed write reaches the
+    // caller instead of the toggle reporting success.
     if (enabled) {
-      _vacationLog.startFreeze(now);
+      await _vacationLog.startFreeze(now);
     } else {
-      _vacationLog.endFreeze(now);
+      await _vacationLog.endFreeze(now);
     }
-    await _doc.update({'vacationModeEnabled': enabled});
-    // TODO(docs/BACKEND.md schema): `vacationRanges` -- the persisted
-    // history that would let VacationLog rebuild itself on a fresh app
-    // launch instead of starting empty every time -- isn't written or
-    // rehydrated here yet. Worth wiring up once habit history itself is
-    // real (Valeria's FirestoreCalendarRepository); a persisted vacation
-    // history with nothing but mock habit history to apply it to isn't
-    // useful on its own.
   }
 
   @override

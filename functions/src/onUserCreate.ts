@@ -9,6 +9,7 @@
 
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import * as functionsV1 from "firebase-functions/v1";
+import { userDocRefs } from "./docRefs";
 
 /**
  * Provisions a brand-new sign-up's /users/{uid} doc, starter pet, and
@@ -33,13 +34,14 @@ import * as functionsV1 from "firebase-functions/v1";
 export const onUserCreate = functionsV1.auth.user().onCreate(async (user) => {
   const db = getFirestore();
   const uid = user.uid;
+  const refs = userDocRefs(db, uid);
   const now = FieldValue.serverTimestamp();
 
   // create(), not set(): if this trigger is ever delivered twice, the
   // second run fails instead of resetting a user who has already started.
   const batch = db.batch();
 
-  batch.create(db.collection("users").doc(uid), {
+  batch.create(refs.user, {
     name: "",
     username: "",
     email: user.email ?? "",
@@ -56,7 +58,7 @@ export const onUserCreate = functionsV1.auth.user().onCreate(async (user) => {
     firstHabitCompletedAt: null,
   });
 
-  batch.create(db.collection("users").doc(uid).collection("pet").doc("main"), {
+  batch.create(refs.pet, {
     name: "Nori",
     hunger: 100,
     hygiene: 100,
@@ -67,7 +69,7 @@ export const onUserCreate = functionsV1.auth.user().onCreate(async (user) => {
   });
 
   batch.create(
-    db.collection("users").doc(uid).collection("inventory").doc("main"),
+    refs.inventory,
     {
       // All six catalog ids present from the start (not just the ones
       // with a starting count) so consumeCareItem/purchaseCareItem never

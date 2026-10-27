@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../models/achievement.dart';
+import '../models/habit.dart';
 import '../models/pet.dart';
 import '../theme/app_colors.dart';
 import 'bucket_list_repository.dart';
 import 'calendar_repository.dart';
-import 'habit_history_store.dart' show dateOnly;
+import 'habit_history_store.dart' show addDays, dateOnly;
 import 'habit_repository.dart';
 import 'inventory_repository.dart';
 import 'pet_repository.dart';
@@ -19,12 +20,10 @@ abstract class AchievementRepository {
 class _HistoryStats {
   const _HistoryStats({
     required this.totalCompletions,
-    required this.maxPerHabitCompletions,
     required this.reachedMinNotFull,
     required this.anyMissedDay,
   });
   final int totalCompletions;
-  final int maxPerHabitCompletions;
   final bool reachedMinNotFull;
   final bool anyMissedDay;
 }
@@ -57,19 +56,20 @@ class MockAchievementRepository implements AchievementRepository {
     return AchievementStatus.locked;
   }
 
-  Future<_HistoryStats> _computeHistoryStats() async {
-    final today = dateOnly(DateTime.now());
+  /// [byDay] is the one shared [_historyWindowDays]-back fetch; the
+  /// completion/miss stats only look at the last [_historyWindowDays] days
+  /// of it, same as before the fetch was shared with [_perfectDayStreak].
+  _HistoryStats _computeHistoryStats(
+    Map<DateTime, List<Habit>> byDay,
+    DateTime today,
+  ) {
+    final windowStart = addDays(today, 1 - _historyWindowDays);
     var totalCompletions = 0;
-    final perHabitCompletions = <String, int>{};
     var reachedMinNotFull = false;
     var anyMissedDay = false;
-    // One batched fetch for the whole window — against Firestore, a
-    // getHabitsForDate per day was ~180 sequential round trips.
-    final byDay = await _habits.getHabitsForRange(
-      today.subtract(const Duration(days: _historyWindowDays - 1)),
-      today,
-    );
-    for (final habitsForDay in byDay.values) {
+    for (final entry in byDay.entries) {
+      if (entry.key.isBefore(windowStart)) continue;
+      final habitsForDay = entry.value;
       if (habitsForDay.isEmpty) {
         continue;
       }
@@ -80,27 +80,17 @@ class MockAchievementRepository implements AchievementRepository {
         if (habit.isMinMet && !habit.isTargetMet) reachedMinNotFull = true;
         if (habit.isCompletedToday) {
           totalCompletions++;
-          perHabitCompletions[habit.id] =
-              (perHabitCompletions[habit.id] ?? 0) + 1;
         }
       }
     }
-    final maxPerHabit = perHabitCompletions.values.isEmpty
-        ? 0
-        : perHabitCompletions.values.reduce((a, b) => a > b ? a : b);
     return _HistoryStats(
       totalCompletions: totalCompletions,
-      maxPerHabitCompletions: maxPerHabit,
       reachedMinNotFull: reachedMinNotFull,
       anyMissedDay: anyMissedDay,
     );
   }
 
-  Future<int> _perfectDayStreak(DateTime today) async {
-    final byDay = await _habits.getHabitsForRange(
-      today.subtract(const Duration(days: _historyWindowDays)),
-      today,
-    );
+  int _perfectDayStreak(Map<DateTime, List<Habit>> byDay, DateTime today) {
     var streak = 0;
     var day = today;
     while (streak < 7 && today.difference(day).inDays <= _historyWindowDays) {
@@ -110,7 +100,7 @@ class MockAchievementRepository implements AchievementRepository {
         final allClaimed = scheduled.every((h) => h.isCompletedToday);
         if (isToday) {
           if (!allClaimed) {
-            day = day.subtract(const Duration(days: 1));
+            day = addDays(day, -1);
             continue;
           }
         } else if (!allClaimed) {
@@ -118,7 +108,7 @@ class MockAchievementRepository implements AchievementRepository {
         }
         streak++;
       }
-      day = day.subtract(const Duration(days: 1));
+      day = addDays(day, -1);
     }
     return streak;
   }
@@ -171,18 +161,31 @@ class MockAchievementRepository implements AchievementRepository {
   @override
   Future<Map<String, List<Achievement>>> getAchievementsByCategory() async {
     final today = dateOnly(DateTime.now());
-    final todayHabits = await _habits.getTodayHabits();
-    final monthStats = await _calendar.getCurrentMonth();
-    final streak = monthStats.currentStreak;
-    final history = await _computeHistoryStats();
-    final perfectStreak = await _perfectDayStreak(today);
-    final bucketItems = (await _bucketList.getItems()).where(
-      (item) => item.id != 'dev-level-up',
-    );
-    final goalGetterDone = bucketItems.any((item) => item.isCompleted);
-    final pet = await _pet.getPet();
-    final inventory = await _inventory.getInventory();
-    final social = await _social.getSocialActivity();
+    // Independent reads, so fired together: one after another these were
+    // ~10 sequential Firestore round trips, which made the screen (and the
+    // notification sync that calls this) slow to open.
+    final (
+      todayHabits,
+      streak,
+      byDay,
+      bucketList,
+      pet,
+      inventory,
+      social,
+    ) = await (
+      _habits.getTodayHabits(),
+      _calendar.getCurrentStreak(),
+      _habits.getHabitsForRange(addDays(today, -_historyWindowDays), today),
+      _bucketList.getItems(),
+      _pet.getPet(),
+      _inventory.getInventory(),
+      _social.getSocialActivity(),
+    ).wait;
+    final history = _computeHistoryStats(byDay, today);
+    final perfectStreak = _perfectDayStreak(byDay, today);
+    final goalGetterDone = bucketList
+        .where((item) => item.id != 'dev-level-up')
+        .any((item) => item.isCompleted);
     final onTrackCurrent =
         todayHabits.isNotEmpty && todayHabits.every((h) => h.isCompletedToday)
         ? 1
@@ -276,31 +279,21 @@ class MockAchievementRepository implements AchievementRepository {
           'dedicated-i',
           'Milestones',
           'Dedicated I',
-          '50 total completions',
+          '25 total completions',
           Icons.military_tech,
           AppColors.moss,
-          history.totalCompletions.clamp(0, 50),
-          50,
+          history.totalCompletions.clamp(0, 25),
+          25,
         ),
         _a(
           'dedicated-ii',
           'Milestones',
           'Dedicated II',
-          '100 total completions',
+          '50 total completions',
           Icons.military_tech,
           AppColors.mustardDark,
-          history.totalCompletions.clamp(0, 100),
-          100,
-        ),
-        _a(
-          'dedicated-iii',
-          'Milestones',
-          'Dedicated III',
-          '500 total completions',
-          Icons.military_tech,
-          AppColors.inkFaint,
-          history.totalCompletions.clamp(0, 500),
-          500,
+          history.totalCompletions.clamp(0, 50),
+          50,
         ),
         _a(
           'goal-getter',
@@ -353,36 +346,6 @@ class MockAchievementRepository implements AchievementRepository {
           'Complete habits from 3 different categories in a week',
           Icons.balance,
           AppColors.mustardDark,
-        ),
-        _a(
-          'steady-progress-i',
-          'Habits',
-          'Steady Progress I',
-          'Complete one habit 10 times',
-          Icons.trending_up,
-          AppColors.moss,
-          history.maxPerHabitCompletions.clamp(0, 10),
-          10,
-        ),
-        _a(
-          'steady-progress-ii',
-          'Habits',
-          'Steady Progress II',
-          'Complete one habit 25 times',
-          Icons.trending_up,
-          AppColors.mossDark,
-          history.maxPerHabitCompletions.clamp(0, 25),
-          25,
-        ),
-        _a(
-          'steady-progress-iii',
-          'Habits',
-          'Steady Progress III',
-          'Complete one habit 100 times',
-          Icons.trending_up,
-          AppColors.inkFaint,
-          history.maxPerHabitCompletions.clamp(0, 100),
-          100,
         ),
       ],
       'Pet Care': [

@@ -18,7 +18,7 @@ export interface PendingNotification {
   message: string;
 }
 
-// Mirrors FirestorePetRepository._decayPerHour (lib/data/firestore_pet_repository.dart).
+// Mirrors kPetDecayPerHour (lib/data/pet_repository.dart) -- change both together.
 export const PET_DECAY_PER_HOUR = 2;
 // A vital below this (out of 100) earns a "Pet Needs You".
 export const LOW_VITAL = 30;

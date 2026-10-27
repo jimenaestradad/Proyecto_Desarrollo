@@ -13,7 +13,9 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
   wiped, do the XP/coins they earned stay or get taken back? Deferred 2026-09-30, so such a
   habit can only be archived for now. Keeping them is simpler; taking them back is consistent
   with bucket-list delete but could drop several levels and de-evolve the pet.
-- Retroactive logging (can a missed day be logged after the fact?)
+- Retroactive logging — **shipped default:** any past day since the habit was created can be logged
+  and claimed from the calendar or the Habits date strip (`claimHabit` only rejects days before
+  `createdAt`, outside start/end, or archived). Open: whether to cap how far back.
 - Editing an active habit's schedule/target — effect on history/streak?
 - Negative/limit-habit implementation details
 
@@ -70,14 +72,16 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Whether XP belongs to the user or to the currently active pet
 - Whether only one pet can progress at a time
 - How inactive pets' stats/needs behave
-- Pet-care stat decay rates
+- Pet-care stat decay rates — **shipped default:** 2 points/hour per stat, clamped 0–100
+  (`FirestorePetRepository`, mirrored in `functions/src/notifications.ts`)
 
 ## Economy
 - Resolved 2026-09-16: new accounts start with **0 coins** and the care items
   `{food: 3, shampoo: 2, plushie: 1}`. The `sunglasses` accessory is unlocked on the user's
   **first habit completion** and is the **only** free accessory ever granted — everything else
   is bought with coins. See [BACKEND.md](BACKEND.md).
-- Coins earned per habit completion
+- Coins earned per habit completion — **shipped default:** XP ÷ 2 at the base tier (5/10/15), not
+  adapted (see XP balancing above)
 - Shop item prices
 - Consumable vs. permanent items
 - Power-up design (e.g. cake's special effect)
@@ -135,8 +139,10 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
   build billing/paywalls without this
 
 ## User flows / screens
-Not yet designed: onboarding, first-pet moment, habit creation, daily home screen, logging
-progress, rewards moment, pet care screen, shop, profile.
+All MVP screens are built (onboarding, habit creation, Home, logging, pet care, shop, profile —
+see FEATURES.md). Still open: a real **rewards moment** on a plain claim (only level-up and
+evolution have one — KNOWN_ISSUES.md "No reward feedback on claim itself") and the
+**first-pet moment** beyond naming the pet.
 
 - Decided 2026-09-16: the user **names their pet during onboarding** (default "Nori" if they
   skip). The name is written client-side after sign-up, not by the auth trigger — see
@@ -154,14 +160,19 @@ progress, rewards moment, pet care screen, shop, profile.
 - Resolved 2026-09-30: **per-habit pause is out of MVP scope.** Vacation Mode (global) is the
   only pause.
 - Missed-period handling
-- Cheating / duplicate-completion prevention
+- Cheating / duplicate-completion prevention — mostly resolved: every claim goes through
+  `claimHabit` (one claim per habit per day, rewards computed server-side), and since 2026-10-26
+  each habit-day and bucket-list item pays once (unclaim keeps the reward, re-claim pays 0).
+  Remaining known gaps are bounded and logged in KNOWN_ISSUES.md (backdated `createdAt`, pet
+  vitals as a direct client write).
 - Data history retention
 
 ## Infrastructure
 - Resolved 2026-09-16: Firebase (Auth + Firestore + Cloud Functions, Node.js/TypeScript) — see
   [BACKEND.md](BACKEND.md) for schema, security-rules approach, and the Cloud Functions list.
-- Resolved 2026-09-21: Auth provider/strategy — Firebase Auth, email/password only for now — see
-  `FirebaseAuthRepository` in `lib/data/firebase_auth_repository.dart`. Google Sign-In is tracked
-  as its own separate task, not covered by this.
-- Still open: specific GCP services beyond Firebase itself for hosting/deploy (the GCP phase in
-  ROADMAP.md, not yet started).
+- Resolved 2026-09-21, extended 2026-09-28: Auth is Firebase Auth with **email/password and
+  Google Sign-In**, linkable in both directions — see `FirebaseAuthRepository` in
+  `lib/data/firebase_auth_repository.dart` and BACKEND.md, "Account linking, both directions".
+- Resolved in practice (GCP sprint, 2026-10): no GCP services beyond what Firebase provisions
+  (Cloud Functions/Run, Cloud Scheduler for `petCareCheck`, Artifact Registry, a $5 budget alert).
+  Still open: whether CI/CD deploys automatically (ROADMAP.md, GCP row).

@@ -55,8 +55,8 @@ class FirestoreNotificationRepository implements NotificationRepository {
       _userDoc.collection('notificationState').doc('main');
 
   @override
-  Future<List<AppNotification>> getNotifications() async {
-    await _sync();
+  Future<List<AppNotification>> getNotifications({bool sync = true}) async {
+    if (sync) await _sync();
     final snapshot = await _collection
         .orderBy('createdAt', descending: true)
         .limit(_pageSize)
@@ -85,10 +85,12 @@ class FirestoreNotificationRepository implements NotificationRepository {
   Future<void> _sync() async {
     // Gathered outside the transaction: these repositories do their own
     // reads, which can't join it.
-    final user = await _user.getCurrentUser();
+    final (user, achievementsByCategory) = await (
+      _user.getCurrentUser(),
+      _achievements.getAchievementsByCategory(),
+    ).wait;
     final unlocked = {
-      for (final list
-          in (await _achievements.getAchievementsByCategory()).values)
+      for (final list in achievementsByCategory.values)
         for (final a in list)
           if (a.status == AchievementStatus.unlocked) a.id: a,
     };

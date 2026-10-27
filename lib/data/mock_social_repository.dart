@@ -28,12 +28,18 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
   DateTime? _liveMeAt;
   Future<void>? _liveMeLoad;
 
+  /// Bumped by [accountChanged], so a load still in flight for the previous
+  /// account can't cache that account's profile as the new one's.
+  int _accountGeneration = 0;
+
   /// Short cache: a screen often asks for you several times in one frame, and
   /// each refresh is a few Firestore reads.
   static const _liveMeTtl = Duration(seconds: 30);
 
   @override
   void accountChanged() {
+    _accountGeneration++;
+    _liveMeLoad = null;
     _liveMe = null;
     _liveMeAt = null;
     _users['me'] = _seedMe;
@@ -50,16 +56,20 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
     if (at != null && DateTime.now().difference(at) < _liveMeTtl) {
       return Future.value();
     }
+    final generation = _accountGeneration;
     return _liveMeLoad ??= () async {
       try {
         final me = await account.loadMe(_liveMe ?? _seedMe);
+        if (generation != _accountGeneration) return;
         _liveMe = me;
         _users['me'] = me;
       } catch (_) {
         // Keep whatever "you" we already had.
       } finally {
-        _liveMeAt = DateTime.now();
-        _liveMeLoad = null;
+        if (generation == _accountGeneration) {
+          _liveMeAt = DateTime.now();
+          _liveMeLoad = null;
+        }
       }
     }();
   }

@@ -58,6 +58,14 @@ class _NoriBreathingSpriteState extends State<NoriBreathingSprite>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Honor the OS "remove animations" setting: hold Nori on his first
+    // frame instead of looping the breathing cycle forever.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.stop();
+      _controller.value = 0;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
     if (_precached) return;
     _precached = true;
     for (final frame in _frames) {

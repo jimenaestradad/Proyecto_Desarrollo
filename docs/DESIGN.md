@@ -177,6 +177,9 @@ shared widget instead.
 | `NoriTextField` | Labeled input | `labelSm` label above, pill shape, linenAlt fill, 2.5 border → 3 when focused, ink prefix icon |
 | `NoriBottomNav` | 5-tab bar | white, 2.5 ink top border; selected item = mossLight fill + thin border + radius 16 |
 | `FutureFeatureBanner` / `SoonBadge` | "Preview only" / "Soon" markers | mustardLight, thin border, `rocket_launch` icon |
+| `NoriInfoBanner` | Short explanatory note | sky fill, thin ink border, radius 16, 20px icon + `labelLg` text; optional close button via `onDismiss` (Add Habit's "Adaptive XP" / "Minimum Threshold" notes) |
+| `OneTimeHint` | A `NoriInfoBanner` shown once per account until dismissed | state in `TipsStore` (`shared_preferences`, keyed by uid); takes no space when hidden; one per screen, max two lines of copy |
+| `showNoriTextPrompt` | One-line text dialog | the dialog spec below, Cancel + Save; used for category names |
 | `LoadErrorView` | First-load failure | `cloud_off_rounded` 56px, `headlineLgMobile` title, `bodyLg` muted message, non-expanded TactileButton "Try again" |
 
 Dialogs: `AlertDialog` with white background, radius 16, thin ink border; `TextButton` cancel +
@@ -211,6 +214,12 @@ Dialogs: `AlertDialog` with white background, radius 16, thin ink border; `TextB
   illustration-by-emoji), a `headlineLgMobile` line, muted body, and one `TactileButton` CTA.
 - **Disabled:** 50%-alpha fill on the button; text stays ink.
 - **Feedback for not-yet-built actions:** a "Coming soon" `SnackBar`.
+- **First-run help:** never a permanent line of helper text and never a spotlight overlay.
+  (1) `IntroScreen`: three swipeable `NoriCard`s (icon badge, `headlineLgMobile` title, `bodyLg`
+  muted body) shown once after naming the pet, with Skip, step dots and a `TactileButton`.
+  (2) `OneTimeHint`: a dismissible `NoriInfoBanner` on Habits and Calendar, once. Both are
+  replayable from Settings > Help > "Replay intro and tips". New hints are a `Tip` enum value plus
+  one `OneTimeHint`; keep them to a single sentence and don't put one on Home.
 
 ---
 

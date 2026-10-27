@@ -6,6 +6,7 @@ import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/accessory_art.dart';
 import 'package:nori/widgets/load_error_view.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
@@ -193,25 +194,7 @@ class _PetPreview extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(
-            height: petHeight,
-            child: Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.topCenter,
-              children: [
-                Image.asset(
-                  'assets/images/nori_front.png',
-                  height: petHeight,
-                  fit: BoxFit.contain,
-                ),
-                if (equippedItem != null)
-                  positionedAccessoryArt(
-                    item: equippedItem!,
-                    referenceSize: petHeight,
-                  ),
-              ],
-            ),
-          ),
+          NoriAccessoryPreview(height: petHeight, item: equippedItem),
         ],
       ),
     );
@@ -235,13 +218,10 @@ class _InventoryPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NoriCard(
+      padding: EdgeInsets.zero,
+      radius: AppRadius.md,
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
-      ),
       child: Column(
         children: [
           const SizedBox(height: AppSpacing.stackSm),

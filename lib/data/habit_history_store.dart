@@ -6,6 +6,13 @@ import '../models/habit_day_state.dart';
 /// Strips the time component so a [DateTime] can address a calendar day.
 DateTime dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
 
+/// The calendar day [days] after [date] (negative goes back), at midnight.
+/// Use this instead of `add(Duration(days: n))` when stepping through days:
+/// across a DST change a day is 23 or 25 hours long, so adding 24h either
+/// skips a date or lands on the same one twice.
+DateTime addDays(DateTime date, int days) =>
+    DateTime(date.year, date.month, date.day + days);
+
 /// Stable `yyyy-mm-dd` key for a date.
 String dayKey(DateTime date) {
   final d = dateOnly(date);
@@ -34,8 +41,7 @@ class HabitHistoryStore {
 
   final Map<String, Map<String, HabitDayState>> _byDate = {};
 
-  DateTime get earliestDate =>
-      dateOnly(DateTime.now()).subtract(Duration(days: seedDayCount));
+  DateTime get earliestDate => addDays(dateOnly(DateTime.now()), -seedDayCount);
 
   HabitDayState stateFor(String habitId, DateTime date) =>
       _byDate[dayKey(date)]?[habitId] ?? HabitDayState.empty;
@@ -55,7 +61,7 @@ class HabitHistoryStore {
   void seedHistory(List<Habit> habits) {
     final today = dateOnly(DateTime.now());
     for (var back = seedDayCount; back >= 1; back--) {
-      final date = today.subtract(Duration(days: back));
+      final date = addDays(today, -back);
       for (final habit in habits) {
         if (!habit.isScheduledOn(date)) continue;
         final state = _seedState(habit, date);

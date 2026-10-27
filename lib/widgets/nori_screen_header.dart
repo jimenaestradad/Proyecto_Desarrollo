@@ -23,10 +23,15 @@ class NoriScreenHeader extends StatelessWidget {
   final Widget? trailing;
 
   /// The plain back-`IconButton` most headers use as their `leading`.
-  static Widget backButton(BuildContext context) => IconButton(
-    onPressed: () => Navigator.pop(context),
-    icon: const Icon(Icons.arrow_back),
-  );
+  /// [result] is what the route pops with — `Navigator.pop` skips
+  /// `PopScope`, so a screen that returns a value on system back must pass
+  /// the same value here.
+  static Widget backButton(BuildContext context, {Object? result}) =>
+      IconButton(
+        tooltip: 'Back',
+        onPressed: () => Navigator.pop(context, result),
+        icon: const Icon(Icons.arrow_back),
+      );
 
   @override
   Widget build(BuildContext context) {

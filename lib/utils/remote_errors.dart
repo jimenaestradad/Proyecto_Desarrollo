@@ -19,8 +19,6 @@ import '../data/cloud_functions_client.dart';
 /// function call plus a reload isn't cut off mid-reload.
 const remoteTimeout = Duration(seconds: 20);
 
-const serverUnreachableMessage = "Couldn't reach the server — try again.";
-
 /// One plain, user-facing sentence for whatever a repository or Cloud
 /// Function call threw.
 String remoteErrorMessage(Object error) {

@@ -50,3 +50,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Playwright MCP session output (screenshots, page dumps): local scratch, never commit
+.playwright-mcp/

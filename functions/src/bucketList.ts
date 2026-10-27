@@ -7,6 +7,7 @@ import {
 } from "firebase-admin/firestore";
 import { CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
 import { applyXpDelta } from "./xpCurve";
+import { userDocRefs } from "./docRefs";
 import { parseDocId, requireAuth } from "./requestArgs";
 import {
   asNumber,
@@ -106,12 +107,8 @@ function requireBucketListCall(request: CallableRequest<{ itemId?: unknown }>) {
 }
 
 function bucketListRefs(uid: string, itemId: string) {
-  const userRef = getFirestore().collection("users").doc(uid);
-  return {
-    userRef,
-    itemRef: userRef.collection("bucketList").doc(itemId),
-    petRef: userRef.collection("pet").doc("main"),
-  };
+  const { user, bucketList, pet } = userDocRefs(getFirestore(), uid);
+  return { userRef: user, itemRef: bucketList.doc(itemId), petRef: pet };
 }
 
 async function readBucketListDocs(

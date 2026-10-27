@@ -54,7 +54,7 @@ class MockUserRepository implements UserRepository {
     // than a stored field — a stored copy previously went stale and
     // disagreed with the real streak shown on Profile's Habit Statistics
     // card and Calendar's own stats panel.
-    final streak = (await _calendar.getCurrentMonth()).currentStreak;
+    final streak = await _calendar.getCurrentStreak();
     if (streak != _user.currentStreak) {
       _user = _user.copyWith(currentStreak: streak);
     }

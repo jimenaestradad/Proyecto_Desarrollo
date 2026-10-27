@@ -29,5 +29,5 @@ the university-project timeline, not now). Don't build or maintain iOS/desktop-s
 
 ## Naming
 
-Code and the business doc (`docs/Ejercicio1_IngenieriaDeSoftware` on `main`) call it **Nori**.
+Code and the business doc (`homework/Ejercicio1_IngenieriaDeSoftware`) call it **Nori**.
 Some planning material calls the course project "Tamagotchi" — same product, use **Nori**.

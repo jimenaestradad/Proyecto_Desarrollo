@@ -24,7 +24,9 @@ abstract class UsernameRepository {
   Future<bool> isAvailable(String username);
 
   /// Atomically claims [username] for [uid]. Throws
-  /// [UsernameTakenException] if it's already held.
+  /// [UsernameTakenException] if someone else holds it. Claiming a name
+  /// [uid] already holds is a no-op, so a sign-up that claimed it and then
+  /// failed later can safely run again.
   Future<void> claim({required String username, required String uid});
 
   /// The username already claimed by [uid], or null if they haven't
@@ -37,6 +39,7 @@ abstract class UsernameRepository {
   /// create-new + delete-old in one transaction, per firestore.rules's own
   /// note that a username change is spec'd that way (delete is only
   /// allowed for the owning uid so this is the one flow that can do it).
+  /// Also writes `users/{uid}.username` in that same transaction.
   /// Throws [UsernameTakenException] if [newUsername] is already held by
   /// someone else. A no-op when [newUsername] equals [oldUsername]
   /// case-insensitively (nothing to move in this collection -- the
@@ -88,6 +91,7 @@ class FirestoreUsernameRepository implements UsernameRepository {
     await _firestore.runTransaction((transaction) async {
       final snapshot = await transaction.get(ref);
       if (snapshot.exists) {
+        if (snapshot.data()?['uid'] == uid) return;
         throw UsernameTakenException(username);
       }
       transaction.set(ref, {
@@ -128,6 +132,11 @@ class FirestoreUsernameRepository implements UsernameRepository {
         'createdAt': FieldValue.serverTimestamp(),
       });
       transaction.delete(oldRef);
+      // Same transaction, so the index and the profile can't disagree if
+      // the later profile save fails.
+      transaction.update(_firestore.collection('users').doc(uid), {
+        'username': newUsername.trim(),
+      });
     });
   }
 }

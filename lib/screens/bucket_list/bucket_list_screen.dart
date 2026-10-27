@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/models/bucket_list_item.dart';
@@ -55,7 +56,7 @@ class _BucketListScreenState extends State<BucketListScreen>
   // side, so there's no local reward to apply afterward -- just reload.
   Future<void> _toggleComplete(BucketListItem item) async {
     if (_isSyncing) return;
-    _isSyncing = true;
+    setState(() => _isSyncing = true);
     try {
       await guardedAction(() async {
         await callCloudFunction(
@@ -64,18 +65,13 @@ class _BucketListScreenState extends State<BucketListScreen>
               : 'completeBucketListItem',
           {'itemId': item.id},
         );
+        // Just the list: the real pet's syncEvolution is a no-op (the
+        // function already handled any evolution), so the user read + streak
+        // walk that fed it only added round trips to every tap.
         await _fetchItems();
-        // Mirrors home_screen.dart/calendar_screen.dart/habits_list_screen.dart's
-        // own post-reward call -- a bucket-list completion can cross a level
-        // the same way a habit claim can. Currently a no-op for the real
-        // Firestore-backed pet (see firestore_pet_repository.dart's
-        // syncEvolution doc comment); kept here so this call site already
-        // exists once that seam is revisited.
-        final user = await AppData.user.getCurrentUser();
-        await AppData.pet.syncEvolution(user.level);
       });
     } finally {
-      _isSyncing = false;
+      if (mounted) setState(() => _isSyncing = false);
     }
   }
 
@@ -103,11 +99,14 @@ class _BucketListScreenState extends State<BucketListScreen>
     });
   }
 
-  /// Deleting a completed item takes its XP/coins back (the
-  /// deleteBucketListItem Cloud Function), so that case asks first — an
-  /// unfinished item has nothing to lose and deletes straight away.
+  /// Deleting an item that ever paid out takes its XP/coins back (the
+  /// deleteBucketListItem Cloud Function), so that case asks first — even
+  /// when it's since been un-completed, since un-completing keeps the
+  /// reward. One that never paid has nothing to lose and deletes straight
+  /// away.
   Future<void> _deleteItem(BucketListItem item) async {
-    if (item.isCompleted && !await _confirmDeleteCompleted(item)) return;
+    final paidOut = item.isCompleted || item.rewardPaid;
+    if (paidOut && !await _confirmDeleteCompleted(item)) return;
     await guardedAction(() async {
       await AppData.bucketList.deleteItem(item.id);
       await _fetchItems();
@@ -125,8 +124,8 @@ class _BucketListScreenState extends State<BucketListScreen>
         ),
         title: Text('Delete "${item.title}"?'),
         content: const Text(
-          "You already completed this one — deleting it takes back the XP "
-          'and coins it earned.',
+          'This one already paid out — deleting it takes back the XP and '
+          'coins it earned.',
         ),
         actions: [
           TextButton(
@@ -157,6 +156,13 @@ class _BucketListScreenState extends State<BucketListScreen>
             : NoriScrollScaffold(
                 maxWidth: 900,
                 children: [
+                  // Completing waits on a Cloud Function, so show that
+                  // something is happening instead of a frozen-looking tap.
+                  if (_isSyncing)
+                    const LinearProgressIndicator(
+                      color: AppColors.moss,
+                      backgroundColor: AppColors.linenAlt,
+                    ),
                   NoriScreenHeader(
                     leading: NoriScreenHeader.backButton(context),
                     title: 'Bucket List',
@@ -312,7 +318,7 @@ class _BucketListCard extends StatelessWidget {
                 ),
               ),
               PopupMenuButton<void>(
-                tooltip: 'More',
+                tooltip: 'More options for ${item.title}',
                 padding: EdgeInsets.zero,
                 icon: const Icon(
                   Icons.more_vert,
@@ -424,10 +430,15 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
     // Falls back to the item's own existing reward (not the new-item default)
     // on an unparsable/cleared field, so editing another field can't silently
     // reset an established reward back to 150/75.
+    // Capped at what the server will actually pay (see the field hints).
     final xpReward =
-        int.tryParse(_xpController.text.trim()) ?? existing?.xpReward ?? 150;
+        (int.tryParse(_xpController.text.trim()) ?? existing?.xpReward ?? 150)
+            .clamp(0, BucketListItem.maxXpReward);
     final coinReward =
-        int.tryParse(_coinController.text.trim()) ?? existing?.coinReward ?? 75;
+        (int.tryParse(_coinController.text.trim()) ??
+                existing?.coinReward ??
+                75)
+            .clamp(0, BucketListItem.maxCoinReward);
 
     final item = existing == null
         ? BucketListItem(
@@ -489,7 +500,11 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
                   child: TextField(
                     controller: _xpController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'XP reward'),
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(
+                      labelText: 'XP reward',
+                      helperText: 'Up to ${BucketListItem.maxXpReward}',
+                    ),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.stackSm),
@@ -497,7 +512,11 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
                   child: TextField(
                     controller: _coinController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Coin reward'),
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(
+                      labelText: 'Coin reward',
+                      helperText: 'Up to ${BucketListItem.maxCoinReward}',
+                    ),
                   ),
                 ),
               ],

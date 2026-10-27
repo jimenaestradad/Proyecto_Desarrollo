@@ -5,8 +5,10 @@ import '../theme/app_colors.dart';
 abstract class NotificationRepository {
   /// Newest first. The Firestore implementation also creates any
   /// notifications owed since the last call before reading (see
-  /// FirestoreNotificationRepository).
-  Future<List<AppNotification>> getNotifications();
+  /// FirestoreNotificationRepository). Pass `sync: false` to skip that and
+  /// just read what's already stored -- fast, so a screen can paint
+  /// immediately and then call again with the default to catch up.
+  Future<List<AppNotification>> getNotifications({bool sync = true});
 
   /// Live: whether any notification is unread. Backs the dot on the bell.
   Stream<bool> watchHasUnread();
@@ -63,7 +65,7 @@ class MockNotificationRepository implements NotificationRepository {
   ];
 
   @override
-  Future<List<AppNotification>> getNotifications() async =>
+  Future<List<AppNotification>> getNotifications({bool sync = true}) async =>
       List.unmodifiable(_notifications);
 
   @override

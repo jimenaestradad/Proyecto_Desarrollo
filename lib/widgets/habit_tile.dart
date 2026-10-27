@@ -42,9 +42,16 @@ class HabitTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final completed = habit.isCompletedToday;
+    // Same gate as _LimitCard's claim button: a limit that's already been
+    // exceeded can't be marked safe (the claim would pay nothing but still
+    // count the day as kept). Un-claiming stays allowed.
+    final limitExceeded =
+        habit.type == HabitType.limit &&
+        habit.targetValue != null &&
+        habit.currentValue > habit.targetValue!;
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadius.sm),
-      onTap: () => onToggle(!completed),
+      onTap: completed || !limitExceeded ? () => onToggle(!completed) : null,
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -96,7 +103,7 @@ class HabitTile extends StatelessWidget {
                 onTap: () => onQuickLog!(habit.quickLogStep),
               ),
             PopupMenuButton<void>(
-              tooltip: 'More',
+              tooltip: 'More options for ${habit.name}',
               padding: EdgeInsets.zero,
               icon: const Icon(
                 Icons.more_vert,

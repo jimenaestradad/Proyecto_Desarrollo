@@ -1,5 +1,6 @@
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { userDocRefs } from "./docRefs";
 import { requireAuth } from "./requestArgs";
 import { asNumber } from "./habitTransaction";
 
@@ -70,8 +71,7 @@ export const purchaseCareItem = onCall(async (request) => {
     );
   }
 
-  const userRef = db.collection("users").doc(uid);
-  const inventoryRef = userRef.collection("inventory").doc("main");
+  const { user: userRef, inventory: inventoryRef } = userDocRefs(db, uid);
   const cost = careItem.price * quantity;
   const grantedCount = careItem.grants * quantity;
 
@@ -124,8 +124,7 @@ export const purchaseAccessory = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "Unknown accessory.");
   }
 
-  const userRef = db.collection("users").doc(uid);
-  const inventoryRef = userRef.collection("inventory").doc("main");
+  const { user: userRef, inventory: inventoryRef } = userDocRefs(db, uid);
 
   return db.runTransaction(async (tx) => {
     const [userSnap, inventorySnap] = await Promise.all([

@@ -46,24 +46,9 @@ class MockPetRepository implements PetRepository {
     lastDecayAt: DateTime.now(),
   );
 
-  static const double _decayPerHour = 2;
-
-  Pet _applyDecay(Pet pet) {
-    final elapsedHours =
-        DateTime.now().difference(pet.lastDecayAt).inMinutes / 60;
-    if (elapsedHours <= 0) return pet;
-    final drop = (elapsedHours * _decayPerHour).clamp(0, 100);
-    return pet.copyWith(
-      hunger: (pet.hunger - drop).clamp(0, 100),
-      hygiene: (pet.hygiene - drop).clamp(0, 100),
-      happiness: (pet.happiness - drop).clamp(0, 100),
-      lastDecayAt: DateTime.now(),
-    );
-  }
-
   @override
   Future<Pet> getPet() async {
-    _pet = _applyDecay(_pet);
+    _pet = applyPetDecay(_pet);
     return _pet;
   }
 
@@ -72,7 +57,7 @@ class MockPetRepository implements PetRepository {
   @override
   Future<bool> useCareItem(CareItem item) async {
     if (!await _inventory.consumeCareItem(item.id)) return false;
-    _pet = applyCareRestore(_applyDecay(_pet), item);
+    _pet = applyCareRestore(applyPetDecay(_pet), item);
     return true;
   }
 
@@ -92,6 +77,30 @@ class MockPetRepository implements PetRepository {
     if (trimmed.isEmpty) return;
     _pet = _pet.copyWith(name: trimmed);
   }
+}
+
+/// How many points each vital loses per hour. Balance numbers are still
+/// open (docs/BACKEND.md, "Balance numbers are still open"), so this is the
+/// mock's demo value, ported as-is. `PET_DECAY_PER_HOUR` in
+/// functions/src/notifications.ts mirrors it — change both together.
+const double kPetDecayPerHour = 2;
+
+/// [pet] after the decay that has built up since its `lastDecayAt` (as of
+/// [now], default the current time): every vital drops by the same amount,
+/// floored at 0, and `lastDecayAt` moves to [now]. Whole minutes only, so a
+/// partial minute is dropped when the clock is reset. Shared by both
+/// repositories so a decay rule change can't make them disagree.
+Pet applyPetDecay(Pet pet, {DateTime? now}) {
+  final current = now ?? DateTime.now();
+  final elapsedHours = current.difference(pet.lastDecayAt).inMinutes / 60;
+  if (elapsedHours <= 0) return pet;
+  final drop = (elapsedHours * kPetDecayPerHour).clamp(0, 100);
+  return pet.copyWith(
+    hunger: (pet.hunger - drop).clamp(0, 100),
+    hygiene: (pet.hygiene - drop).clamp(0, 100),
+    happiness: (pet.happiness - drop).clamp(0, 100),
+    lastDecayAt: current,
+  );
 }
 
 /// [pet] with [item]'s vital raised by its restoreAmount, clamped to 100.

@@ -92,6 +92,11 @@ abstract class AuthRepository {
   /// truth: a [changeEmail] only lands here once the link is clicked.
   String? get currentEmail;
 
+  /// The signed-in account's display name (set at sign-up, or by Google), or
+  /// null when signed out or none was set. Only a fallback for filling in a
+  /// profile that was never written; the Firestore profile owns the name.
+  String? get currentDisplayName;
+
   /// Starts changing the login email of a password account: re-checks
   /// [password], then emails a confirmation link to [newEmail]. The login
   /// email only changes once that link is clicked. Throws [AuthException]
@@ -102,9 +107,12 @@ abstract class AuthRepository {
   });
 
   /// Permanently deletes the signed-in account and all of its data (the
-  /// deleteAccount Cloud Function), then signs out. Throws [AuthException]
-  /// with a user-facing message on failure.
-  Future<void> deleteAccount();
+  /// deleteAccount Cloud Function), then signs out. Re-authenticates first,
+  /// because the function refuses a session that signed in more than a few
+  /// minutes ago: with [password] for an account that has one, or by
+  /// asking for Google again for a Google-only account (leave [password]
+  /// null). Throws [AuthException] with a user-facing message on failure.
+  Future<void> deleteAccount({String? password});
 }
 
 /// A message already safe to show in the UI — screens display
@@ -233,6 +241,10 @@ class MockAuthRepository implements AuthRepository {
   String? get currentEmail => _currentUserId == null ? null : kDemoUser.email;
 
   @override
+  String? get currentDisplayName =>
+      _currentUserId == null ? null : kDemoUser.name;
+
+  @override
   Future<void> changeEmail({
     required String newEmail,
     required String password,
@@ -241,7 +253,7 @@ class MockAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> deleteAccount() async {
+  Future<void> deleteAccount({String? password}) async {
     await Future.delayed(const Duration(milliseconds: 300));
     _currentUserId = null;
   }

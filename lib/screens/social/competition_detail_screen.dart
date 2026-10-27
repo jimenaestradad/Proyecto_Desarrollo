@@ -272,14 +272,17 @@ class _CompetitionDetailScreenState extends State<CompetitionDetailScreen>
               ),
               const SizedBox(height: AppSpacing.stackMd),
               if (_tab == 0) ...[
-                if (c.standings.isEmpty)
-                  const NoriEmptyState(
-                    icon: Icons.people_outline,
-                    title: 'No standings yet',
-                    message: 'Participants will appear here when they join.',
-                  ),
-                for (var i = 0; i < c.standings.length; i++)
-                  _standing(c, c.standings[i], i + 1),
+                // `standings` copies and sorts on every access — read once.
+                if (c.standings case final standings) ...[
+                  if (standings.isEmpty)
+                    const NoriEmptyState(
+                      icon: Icons.people_outline,
+                      title: 'No standings yet',
+                      message: 'Participants will appear here when they join.',
+                    ),
+                  for (var i = 0; i < standings.length; i++)
+                    _standing(c, standings[i], i + 1),
+                ],
               ] else if (_tab == 1) ...[
                 if (_posts.isEmpty)
                   const NoriEmptyState(

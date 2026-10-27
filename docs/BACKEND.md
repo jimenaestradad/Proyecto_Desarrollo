@@ -696,8 +696,11 @@ and `deleteHabit` (9 functions live, confirmed via `firebase functions:list`), t
 in the two other bucket-list functions, `claimHabit`'s archived-day check, and the matching
 `firestore.rules` changes (bucket-list delete, habit `archivedRanges`). **2026-10-26:** adaptive
 XP (morning deploy), then the coin-reversal rule and the new `deleteAccount` (11 functions live,
-confirmed via `firebase deploy` output). Left: CI/CD básico; explicit cost-awareness check-in (still
-free-tier-eligible at this scale, not yet watched). Firebase Local Emulator Suite deliberately
+confirmed via `firebase deploy` output). Left: CI/CD básico. **Cost check-in done 2026-10-26:** a $5/month
+budget ("Firebase Project nori-pet") alerts at 50/90/100%; `gcf-artifacts` has Firebase's 3-day
+cleanup policy (~0.56 GB, a cent or less a month over the 0.5 GB free tier); last 30 days peaked
+at ~1.2k Firestore reads/day (free tier 50k) and a few hundred writes total. `petCareCheck`
+(hourly, 1 read per pet) is the only cost that grows with users unprompted. Firebase Local Emulator Suite deliberately
 not used for this project (see "Local dev").
 
 Google Sign-In's console configuration (enabling the provider, OAuth client, SHA-1 fingerprints

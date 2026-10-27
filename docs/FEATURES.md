@@ -172,6 +172,11 @@ OPEN_DECISIONS.
   backend for social is still a non-goal (see BACKEND.md), and every rule the screens show —
   competition types and scoring, leaderboard metric/period, friend-streak rule, privacy options,
   reward amounts — is a **mock placeholder, not a decision** (see OPEN_DECISIONS.md § Social).
+  **Scope note (2026-10-26): the social backend is not being built for this MVP.** The tab exists
+  to *show how Social would look*, not to work end to end, so bugs in the mock behavior (stale
+  state after switching accounts, competitions that never expire, blocked users still listed, and
+  so on) are accepted and aren't being fixed. Only fix something here if it crashes, or if it
+  breaks a *real* screen (Home, Habits, Profile, Achievements) that shares code with it.
   Layouts came from two Stitch exports, rebuilt on our own design system (`docs/DESIGN.md`).
   The earlier design-only mock (2026-09-10) it replaces took the old Achievements tab slot;
   Achievements itself lives under Profile.

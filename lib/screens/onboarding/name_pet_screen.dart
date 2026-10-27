@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/tips_store.dart';
+import 'package:nori/screens/onboarding/intro_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_text_field.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
@@ -12,9 +15,10 @@ import 'package:nori/widgets/tactile_button.dart';
 /// (docs/BACKEND.md: "Onboarding writes the chosen pet name to pet/main
 /// ... skipping onboarding leaves it as 'Nori'").
 ///
-/// Always pops back to its caller (never navigates on its own) so the
-/// caller can decide what comes after — currently always straight to
-/// '/home' — regardless of whether the person typed a name or skipped.
+/// Always pops back to its caller so the caller can decide what comes after
+/// — currently always straight to '/home' — regardless of whether the
+/// person typed a name or skipped. The one thing it does first is show
+/// [IntroScreen] if this account hasn't seen it yet.
 class NamePetScreen extends StatefulWidget {
   const NamePetScreen({super.key});
 
@@ -49,12 +53,28 @@ class _NamePetScreenState extends State<NamePetScreen> {
       // network right at this instant, etc.) — the pet just keeps
       // whatever name it already has, same as skipping.
     }
-    if (!mounted) return;
-    Navigator.pop(context);
+    await _finish();
   }
 
   void _skip() {
     if (_saving) return;
+    _finish();
+  }
+
+  /// Shows the intro cards once per account, then hands back to the caller.
+  /// Done here rather than in each caller (login, sign-up, finish-sign-up)
+  /// so all three get it, and the caller's "straight to Home" stays as is.
+  Future<void> _finish() async {
+    final store = TipsStore.current();
+    final seen = await store.hasSeenIntro();
+    if (!mounted) return;
+    if (!seen) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => IntroScreen(store: store)),
+      );
+      if (!mounted) return;
+    }
     Navigator.pop(context);
   }
 
@@ -77,16 +97,9 @@ class _NamePetScreenState extends State<NamePetScreen> {
                 child: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 420),
-                    child: Container(
+                    child: NoriCard(
                       padding: const EdgeInsets.all(AppSpacing.stackMd),
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(
-                          color: AppColors.ink,
-                          width: AppBorder.standard,
-                        ),
-                      ),
+                      radius: AppRadius.lg,
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [

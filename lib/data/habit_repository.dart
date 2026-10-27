@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../models/habit.dart';
 import '../models/habit_day_state.dart';
@@ -7,6 +6,7 @@ import '../models/pet.dart';
 import '../theme/app_colors.dart';
 import 'cloud_functions_client.dart';
 import 'habit_history_store.dart';
+import 'signed_in_uid.dart';
 
 /// What a completion/claim/un-claim action just paid out (or clawed back).
 /// With [FirestoreHabitRepository] the claimHabit/unclaimHabit Cloud Function
@@ -534,7 +534,7 @@ class MockHabitRepository implements HabitRepository {
     for (
       var day = dateOnly(start);
       !day.isAfter(dateOnly(end));
-      day = day.add(const Duration(days: 1))
+      day = addDays(day, 1)
     ) {
       result[day] = await getHabitsForDate(day);
     }
@@ -575,10 +575,7 @@ class MockHabitRepository implements HabitRepository {
     var count = today.currentValue > 0 || today.isCompletedToday ? 1 : 0;
     final now = dateOnly(DateTime.now());
     for (var back = 1; back <= history.seedDayCount; back++) {
-      final state = history.stateFor(
-        habitId,
-        now.subtract(Duration(days: back)),
-      );
+      final state = history.stateFor(habitId, addDays(now, -back));
       if (state.value > 0 || state.claimed) count++;
     }
     return count;
@@ -609,13 +606,7 @@ class MockHabitRepository implements HabitRepository {
 class FirestoreHabitRepository implements HabitRepository {
   /// Every document lives under the signed-in user — see
   /// docs/BACKEND.md "Firestore schema". Throws if nobody's signed in.
-  String get _uid {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      throw StateError('FirestoreHabitRepository used with no signed-in user');
-    }
-    return user.uid;
-  }
+  String get _uid => requireSignedInUid('FirestoreHabitRepository');
 
   /// A `CollectionReference` is just a *pointer* to a path — it does no
   /// network call by itself. The actual read/write happens on `.get()`,
@@ -635,9 +626,12 @@ class FirestoreHabitRepository implements HabitRepository {
       .doc(_uid)
       .collection('habitLogs');
 
-  /// Every `habitLogs` entry with `date` in [start, end] (inclusive), keyed
+  /// Every `habitLogs` entry for the days [start]..[end] (inclusive), keyed
   /// by its document id (`{dayKey}_{habitId}`) — **one** query, not one per
-  /// day. [FirestoreCalendarRepository] in `calendar_repository.dart` is
+  /// day. Filters on the `dayKey` string (`yyyy-mm-dd` sorts chronologically),
+  /// not the `date` Timestamp: that one is the device's local midnight when
+  /// written, so after a time-zone change a day's log could fall outside that
+  /// day's query and vanish from the calendar. [FirestoreCalendarRepository] in `calendar_repository.dart` is
   /// built entirely on this: fetch the whole visible range once, then derive
   /// day statuses/streaks/stats in memory, instead of the N+1 query pattern
   /// [MockCalendarRepository] gets away with only because its "queries" are
@@ -652,8 +646,8 @@ class FirestoreHabitRepository implements HabitRepository {
     DateTime end,
   ) async {
     final snapshot = await _habitLogs
-        .where('date', isGreaterThanOrEqualTo: dateOnly(start))
-        .where('date', isLessThanOrEqualTo: dateOnly(end))
+        .where('dayKey', isGreaterThanOrEqualTo: dayKey(start))
+        .where('dayKey', isLessThanOrEqualTo: dayKey(end))
         .get();
     return {
       for (final doc in snapshot.docs)
@@ -723,13 +717,10 @@ class FirestoreHabitRepository implements HabitRepository {
     final definitions = await fetchAllDefinitions();
     final today = dateOnly(DateTime.now());
     final logs = await logsInRange(today, today);
-    return [
+    return hydrateDay(today, [
       for (final definition in definitions)
-        if (definition.isActiveOn(today))
-          definition.hydrate(
-            logs['${dayKey(today)}_${definition.id}'] ?? HabitDayState.empty,
-          ),
-    ];
+        if (definition.isActiveOn(today)) definition,
+    ], logs);
   }
 
   @override
@@ -838,12 +829,7 @@ class FirestoreHabitRepository implements HabitRepository {
     if (scheduled.isEmpty) return const [];
 
     final logs = await logsInRange(day, day);
-    return [
-      for (final definition in scheduled)
-        definition.hydrate(
-          logs['${dayKey(day)}_${definition.id}'] ?? HabitDayState.empty,
-        ),
-    ];
+    return hydrateDay(day, scheduled, logs);
   }
 
   @override
@@ -860,42 +846,7 @@ class FirestoreHabitRepository implements HabitRepository {
     String habitId,
     DateTime date,
     double amount,
-  ) async {
-    // A single doc read, not the whole collection — MockHabitRepository's
-    // equivalent (`_habits.indexWhere`) is a free in-memory scan, but that's
-    // not true here, and unlike firstWhere this also matches the mock's
-    // no-op-if-the-habit-doesn't-exist behavior instead of throwing.
-    final definition = await _fetchDefinition(habitId);
-    if (definition == null) return;
-    final day = dateOnly(date);
-    final ref = _habitLogs.doc('${dayKey(day)}_$habitId');
-
-    await FirebaseFirestore.instance.runTransaction((tx) async {
-      final snapshot = await tx.get(ref);
-      final previous = snapshot.exists
-          ? HabitDayState.fromJson(snapshot.data()!)
-          : HabitDayState.empty;
-      if (previous.claimed) return;
-      final target = definition.targetValue;
-      final nextValue = target == null
-          ? previous.value + amount
-          : (previous.value + amount).clamp(
-              0,
-              definition.isInverted ? target * 2 : target,
-            );
-      // set(), not update() — the doc may not exist yet if this is the
-      // first time progress was logged on this past day. habitId/dayKey/
-      // date are re-sent every time alongside the changed value, but
-      // firestore.rules' hasOnly(['value']) still allows it: diff() only
-      // flags keys whose *value* actually changed, and those three don't.
-      tx.set(ref, {
-        ...previous.copyWith(value: nextValue.toDouble()).toJson(),
-        'habitId': habitId,
-        'dayKey': dayKey(day),
-        'date': day,
-      });
-    });
-  }
+  ) => _writeProgress(habitId, date, (current) => current + amount);
 
   @override
   Future<HabitRewardResult> claimHabitForDate(String habitId, DateTime date) =>
@@ -912,7 +863,23 @@ class FirestoreHabitRepository implements HabitRepository {
     String habitId,
     DateTime date,
     double value,
+  ) => _writeProgress(habitId, date, (_) => value);
+
+  /// The one write path behind [logProgressForDate] (add to the day's
+  /// value) and [setProgressForDate] (replace it): [next] maps the day's
+  /// current value to the one to store, and the result is clamped by
+  /// [clampProgress]. Does nothing if the habit doesn't exist or the day is
+  /// already claimed — a claimed day's value only changes by un-claiming
+  /// first, since the claim fixed it (claimValue in functions/src/rewards.ts).
+  Future<void> _writeProgress(
+    String habitId,
+    DateTime date,
+    double Function(double current) next,
   ) async {
+    // A single doc read, not the whole collection — MockHabitRepository's
+    // equivalent (`_habits.indexWhere`) is a free in-memory scan, but that's
+    // not true here, and unlike firstWhere this also matches the mock's
+    // no-op-if-the-habit-doesn't-exist behavior instead of throwing.
     final definition = await _fetchDefinition(habitId);
     if (definition == null) return;
     final day = dateOnly(date);
@@ -924,12 +891,15 @@ class FirestoreHabitRepository implements HabitRepository {
           ? HabitDayState.fromJson(snapshot.data()!)
           : HabitDayState.empty;
       if (previous.claimed) return;
-      final target = definition.targetValue;
-      final clamped = target == null
-          ? value.clamp(0.0, double.infinity)
-          : value.clamp(0.0, definition.isInverted ? target * 2 : target);
+      // set(), not update() — the doc may not exist yet if this is the
+      // first time progress was logged on this past day. habitId/dayKey/
+      // date are re-sent every time alongside the changed value, but
+      // firestore.rules' hasOnly(['value']) still allows it: diff() only
+      // flags keys whose *value* actually changed, and those three don't.
       tx.set(ref, {
-        ...previous.copyWith(value: clamped).toJson(),
+        ...previous
+            .copyWith(value: clampProgress(definition, next(previous.value)))
+            .toJson(),
         'habitId': habitId,
         'dayKey': dayKey(day),
         'date': day,
@@ -950,16 +920,9 @@ class FirestoreHabitRepository implements HabitRepository {
     for (
       var day = dateOnly(start);
       !day.isAfter(dateOnly(end));
-      day = day.add(const Duration(days: 1))
+      day = addDays(day, 1)
     ) {
-      final key = dayKey(day);
-      result[day] = [
-        for (final definition in definitions)
-          if (definition.isScheduledOn(day))
-            definition.hydrate(
-              logs['${key}_${definition.id}'] ?? HabitDayState.empty,
-            ),
-      ];
+      result[day] = hydrateScheduled(day, definitions, logs);
     }
     return result;
   }
@@ -1002,9 +965,15 @@ class FirestoreHabitRepository implements HabitRepository {
     final snapshot = await _habitLogs
         .where('habitId', isEqualTo: habitId)
         .get();
+    // Same test as deleteHabit's server-side count (functions/src/
+    // deleteHabit.ts): a day that paid and was then un-claimed keeps its
+    // payout, so it still counts as active even with value 0.
     return snapshot.docs.where((doc) {
       final state = HabitDayState.fromJson(doc.data());
-      return state.value > 0 || state.claimed;
+      return state.value > 0 ||
+          state.claimed ||
+          state.awardedXp > 0 ||
+          state.awardedCoins > 0;
     }).length;
   }
 
@@ -1041,4 +1010,53 @@ List<ArchivedRange> archiveRangesAfterRestoring(List<ArchivedRange> ranges) {
       else if (range.start.compareTo(today) < 0)
         ArchivedRange(start: range.start, end: today),
   ];
+}
+
+/// [habits] (definitions) hydrated with [day]'s entry from [logs] — the
+/// shape every screen expects (see [Habit.hydrate]). [logs] is keyed by log
+/// doc id (`{dayKey}_{habitId}`), as returned by
+/// [FirestoreHabitRepository.logsInRange]; a habit with no entry for the day
+/// gets [HabitDayState.empty]. Shared by the habit and calendar repositories
+/// so a day's list and that day's calendar colour are built the same way.
+List<Habit> hydrateDay(
+  DateTime day,
+  Iterable<Habit> habits,
+  Map<String, HabitDayState> logs,
+) {
+  final key = dayKey(day);
+  return [
+    for (final habit in habits)
+      habit.hydrate(logs['${key}_${habit.id}'] ?? HabitDayState.empty),
+  ];
+}
+
+/// [hydrateDay] for just the [definitions] scheduled on [day]
+/// ([Habit.isScheduledOn]) — which habits a day's list and calendar cell
+/// show, as opposed to [FirestoreHabitRepository.getTodayHabits], which
+/// shows every active one. Reads from an already-fetched [logs] map, so
+/// loops over many days ([FirestoreCalendarRepository]'s month, streak and
+/// stats) cost no extra queries. Pass every habit as [definitions], archived
+/// and ended ones included
+/// ([FirestoreHabitRepository.fetchAllDefinitions]): taking only today's
+/// active habits would erase an ended habit from the past days it was
+/// actually on.
+List<Habit> hydrateScheduled(
+  DateTime day,
+  Iterable<Habit> definitions,
+  Map<String, HabitDayState> logs,
+) => hydrateDay(day, [
+  for (final definition in definitions)
+    if (definition.isScheduledOn(day)) definition,
+], logs);
+
+/// [value] limited to what [habit] can log: never negative, and no more
+/// than its target — or twice the target for a limit habit, whose target is
+/// a ceiling it can exceed (the card then reads "Limit Exceeded"). A habit
+/// with no target has no upper limit.
+double clampProgress(Habit habit, double value) {
+  final target = habit.targetValue;
+  final cap = target == null
+      ? double.infinity
+      : (habit.isInverted ? target * 2 : target);
+  return value.clamp(0.0, cap).toDouble();
 }

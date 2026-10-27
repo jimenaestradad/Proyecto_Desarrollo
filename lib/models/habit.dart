@@ -434,8 +434,8 @@ class Habit {
     id: id,
     name: json['name'] as String,
     subtitle: json['subtitle'] as String,
-    icon: IconRegistry.iconFor(json['iconKey'] as String),
-    color: ColorRegistry.colorFor(json['colorKey'] as String),
+    icon: IconRegistry.iconFor(json['iconKey'] as String?),
+    color: ColorRegistry.colorFor(json['colorKey'] as String?),
     xpReward: json['xpReward'] as int,
     coinReward: json['coinReward'] as int,
     repeat: _enumFromName(

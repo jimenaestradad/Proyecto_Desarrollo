@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 import '../utils/firestore_date.dart';
 import 'habit_history_store.dart' show dateOnly;
+import 'signed_in_uid.dart';
 
 /// Tracks Vacation Mode's on/off history by date, independent of whether the
 /// toggle is still on today — so a streak walk over past days can tell which
@@ -83,13 +83,7 @@ class FirestoreVacationLog implements VacationLog {
   /// another user's vacation ranges.
   String? _loadedUid;
 
-  String get _uid {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      throw StateError('FirestoreVacationLog used with no signed-in user');
-    }
-    return user.uid;
-  }
+  String get _uid => requireSignedInUid('FirestoreVacationLog');
 
   DocumentReference<Map<String, dynamic>> get _userDoc =>
       FirebaseFirestore.instance.collection('users').doc(_uid);

@@ -14,10 +14,17 @@
  */
 
 import * as admin from "firebase-admin";
+import { setGlobalOptions } from "firebase-functions/v2";
 
 // Runs before any handler does: the function files only call
 // getFirestore() inside their handlers, never at import time.
 admin.initializeApp();
+
+// Caps how many instances any one v2 function can scale to, so a retry
+// loop or someone hammering a callable can't run up the bill. Far above
+// what two testers need; raise it if real traffic ever gets near.
+// Must run before the exports below define their functions.
+setGlobalOptions({ maxInstances: 10 });
 
 export { onUserCreate } from "./onUserCreate";
 export { purchaseCareItem, purchaseAccessory } from "./shop";

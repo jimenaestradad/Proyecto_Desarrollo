@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'data/app_data.dart';
 import 'firebase_options.dart';
 import 'navigation/nori_shell.dart';
+import 'screens/onboarding/finish_signup_screen.dart';
 import 'screens/onboarding/login_screen.dart';
 import 'screens/onboarding/sign_up_screen.dart';
 import 'screens/onboarding/welcome_screen.dart';
@@ -35,10 +36,29 @@ void main() async {
   // at that uid's real Firestore data before any screen can read it —
   // see AppData.bindToUser.
   final currentUser = FirebaseAuth.instance.currentUser;
+  var initialRoute = '/welcome';
   if (currentUser != null) {
     AppData.bindToUser(currentUser.uid);
+    initialRoute = await _hasClaimedUsername(currentUser.uid)
+        ? '/home'
+        : '/finish-signup';
   }
-  runApp(NoriApp(initialRoute: currentUser != null ? '/home' : '/welcome'));
+  runApp(NoriApp(initialRoute: initialRoute));
+}
+
+/// Whether a signed-in account got as far as claiming a username. One that
+/// didn't was interrupted mid-sign-up (see [FinishSignUpScreen]). If the
+/// check can't be made, say yes: failing to read shouldn't lock anyone out
+/// of an account that is fine, and every screen has its own error handling.
+Future<bool> _hasClaimedUsername(String uid) async {
+  try {
+    final username = await AppData.usernames
+        .usernameForUid(uid)
+        .timeout(const Duration(seconds: 5));
+    return username != null;
+  } catch (_) {
+    return true;
+  }
 }
 
 /// Points every Firebase SDK at the Firebase Local Emulator Suite
@@ -92,6 +112,7 @@ class NoriApp extends StatelessWidget {
       routes: {
         '/welcome': (context) => const WelcomeScreen(),
         '/signup': (context) => const SignUpScreen(),
+        '/finish-signup': (context) => const FinishSignUpScreen(),
         '/login': (context) => const LoginScreen(),
         '/home': (context) => const NoriShell(),
       },

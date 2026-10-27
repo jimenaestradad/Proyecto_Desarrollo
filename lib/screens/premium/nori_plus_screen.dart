@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nori/screens/premium/payment_method_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 class NoriPlusScreen extends StatefulWidget {
@@ -150,14 +151,10 @@ class _FeatureComparisonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
-      ),
+    return const NoriCard(
+      padding: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
-      child: const Column(
+      child: Column(
         children: [
           _ComparisonRow(
             label: 'Feature',

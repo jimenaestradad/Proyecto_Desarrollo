@@ -111,6 +111,27 @@ class WelcomeScreen extends StatelessWidget {
                             ),
                           ),
                         ),
+                        // Returning users (e.g. after logging out) land here
+                        // too; without this the only way to Log In was via
+                        // the sign-up form's footer link.
+                        const SizedBox(height: AppSpacing.unit),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              'Already have an account?',
+                              style: AppTextStyles.bodyMd.copyWith(
+                                color: AppColors.inkMuted,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/login'),
+                              child: const Text('Log In'),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),

@@ -1,16 +1,14 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/auth_repository.dart';
 import 'package:nori/data/username_repository.dart';
 import 'package:nori/screens/onboarding/name_pet_screen.dart';
+import 'package:nori/screens/onboarding/username_availability.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/loading_overlay.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_text_field.dart';
 import 'package:nori/widgets/tactile_button.dart';
-
-enum _UsernameStatus { idle, checking, available, taken }
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -19,74 +17,39 @@ class SignUpScreen extends StatefulWidget {
   State<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _SignUpScreenState extends State<SignUpScreen> {
+class _SignUpScreenState extends State<SignUpScreen>
+    with UsernameAvailability<SignUpScreen> {
   final _nameController = TextEditingController();
   final _usernameController = TextEditingController();
+
+  @override
+  TextEditingController get usernameController => _usernameController;
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
   bool _loading = false;
 
-  Timer? _usernameDebounce;
-  _UsernameStatus _usernameStatus = _UsernameStatus.idle;
+  // What's already done, kept for the rest of this screen's lifetime so a
+  // retry resumes where the last attempt stopped. Once the Firebase Auth
+  // account exists, [_submit] must never call signUp() again for the same
+  // person (it would fail with email-already-in-use): it picks up from the
+  // first step that hasn't succeeded yet — claim the username, then write
+  // the profile. Whatever got that far (a taken username, a profile write
+  // that timed out right after sign-up) is retried from here.
+  String? _createdUid;
 
-  /// Set when a Firebase Auth account was created but claiming its
-  /// username then failed (someone else grabbed it in that instant).
-  /// Sticky for the rest of this screen's lifetime regardless of what they
-  /// retype next — [_submit] must never call signUp() a second time for
-  /// the same person (it would fail with email-already-in-use); it just
-  /// needs to claim a (possibly different) username for this uid.
-  String? _uidPendingUsername;
+  /// The email the account was created with: the profile must keep matching
+  /// it even if the field is edited before a retry.
+  String? _createdEmail;
 
-  @override
-  void dispose() {
-    _usernameDebounce?.cancel();
-    _nameController.dispose();
-    _usernameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
+  /// Set once the username claim succeeded; later retries reuse it.
+  String? _claimedUsername;
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  void _onUsernameChanged(String value) {
-    _usernameDebounce?.cancel();
-    final username = value.trim();
-    if (username.isEmpty) {
-      setState(() => _usernameStatus = _UsernameStatus.idle);
-      return;
-    }
-    if (username.length < 3) {
-      setState(() => _usernameStatus = _UsernameStatus.idle);
-      return;
-    }
-
-    setState(() => _usernameStatus = _UsernameStatus.checking);
-    _usernameDebounce = Timer(const Duration(milliseconds: 400), () async {
-      bool available;
-      try {
-        available = await AppData.usernames.isAvailable(username);
-      } catch (_) {
-        // Can't reach Firestore right now — don't block typing on it, the
-        // atomic claim at submit time is the real backstop either way.
-        if (!mounted || _usernameController.text.trim() != username) return;
-        setState(() => _usernameStatus = _UsernameStatus.idle);
-        return;
-      }
-      if (!mounted || _usernameController.text.trim() != username) return;
-      setState(
-        () => _usernameStatus = available
-            ? _UsernameStatus.available
-            : _UsernameStatus.taken,
-      );
-    });
   }
 
   Future<void> _submit() async {
@@ -120,7 +83,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
 
-    if (_usernameStatus == _UsernameStatus.taken) {
+    if (usernameStatus == UsernameStatus.taken) {
       _showMessage('That username is already taken — please choose another.');
       return;
     }
@@ -128,48 +91,44 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() => _loading = true);
 
     try {
-      final String uid;
-      if (_uidPendingUsername != null) {
-        // The account already exists from a previous attempt on this
-        // screen — only the username claim failed. Reuse that account
-        // instead of calling signUp() again (which would fail with
-        // email-already-in-use).
-        uid = _uidPendingUsername!;
-      } else {
+      if (_createdUid == null) {
         final user = await AppData.auth.signUp(
           name: name,
           username: username,
           email: email,
           password: password,
         );
-        uid = user.id;
+        _createdUid = user.id;
+        _createdEmail = email;
       }
+      final uid = _createdUid!;
 
       // Point AppData.user (etc.) at this uid's real Firestore data before
       // touching it below — see AppData.bindToUser. Safe to call again on
-      // a retried username claim too (rebinding to the same uid is a
-      // no-op in practice).
+      // a retry (rebinding to the same uid is a no-op in practice).
       AppData.bindToUser(uid);
 
-      try {
-        await AppData.usernames.claim(username: username, uid: uid);
-      } on UsernameTakenException {
-        _uidPendingUsername = uid;
-        if (!mounted) return;
-        setState(() {
-          _loading = false;
-          _usernameStatus = _UsernameStatus.taken;
-        });
-        _showMessage(
-          'That username was just taken — pick another one to finish creating your account.',
-        );
-        return;
+      if (_claimedUsername == null) {
+        try {
+          await AppData.usernames.claim(username: username, uid: uid);
+          _claimedUsername = username;
+        } on UsernameTakenException {
+          if (!mounted) return;
+          setState(() {
+            _loading = false;
+            usernameStatus = UsernameStatus.taken;
+          });
+          _showMessage(
+            'That username was just taken — pick another one to finish creating your account.',
+          );
+          return;
+        }
       }
 
       await AppData.user.updateProfile(
         name: name,
-        username: username,
-        email: email,
+        username: _claimedUsername,
+        email: _createdEmail,
       );
       if (!mounted) return;
       // Last onboarding step: let them name their pet (or skip and keep
@@ -187,51 +146,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
-      _showMessage('Unable to create your account. Please try again.');
-    }
-  }
-
-  Widget? get _usernameSuffixIcon {
-    switch (_usernameStatus) {
-      case _UsernameStatus.idle:
-        return null;
-      case _UsernameStatus.checking:
-        return const Padding(
-          padding: EdgeInsets.all(14),
-          child: SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        );
-      case _UsernameStatus.available:
-        return const Icon(Icons.check_circle, color: AppColors.moss);
-      case _UsernameStatus.taken:
-        return const Icon(Icons.cancel, color: AppColors.error);
-    }
-  }
-
-  String? get _usernameHelperText {
-    switch (_usernameStatus) {
-      case _UsernameStatus.idle:
-      case _UsernameStatus.checking:
-        return null;
-      case _UsernameStatus.available:
-        return 'Username is available';
-      case _UsernameStatus.taken:
-        return 'Username is already taken';
-    }
-  }
-
-  Color? get _usernameHelperColor {
-    switch (_usernameStatus) {
-      case _UsernameStatus.taken:
-        return AppColors.error;
-      case _UsernameStatus.available:
-        return AppColors.mossDark;
-      case _UsernameStatus.idle:
-      case _UsernameStatus.checking:
-        return null;
+      _showMessage(
+        _createdUid == null
+            ? 'Unable to create your account. Please try again.'
+            : 'Your account was created, but setup didn’t finish. '
+                  'Tap Create Account again to retry.',
+      );
     }
   }
 
@@ -251,21 +171,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
                       minHeight:
-                          constraints.maxHeight - (AppSpacing.stackMd * 2),
+                          (constraints.maxHeight - (AppSpacing.stackMd * 2))
+                              .clamp(0.0, double.infinity),
                     ),
                     child: Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 420),
-                        child: Container(
+                        child: NoriCard(
                           padding: const EdgeInsets.all(AppSpacing.stackMd),
-                          decoration: BoxDecoration(
-                            color: AppColors.white,
-                            borderRadius: BorderRadius.circular(AppRadius.lg),
-                            border: Border.all(
-                              color: AppColors.ink,
-                              width: AppBorder.standard,
-                            ),
-                          ),
+                          radius: AppRadius.lg,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -286,10 +200,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 icon: Icons.alternate_email,
                                 textInputAction: TextInputAction.next,
                                 autofillHints: const [AutofillHints.username],
-                                onChanged: _onUsernameChanged,
-                                suffixIcon: _usernameSuffixIcon,
-                                helperText: _usernameHelperText,
-                                helperColor: _usernameHelperColor,
+                                onChanged: onUsernameChanged,
+                                suffixIcon: usernameSuffixIcon,
+                                helperText: usernameHelperText,
+                                helperColor: usernameHelperColor,
                               ),
                               NoriTextField(
                                 controller: _emailController,

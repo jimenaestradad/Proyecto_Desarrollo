@@ -236,6 +236,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                     right: -4,
                     bottom: 2,
                     child: IconButton.filled(
+                      tooltip: 'Change photo',
                       onPressed: _editPhoto,
                       style: IconButton.styleFrom(
                         backgroundColor: AppColors.moss,

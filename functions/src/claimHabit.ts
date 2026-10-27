@@ -1,7 +1,8 @@
 import { DocumentData, FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { claimValue, computeReward, parseHabitDefinition } from "./rewards";
+import { FIRST_COMPLETION_GIFT, claimValue, computeReward, parseHabitDefinition } from "./rewards";
 import { applyXpDelta } from "./xpCurve";
+import { habitLogId } from "./docRefs";
 import { DayArgs, localDayKeyOf, parseDayArgs, parseHabitId, requireAuth } from "./requestArgs";
 import {
   WINDOW_DAYS,
@@ -23,7 +24,6 @@ import {
 } from "./habitTransaction";
 import { notificationRefs, petNameOf, progressNotifications, writeNotifications } from "./notifications";
 
-const FIRST_COMPLETION_GIFT = "sunglasses";
 // Lenient on purpose: a DST day can be 25h long.
 const LONGEST_DAY_MS = 25 * 60 * 60 * 1000;
 
@@ -113,7 +113,7 @@ export async function runClaimHabit(
     // (the client can write that field). Reads stay before any write.
     const scheduledKeys = recentScheduledDays(habitData, userData, day);
     const windowLogs = scheduledKeys.length === 0 ? [] : await tx.getAll(
-      ...scheduledKeys.map((key) => refs.user.collection("habitLogs").doc(`${key}_${habitId}`)),
+      ...scheduledKeys.map((key) => refs.habitLogs.doc(habitLogId(key, habitId))),
     );
     const claimedKeys = new Set(
       windowLogs.filter((snap) => snap.get("claimed") === true).map((snap) => snap.get("dayKey") as string),

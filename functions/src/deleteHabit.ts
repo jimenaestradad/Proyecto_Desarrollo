@@ -1,6 +1,7 @@
 import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { applyXpDelta } from "./xpCurve";
+import { userDocRefs } from "./docRefs";
 import { parseHabitId, requireAuth } from "./requestArgs";
 import { asNumber, coinsAfterReversal, levelFields, rewardPaid, readLevelState, syncPetStage } from "./habitTransaction";
 
@@ -22,10 +23,9 @@ export interface DeleteHabitResult {
 // mint. Rejects a habit with real history. The sunglasses gift stays.
 export async function runDeleteHabit(uid: string, habitId: string): Promise<DeleteHabitResult> {
   const db = getFirestore();
-  const userRef = db.collection("users").doc(uid);
-  const habitRef = userRef.collection("habits").doc(habitId);
-  const petRef = userRef.collection("pet").doc("main");
-  const logsQuery = userRef.collection("habitLogs").where("habitId", "==", habitId);
+  const { user: userRef, habits, pet: petRef, habitLogs } = userDocRefs(db, uid);
+  const habitRef = habits.doc(habitId);
+  const logsQuery = habitLogs.where("habitId", "==", habitId);
 
   return db.runTransaction(async (tx) => {
     const [habitSnap, logsSnap, userSnap, petSnap] = await Promise.all([

@@ -10,6 +10,30 @@ export function requireAuth(uid: string | undefined): string {
   return uid;
 }
 
+// How recently the caller must have signed in for an irreversible action
+// (deleting the account). OWASP asks for re-authentication before sensitive
+// operations; five minutes is long enough to type a password, short enough
+// that a session left open on a phone can't be used to wipe the account.
+export const RECENT_LOGIN_MAX_AGE_MS = 5 * 60 * 1000;
+
+// Throws unless the caller's ID token says they authenticated within
+// [maxAgeMs]. `auth_time` (seconds since epoch) is when they last signed in
+// or re-authenticated — a refreshed token keeps the old one, so a long-lived
+// session doesn't pass. A missing claim is treated as too old.
+export function requireRecentLogin(
+  token: { auth_time?: unknown } | undefined,
+  nowMs: number = Date.now(),
+  maxAgeMs: number = RECENT_LOGIN_MAX_AGE_MS,
+): void {
+  const authTime = token?.auth_time;
+  if (typeof authTime !== "number" || !Number.isFinite(authTime) || nowMs - authTime * 1000 > maxAgeMs) {
+    throw new HttpsError(
+      "failed-precondition",
+      "For your security, please log in again before deleting your account.",
+    );
+  }
+}
+
 // A "/" would let the id address a different document path.
 export function parseDocId(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0 || value.length > 200 || value.includes("/")) {

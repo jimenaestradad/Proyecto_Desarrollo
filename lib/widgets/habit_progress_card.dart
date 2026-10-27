@@ -71,8 +71,21 @@ class HabitProgressCard extends StatelessWidget {
   }
 }
 
-String _mmss(double minutes) =>
-    '${minutes.floor().toString().padLeft(2, '0')}:00';
+/// "Quantity · Health". Habits with no category (subtitle is empty) used to
+/// render a dangling "Duration ·" — join only the parts that exist.
+String _subtitle(Habit habit) => [
+  habit.type.label,
+  habit.subtitle,
+].where((part) => part.trim().isNotEmpty).join(' · ');
+
+/// `1.5` → `'01:30'`. Seconds used to be hardcoded to `:00`, so any
+/// fractional-minute entry (the form allows decimals) displayed wrong.
+String _mmss(double minutes) {
+  final totalSeconds = (minutes * 60).round();
+  final mm = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+  final ss = (totalSeconds % 60).toString().padLeft(2, '0');
+  return '$mm:$ss';
+}
 
 String _formatValue(Habit habit) {
   final target = habit.targetValue;
@@ -200,7 +213,7 @@ class _CardShell extends StatelessWidget {
               const SizedBox(width: 8),
               trailing,
               PopupMenuButton<void>(
-                tooltip: 'More',
+                tooltip: 'More options for $title',
                 padding: EdgeInsets.zero,
                 icon: const Icon(
                   Icons.more_vert,
@@ -346,7 +359,7 @@ class _ProgressCard extends StatelessWidget {
       iconBg: habit.color,
       title: habit.name,
       chip: _Chip(label: chipLabel, color: chipColor, textColor: chipTextColor),
-      subtitle: '${habit.type.label} · ${habit.subtitle}',
+      subtitle: _subtitle(habit),
       trailing: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -431,7 +444,7 @@ class _LimitCard extends StatelessWidget {
       iconBg: habit.color,
       title: habit.name,
       chip: _Chip(label: chipLabel, color: chipColor, textColor: chipTextColor),
-      subtitle: '${habit.type.label} · ${habit.subtitle}',
+      subtitle: _subtitle(habit),
       trailing: _EditableValue(habit: habit, onEditProgress: onEditProgress),
       progress: ProgressBarPill(progress: ratio, color: barColor),
       quickLogLabel: habit.quickLogLabel,
@@ -503,6 +516,18 @@ class _EditProgressDialogState extends State<_EditProgressDialog> {
   late final TextEditingController _controller = TextEditingController(
     text: formatTrimmedNumber(widget.habit.currentValue),
   );
+  String? _error;
+
+  /// Pops with the typed value, or flags the field — an unparseable entry
+  /// used to save as 0, silently resetting (and un-claiming) the day.
+  void _save() {
+    final value = double.tryParse(_controller.text.trim());
+    if (value == null || !value.isFinite || value < 0) {
+      setState(() => _error = 'Enter a number, 0 or more.');
+      return;
+    }
+    Navigator.pop(context, value);
+  }
 
   @override
   void dispose() {
@@ -530,7 +555,7 @@ class _EditProgressDialogState extends State<_EditProgressDialog> {
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.stackSm),
               child: Text(
-                'Already claimed today — saving will un-claim it and reverse the XP/coins you earned.',
+                'Already claimed — saving will un-claim it. The XP/coins it paid stay yours.',
                 style: AppTextStyles.labelSm.copyWith(
                   color: AppColors.terracottaDark,
                 ),
@@ -541,8 +566,12 @@ class _EditProgressDialogState extends State<_EditProgressDialog> {
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: AppTextStyles.bodyLg,
+            onChanged: (_) {
+              if (_error != null) setState(() => _error = null);
+            },
             decoration: InputDecoration(
               suffixText: unit.isEmpty ? null : unit,
+              errorText: _error,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadius.sm),
                 borderSide: const BorderSide(
@@ -568,13 +597,7 @@ class _EditProgressDialogState extends State<_EditProgressDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        FilledButton(
-          onPressed: () {
-            final value = double.tryParse(_controller.text.trim());
-            Navigator.pop(context, value ?? 0.0);
-          },
-          child: const Text('Save'),
-        ),
+        FilledButton(onPressed: _save, child: const Text('Save')),
       ],
     );
   }

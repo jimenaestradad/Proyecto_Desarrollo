@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/habit_history_store.dart' show addDays, dateOnly;
 import 'package:nori/data/habit_repository.dart' show kMaxDeletableActiveDays;
 import 'package:nori/models/habit.dart';
 import 'package:nori/theme/app_theme.dart';
@@ -9,6 +10,8 @@ import 'package:nori/utils/id_generator.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/delete_habit_dialog.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
+import 'package:nori/widgets/nori_info_banner.dart';
+import 'package:nori/widgets/nori_text_prompt.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 class AddHabitScreen extends StatefulWidget {
@@ -49,6 +52,11 @@ class _AddHabitScreenState extends State<AddHabitScreen>
   final _minThresholdController = TextEditingController();
   final _quickLogController = TextEditingController();
 
+  /// Dropdown value for the trailing "Add Category" entry. Never a real
+  /// category: it opens a prompt, and the field is put back right after.
+  static const _addCategoryValue = '\u0000add-category';
+  final _categoryFieldKey = GlobalKey<FormFieldState<String>>();
+
   List<String> _categories = const [];
   IconData _selectedIcon = _icons.first;
   Color _selectedColor = _colors.first;
@@ -60,7 +68,6 @@ class _AddHabitScreenState extends State<AddHabitScreen>
 
   bool _minThresholdEnabled = false;
   bool _endDateEnabled = false;
-  bool _allowVacationFreeze = true;
   DateTime? _startDate;
   DateTime? _endDate;
 
@@ -73,6 +80,11 @@ class _AddHabitScreenState extends State<AddHabitScreen>
   /// null only Archive shows.
   int? _activeDays;
   bool _isManaging = false;
+
+  /// One id per screen, not per Save tap: if a save times out but still
+  /// commits, retrying overwrites that same doc instead of creating a
+  /// duplicate habit.
+  final String _newHabitId = generateId();
 
   bool get _needsTarget => _selectedType != HabitType.binary;
   bool get _supportsThreshold =>
@@ -109,7 +121,6 @@ class _AddHabitScreenState extends State<AddHabitScreen>
     if (habit.quickLogAmount != null) {
       _quickLogController.text = formatTrimmedNumber(habit.quickLogAmount!);
     }
-    _allowVacationFreeze = habit.allowVacationFreeze;
     _endDateEnabled = habit.startDate != null && habit.endDate != null;
     _startDate = habit.startDate;
     _endDate = habit.endDate;
@@ -130,8 +141,34 @@ class _AddHabitScreenState extends State<AddHabitScreen>
       // selected rather than silently overwriting it on save.
       _selectedCategory ??= categories.contains(widget.habit?.subtitle)
           ? widget.habit!.subtitle
-          : categories.first;
+          : (categories.isEmpty ? null : categories.first);
     });
+  }
+
+  /// Same add-category prompt and repository call as Settings, so a new
+  /// user doesn't have to leave this form to make their first category.
+  Future<void> _addCategory() async {
+    final name = (await showNoriTextPrompt(
+      context,
+      title: 'New Category',
+      hint: 'e.g. Finance',
+    ))?.trim();
+    if (!mounted) return;
+    var added = false;
+    if (name != null && name.isNotEmpty) {
+      added = await guardedAction(
+        () => AppData.habitCategories.addCategory(name),
+      );
+      if (!mounted) return;
+    }
+    if (added) {
+      setState(() {
+        if (!_categories.contains(name)) _categories = [..._categories, name!];
+        _selectedCategory = name;
+      });
+    }
+    // The dropdown shows whatever it last emitted, i.e. "Add Category".
+    _categoryFieldKey.currentState?.didChange(_selectedCategory);
   }
 
   @override
@@ -174,18 +211,32 @@ class _AddHabitScreenState extends State<AddHabitScreen>
 
   Future<void> _pickDateRange() async {
     final now = DateTime.now();
+    final firstStart = addDays(dateOnly(now), -1);
+    final lastDate = DateTime(now.year + 2);
+    // showDatePicker asserts initialDate is within [firstDate, lastDate]:
+    // an existing habit can have a start older than yesterday, and a new
+    // start can land after the old end.
+    DateTime within(DateTime? date, DateTime first, DateTime fallback) =>
+        date == null || date.isBefore(first) || date.isAfter(lastDate)
+        ? fallback
+        : date;
     final start = await showDatePicker(
       context: context,
-      initialDate: _startDate ?? now,
-      firstDate: now.subtract(const Duration(days: 1)),
-      lastDate: DateTime(now.year + 2),
+      initialDate: within(_startDate, firstStart, now),
+      firstDate: firstStart,
+      lastDate: lastDate,
     );
     if (start == null || !mounted) return;
+    final defaultEnd = addDays(start, 30);
     final end = await showDatePicker(
       context: context,
-      initialDate: _endDate ?? start.add(const Duration(days: 30)),
+      initialDate: within(
+        _endDate,
+        start,
+        defaultEnd.isAfter(lastDate) ? lastDate : defaultEnd,
+      ),
       firstDate: start,
-      lastDate: DateTime(now.year + 2),
+      lastDate: lastDate,
     );
     if (end == null || !mounted) return;
     setState(() {
@@ -220,10 +271,10 @@ class _AddHabitScreenState extends State<AddHabitScreen>
   /// Null if it isn't a positive number.
   double? _parseQuickLog(String text, double target) {
     final isPercent = text.endsWith('%');
-    final number = double.tryParse(
+    final number = _positiveNumber(
       isPercent ? text.substring(0, text.length - 1).trim() : text,
     );
-    if (number == null || number <= 0) return null;
+    if (number == null) return null;
     return isPercent ? target * number / 100 : number;
   }
 
@@ -235,8 +286,17 @@ class _AddHabitScreenState extends State<AddHabitScreen>
     return '${format(_startDate!)} – ${format(_endDate!)}';
   }
 
+  /// [text] as a finite number above 0, else null. `double.tryParse`
+  /// happily returns NaN or Infinity for "NaN"/"Infinity", and NaN slips
+  /// past a plain `<= 0` check.
+  static double? _positiveNumber(String text) {
+    final value = double.tryParse(text);
+    return value != null && value.isFinite && value > 0 ? value : null;
+  }
+
   Future<void> _saveHabit() async {
-    if (_isSaving) return;
+    // Not while archive/delete is running: both end by popping this route.
+    if (_isSaving || _isManaging) return;
 
     void showError(String message) {
       ScaffoldMessenger.of(context)
@@ -244,8 +304,8 @@ class _AddHabitScreenState extends State<AddHabitScreen>
         ..showSnackBar(SnackBar(content: Text(message)));
     }
 
-    final target = double.tryParse(_targetController.text.trim());
-    if (_needsTarget && (target == null || target <= 0)) {
+    final target = _positiveNumber(_targetController.text.trim());
+    if (_needsTarget && target == null) {
       showError('Enter an Ideal Target greater than 0.');
       return;
     }
@@ -269,11 +329,22 @@ class _AddHabitScreenState extends State<AddHabitScreen>
     if (_minThresholdEnabled &&
         _supportsThreshold &&
         minThresholdText.isNotEmpty) {
-      minThreshold = double.tryParse(minThresholdText);
-      if (minThreshold == null || minThreshold <= 0) {
+      minThreshold = _positiveNumber(minThresholdText);
+      if (minThreshold == null) {
         showError('Minimum Threshold must be a number above 0.');
         return;
       }
+      // Logging is capped at the target, so a minimum at or above it could
+      // never be reached on its own.
+      if (target != null && minThreshold >= target) {
+        showError('Minimum Threshold must be below the Ideal Target.');
+        return;
+      }
+    }
+
+    if (_repeat == HabitRepeat.custom && _customDays.isEmpty) {
+      showError('Pick at least one day for a custom schedule.');
+      return;
     }
 
     setState(() => _isSaving = true);
@@ -283,7 +354,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
 
     final existing = widget.habit;
     final habit = Habit(
-      id: existing?.id ?? generateId(),
+      id: existing?.id ?? _newHabitId,
       name: enteredName.isEmpty ? 'New Habit' : enteredName,
       subtitle:
           _selectedCategory ?? (_categories.isEmpty ? '' : _categories.first),
@@ -300,7 +371,10 @@ class _AddHabitScreenState extends State<AddHabitScreen>
       quickLogAmount: quickLogAmount,
       currentValue: existing?.currentValue ?? 0,
       customDays: _repeat == HabitRepeat.custom ? {..._customDays} : null,
-      allowVacationFreeze: _allowVacationFreeze,
+      // No per-habit pause in the MVP (the global Vacation Mode in Settings
+      // is the only one), so there's no control for this; an existing
+      // habit's stored value just rides along.
+      allowVacationFreeze: existing?.allowVacationFreeze ?? true,
       lastAwardedXp: existing?.lastAwardedXp ?? 0,
       lastAwardedCoins: existing?.lastAwardedCoins ?? 0,
       startDate: _endDateEnabled ? _startDate : null,
@@ -363,6 +437,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                             ),
                           ),
                           IconButton.filled(
+                            tooltip: 'Close',
                             onPressed: () => Navigator.pop(context),
                             style: IconButton.styleFrom(
                               backgroundColor: AppColors.white,
@@ -433,9 +508,18 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                       _FieldLabel(label: 'Category'),
                       const SizedBox(height: AppSpacing.unit),
                       DropdownButtonFormField<String>(
+                        key: _categoryFieldKey,
                         initialValue: _selectedCategory,
                         isExpanded: true,
                         icon: const Icon(Icons.expand_more),
+                        // New accounts start with no categories, so this is
+                        // what a first-time user sees until they add one.
+                        hint: Text(
+                          'Choose or add a category',
+                          style: AppTextStyles.bodyMd.copyWith(
+                            color: AppColors.inkFaint,
+                          ),
+                        ),
                         decoration: _fieldDecoration(),
                         items: [
                           // A habit's existing subtitle might not be a known
@@ -454,9 +538,23 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                               value: category,
                               child: Text(category),
                             ),
+                          const DropdownMenuItem(
+                            value: _addCategoryValue,
+                            child: Row(
+                              children: [
+                                Icon(Icons.add, size: 18),
+                                SizedBox(width: AppSpacing.unit),
+                                Text('Add Category'),
+                              ],
+                            ),
+                          ),
                         ],
                         onChanged: (category) {
                           if (category == null) return;
+                          if (category == _addCategoryValue) {
+                            _addCategory();
+                            return;
+                          }
                           setState(() => _selectedCategory = category);
                         },
                       ),
@@ -581,7 +679,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                             decoration: _fieldDecoration(hintText: 'e.g. 750'),
                           ),
                           const SizedBox(height: AppSpacing.stackSm),
-                          const _InfoBanner(
+                          const NoriInfoBanner(
                             icon: Icons.eco,
                             message:
                                 "Keeps your streak alive on days you reach this but not the full target. No XP on its own — claim the habit to earn that.",
@@ -624,7 +722,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                         ],
                       ),
                       const SizedBox(height: AppSpacing.stackSm),
-                      const _InfoBanner(
+                      const NoriInfoBanner(
                         icon: Icons.bolt,
                         message:
                             'Adaptive XP: a habit pays a bit more while you struggle with it and a bit less once it comes easy (Easy 9–13, Medium 16–24, Hard 26–36 XP).',
@@ -725,14 +823,6 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                           ),
                         ),
                       ],
-                      const SizedBox(height: AppSpacing.stackMd),
-                      _ToggleRow(
-                        title: 'Allow Vacation Mode Freeze',
-                        subtitle: 'Pet health protected while paused.',
-                        value: _allowVacationFreeze,
-                        onChanged: (value) =>
-                            setState(() => _allowVacationFreeze = value),
-                      ),
                       if (_isEditing) ...[
                         const SizedBox(height: AppSpacing.stackLg),
                         _ManageHabitSection(
@@ -917,7 +1007,10 @@ class _TypeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? AppColors.moss : AppColors.white,
+      // DESIGN.md §4: selection = mossLight fill + thicker border. This was
+      // the one picker on the screen using solid moss, which also dropped
+      // the muted description text to ~3.5:1.
+      color: selected ? AppColors.mossLight : AppColors.white,
       borderRadius: BorderRadius.circular(AppRadius.sm),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -926,7 +1019,10 @@ class _TypeCard extends StatelessWidget {
           padding: const EdgeInsets.all(AppSpacing.stackSm),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadius.sm),
-            border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+            border: Border.all(
+              color: AppColors.ink,
+              width: selected ? AppBorder.thick : AppBorder.thin,
+            ),
           ),
           child: Row(
             children: [
@@ -945,12 +1041,12 @@ class _TypeCard extends StatelessWidget {
                     ),
                     Text(
                       type.description,
-                      maxLines: 2,
+                      // 3 lines: "Track an amount, e.g. ml, pages, or
+                      // minutes" was being cut to "minut…" at 2.
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.labelSm.copyWith(
-                        color: selected
-                            ? AppColors.ink.withValues(alpha: 0.75)
-                            : AppColors.inkFaint,
+                        color: AppColors.inkFaint,
                       ),
                     ),
                   ],
@@ -978,9 +1074,12 @@ class _DayCircle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? AppColors.moss : AppColors.white,
+      color: selected ? AppColors.mossLight : AppColors.white,
       shape: CircleBorder(
-        side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+        side: BorderSide(
+          color: AppColors.ink,
+          width: selected ? AppBorder.thick : AppBorder.thin,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -1039,40 +1138,6 @@ class _ToggleRow extends StatelessWidget {
           inactiveTrackColor: AppColors.linenAlt,
         ),
       ],
-    );
-  }
-}
-
-class _InfoBanner extends StatelessWidget {
-  const _InfoBanner({required this.message, required this.icon});
-
-  final String message;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.gutter,
-        vertical: AppSpacing.stackSm,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.sky,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: AppColors.ink, size: 20),
-          const SizedBox(width: AppSpacing.stackSm),
-          Expanded(
-            child: Text(
-              message,
-              style: AppTextStyles.labelLg.copyWith(color: AppColors.ink),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

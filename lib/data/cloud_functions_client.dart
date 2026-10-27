@@ -10,6 +10,10 @@ import 'package:cloud_functions/cloud_functions.dart';
 /// Kept deliberately dumb: no retry queue, no optimistic update to roll
 /// back (per the same doc section, offline support is out of scope) --
 /// just "call it, and turn whatever comes back into one plain message."
+/// The one generic "something went wrong talking to the backend" message,
+/// shared by this file and lib/utils/remote_errors.dart.
+const serverUnreachableMessage = "Couldn't reach the server — try again.";
+
 class CloudFunctionFailure implements Exception {
   const CloudFunctionFailure(this.message);
 
@@ -49,8 +53,10 @@ Future<Map<String, dynamic>> callCloudFunction(
     final message = switch (e.code) {
       'failed-precondition' ||
       'invalid-argument' ||
-      'not-found' => e.message ?? "Couldn't complete that -- try again.",
-      _ => "Couldn't reach the server -- try again.",
+      'not-found' => e.message ?? "Couldn't complete that — try again.",
+      // An expired session isn't a network problem; retrying won't help.
+      'unauthenticated' => 'Your session expired — please log in again.',
+      _ => serverUnreachableMessage,
     };
     throw CloudFunctionFailure(message);
   } catch (_) {
@@ -58,6 +64,6 @@ Future<Map<String, dynamic>> callCloudFunction(
     // function's own expected rejection -- same generic message either
     // way (docs/BACKEND.md, "Online only -- no offline mode": "everything
     // fails the same way").
-    throw const CloudFunctionFailure("Couldn't reach the server -- try again.");
+    throw const CloudFunctionFailure(serverUnreachableMessage);
   }
 }

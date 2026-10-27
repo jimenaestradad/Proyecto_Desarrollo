@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/bucket_list_item.dart';
 import 'bucket_list_repository.dart';
 import 'cloud_functions_client.dart';
+import 'color_registry.dart';
 import 'habit_repository.dart' show HabitRewardResult;
 import 'icon_registry.dart';
 
@@ -45,12 +46,23 @@ class FirestoreBucketListRepository implements BucketListRepository {
       id: doc.id,
       title: data['title'] as String? ?? '',
       description: data['description'] as String? ?? '',
-      icon: iconForKey(data['iconKey'] as String?),
-      color: colorForKey(data['colorKey'] as String?),
-      xpReward: (data['xpReward'] as num?)?.toInt() ?? 0,
-      coinReward: (data['coinReward'] as num?)?.toInt() ?? 0,
+      icon: IconRegistry.iconFor(data['iconKey'] as String?),
+      color: ColorRegistry.colorFor(data['colorKey'] as String?),
+      // Capped like the server's payout, so a goal saved with a bigger
+      // number (before the cap, or by hand) shows what it will really pay.
+      xpReward: ((data['xpReward'] as num?)?.toInt() ?? 0).clamp(
+        0,
+        BucketListItem.maxXpReward,
+      ),
+      coinReward: ((data['coinReward'] as num?)?.toInt() ?? 0).clamp(
+        0,
+        BucketListItem.maxCoinReward,
+      ),
       isCompleted: data['isCompleted'] as bool? ?? false,
       completedAt: (data['completedAt'] as Timestamp?)?.toDate(),
+      rewardPaid:
+          ((data['awardedXp'] as num?) ?? 0) > 0 ||
+          ((data['awardedCoins'] as num?) ?? 0) > 0,
     );
   }
 
@@ -69,8 +81,9 @@ class FirestoreBucketListRepository implements BucketListRepository {
     await _collection.doc(item.id).set({
       'title': item.title,
       'description': item.description,
-      'iconKey': iconKeyFor(item.icon) ?? kDefaultIconKey,
-      'colorKey': colorKeyFor(item.color) ?? kDefaultColorKey,
+      'iconKey': IconRegistry.tryKeyFor(item.icon) ?? IconRegistry.defaultKey,
+      'colorKey':
+          ColorRegistry.tryKeyFor(item.color) ?? ColorRegistry.defaultKey,
       'xpReward': item.xpReward,
       'coinReward': item.coinReward,
       // Cloud-Function-only fields must start at their untouched defaults
@@ -88,8 +101,9 @@ class FirestoreBucketListRepository implements BucketListRepository {
     await _collection.doc(item.id).update({
       'title': item.title,
       'description': item.description,
-      'iconKey': iconKeyFor(item.icon) ?? kDefaultIconKey,
-      'colorKey': colorKeyFor(item.color) ?? kDefaultColorKey,
+      'iconKey': IconRegistry.tryKeyFor(item.icon) ?? IconRegistry.defaultKey,
+      'colorKey':
+          ColorRegistry.tryKeyFor(item.color) ?? ColorRegistry.defaultKey,
       'xpReward': item.xpReward,
       'coinReward': item.coinReward,
     });

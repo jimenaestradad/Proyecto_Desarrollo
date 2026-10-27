@@ -33,11 +33,10 @@ class MockHabitCategoryRepository implements HabitCategoryRepository {
 
   @override
   Future<void> renameCategory(String oldName, String newName) async {
-    final trimmed = newName.trim();
-    if (trimmed.isEmpty) return;
-    final index = _categories.indexOf(oldName);
-    if (index == -1) return;
-    _categories[index] = trimmed;
+    final renamed = renamedCategories(_categories, oldName, newName);
+    _categories
+      ..clear()
+      ..addAll(renamed);
   }
 
   @override
@@ -109,10 +108,10 @@ class FirestoreHabitCategoryRepository implements HabitCategoryRepository {
                 ?.cast<String>() ??
             const <String>[],
       );
-      final index = categories.indexOf(oldName);
-      if (index == -1) return;
-      categories[index] = trimmed;
-      transaction.update(_doc, {'habitCategories': categories});
+      if (!categories.contains(oldName)) return;
+      transaction.update(_doc, {
+        'habitCategories': renamedCategories(categories, oldName, trimmed),
+      });
     });
   }
 
@@ -126,4 +125,23 @@ class FirestoreHabitCategoryRepository implements HabitCategoryRepository {
       'habitCategories': FieldValue.arrayRemove([name]),
     });
   }
+}
+
+/// [categories] with [oldName] renamed to [newName], shared by both
+/// repositories. Renaming onto a name that already exists merges the two
+/// instead of leaving a duplicate — Add Habit's category dropdown asserts
+/// its values are unique, so a duplicate broke that screen.
+List<String> renamedCategories(
+  List<String> categories,
+  String oldName,
+  String newName,
+) {
+  final trimmed = newName.trim();
+  if (trimmed.isEmpty || !categories.contains(oldName)) return categories;
+  final result = <String>[];
+  for (final category in categories) {
+    final name = category == oldName ? trimmed : category;
+    if (!result.contains(name)) result.add(name);
+  }
+  return result;
 }

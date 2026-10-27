@@ -45,22 +45,6 @@ has ever saved a vacation range (checked 2026-10-05), so starting/ending a freez
 and streak treating frozen days as safe, are untested end to end. One manual pass on
 `demo@test.com` closes this.
 
-### Live Cloud Functions are ahead of the committed code (2026-10-05, updated 2026-10-26)
-
-**Also not deployed yet (2026-10-26):** the pay-once change (`claimHabit`, `unclaimHabit`,
-`deleteHabit`, the bucket-list functions) and its `firestore.rules` bucket-delete tightening.
-Live still runs the earlier "reject the unclaim if the coins were spent" version, so the app's
-reward pill and the server disagree until `firebase deploy --only functions,firestore:rules`.
-
-Every deploy since 2026-10-04 (latest 2026-10-26: adaptive XP, the coin-reversal rule,
-`deleteAccount`, plus `petCareCheck` and the notification writes) went out from
-`valevasqc-dev`'s uncommitted working tree — `deleteAccount.ts`, `bucketList.ts`, `shop.ts`,
-`onUserCreate.ts`, `petCareCheck.ts` and `adaptiveXp.ts` aren't in git at all. A
-`firebase deploy --only functions` from any checkout without those files would delete those
-functions from the live project (Firebase treats
-local source as the full desired state; this already happened once, see RESOLVED_LOG.md
-2026-09-28). Resolved by committing and merging into the branch both people deploy from.
-
 ### No reward feedback on claim itself (2026-09-10 audit; level-up half fixed 2026-09-15)
 
 `HomeScreen._applyReward` (`lib/screens/home/home_screen.dart:92`) adds XP and coins with
@@ -104,9 +88,254 @@ FlutterFire's web plugin registration includes auth. (The `google_sign_in_web` "
 assertion in the debug console was a separate, harmless problem, fixed the same day; see
 RESOLVED_LOG.md.)
 
-### Sign-up can fail if onUserCreate cold-starts slowly (2026-09-30, found reviewing Jimena's flow)
+### Sign-up can still fail if onUserCreate cold-starts very slowly (2026-09-30; mostly fixed 2026-10-26)
 
-`sign_up_screen.dart` writes the profile (`updateProfile`) right after the account is created, but `/users/{uid}` comes from the asynchronous `onUserCreate` trigger. `_updateWithRetry` (and `renamePet`) retry 5 × 400ms, about 2s total, while a cold-started v1 function can take longer. If it does, the user sees "Unable to create your account" even though the account and username claim already exist, and retrying fails with email-already-in-use. Not reproduced yet, so worth a deliberate check in QA (first sign-up after the function has been idle). A longer or backoff retry would cover it.
+`sign_up_screen.dart` writes the profile right after the account is created, but `/users/{uid}`
+comes from the asynchronous `onUserCreate` trigger. The write now retries for about 4s (8 × 600ms,
+was 2s), and if it still fails the screen remembers the new account and tells the person to tap
+Create Account again, which resumes at the failed step instead of hitting "email already in use"
+(see RESOLVED_LOG.md). Never reproduced; a first sign-up after the function has sat idle is the
+case to try in QA.
+
+### UX/UI audit 2026-10-26: what the easy-win pass did not fix
+
+Whole-app audit (code + a rendered pass on a 412×915 viewport, signed in as `demo@test.com`; the
+easy wins are in RESOLVED_LOG.md). Labels: **CONFIRMED** = seen in the render or in code,
+**INFERRED** = likely but not reproduced, **UNRESOLVED** = needs a decision.
+
+- **Tap targets under 48dp are systemic (CONFIRMED, 🟠).** Header `CircularIconButton`s are 36dp,
+  the email banner's dismiss and every "More" menu are 40dp, Calendar day cells 41dp, and Social's
+  Nudge/Details/See all/reaction/Mark Achieved buttons are ~32dp tall. Growing the header buttons to
+  48 doesn't fit the Habits header (3 icon buttons + streak chip + XP pill in 372px), so it needs a
+  decision first: move Archived Habits under Profile/Settings, or collapse header actions into one
+  overflow. Calendar cells can't reach 48 in a 7-column grid; 41dp with the gaps kept is the practical floor.
+- **Add Habit validation is a snackbar about a field you can't see (CONFIRMED, 🟠).** Tapping Save with
+  Ideal Target empty shows "Enter an Ideal Target greater than 0." while that field is scrolled out
+  of view and nothing is highlighted. Needs inline field errors plus scroll-to-first-error. Pairs with
+  the 13-decision-point finding above; a stepper would fix both.
+  Not an MVP blocker (assessed 2026-10-26): no data is lost, the message names the field, and
+  retrying works. The cheap partial fix is to keep the snackbar and scroll to the offending field
+  when Save fails (~10 lines, no new styling); the full inline-error version touches the busiest
+  form's layout and wants a visual check on the mobile viewport.
+- **Snackbars are the only feedback channel, and none has an action (CONFIRMED, 🟡).** All 16 use the
+  default duration with no Undo. The ones that most want it: archiving a habit ("restore it from
+  Archived habits"), deleting an unfinished bucket-list item (deletes instantly, no dialog, no undo),
+  and shop purchases (one tap spends coins; fine at current prices, revisit if prices grow).
+- **Title Case vs sentence case (CONFIRMED, UNRESOLVED).** DESIGN.md §10 says sentence case, but ~53
+  of ~60 button/dialog labels are Title Case ("Get Started", "Create Account", "Add New Habit",
+  "Mark Achieved"); only a few follow the doc ("Post proof", "Try again"). Either update DESIGN.md to
+  match the code or sweep the labels. Left alone: it's a copy/brand call, and it touches most screens.
+- **Calendar status leans on color (INFERRED, 🟡).** Perfect/Done/Missed differ by fill only (Perfect
+  also gets a star). Add a second cue for Done/Missed (icon or glyph) for color-blind users.
+- **No help or guidance anywhere (CONFIRMED, 🟡).** Nielsen #10 is the weakest heuristic: no FAQ,
+  tips, or first-run tour. Overlaps "Onboarding tips needed" below. Jargon a first-timer will hit
+  unexplained: "Minimum Threshold: Streak protection", "Adaptive XP", "Mark Day Safe", "Vacation Mode Freeze".
+- **Settings is sparse and ordered oddly (CONFIRMED, 🟡).** Delete Account sits above Plan; missing
+  change password, notification preferences, about/support. See also the Settings item under "Remaining layout defects".
+- **No dark theme and no Dynamic Color (CONFIRMED, UNRESOLVED).** Android's Material guidance treats
+  dark as a first-class scheme. A product call given the hand-drawn linen look; log it so it's a choice.
+- **Text scaling at 1.3x was never rendered (UNRESOLVED).** Code looks safe (the bottom nav was already
+  fixed for it and only one fixed-height text wrapper was found), but there's no emulator here to
+  confirm. Worth one check on a real phone with Settings > Font size set to Large.
+- **`moss` is still 2.4:1 as a text/icon-on-light color in a few spots (INFERRED, 🟡).** Mostly fixed;
+  the `mossDark` token itself is only 4.1:1 on `linen`, so small `mossDark` text on the page background
+  is borderline. Darkening the token is a palette change, so left for a decision.
+
+**Found while building the intro/hints (2026-10-26)**
+- **New accounts start with no habit categories (CONFIRMED, 🟡).** Adding one from Add Habit now works
+  (see RESOLVED_LOG.md), but `onUserCreate` still seeds `habitCategories: []`. Seeding a few defaults
+  (e.g. Health, Study, Finance, like the demo account) would mean a first habit needs no extra step;
+  it's a Cloud Functions change plus a deploy, so left for you to decide.
+- **Four more dialogs dispose their text controllers too early (CONFIRMED, 🟡).** Set a Password
+  (`settings_screen.dart`), the change-email password prompt (`edit_profile_screen.dart`), and the
+  Google account-link and Forgot Password prompts (`login_screen.dart`) call `dispose()` on their
+  controllers right after `showDialog` returns, while the close animation is still drawing the
+  field. It's the pattern fixed in `showNoriTextPrompt` and, for Delete Account (2026-10-26), in
+  `DeleteAccountDialog`; it only asserts in debug builds. Fix by moving each dialog into a small
+  StatefulWidget that owns its controllers.
+
+**System status and feedback**
+- **Nori's sprite and the Home vital rings don't show distress (CONFIRMED, 🟡).** At 0% on all three
+  vitals the pet looks exactly as content as at 100%, and the rings are unlabeled icon circles (the
+  percentage only reaches screen readers). The pet should read as hungry/dirty/sad before you tap.
+  Sprite variants are an art problem (new frames per mood, for both forms); a visible number or
+  low-vital tint on the ring is not.
+- **Two separate notification inboxes (CONFIRMED, 🟡).** The bell on Habits opens
+  `NotificationsScreen` (app/pet events); the bell on Social opens `SocialNotificationsScreen`
+  (showed "5 unread" at the same moment Habits showed a dot). Users won't know which bell holds
+  what. Decide whether to merge them or label them differently.
+
+**Accessibility (screen reader)**
+- **Unlabeled controls still left (CONFIRMED, 🟠).** From the rendered semantics tree: Home's pet
+  stage (a 231×246 button with no label), Customization's accessory tiles (only "No accessory" has
+  a label), the Shop category chips (exposed as unlabeled checkboxes), Habits' "Completed to bottom"
+  switch (its text is a separate widget, not its label), and Calendar day cells (announce only "3",
+  not "October 3, done").
+- **Profile's Habit Breakdown icons and bars are nearly invisible (CONFIRMED, 🟡).** `_HabitStatRow`
+  draws the icon in the habit's pastel color on a 16% tint of the same color, and the bar fills
+  with that pastel on a `linen` track (linenAlt/sky habits basically disappear). Use the habit
+  color as the badge fill with an ink icon, like `NoriIconBadge` everywhere else, and a readable bar fill.
+
+**Consistency**
+- **Naming drifts (CONFIRMED, 🟡).** "Log In" (Sign up, Welcome) vs "Sign In" (Login screen); the
+  Shop button opens "Pet Boutique"; Customization's title is "Style Pet"; XP is a star in `XpPill`
+  but a diamond on Profile's chip, and Profile shows the XP total twice (header pill + chip).
+- **Three back-button styles (CONFIRMED, 🟡).** Plain arrow (Settings, Bucket List, Shop), circled
+  arrow (Customization), circled X (Add Habit). Customization also centers its title where every
+  other sub-screen left-aligns it.
+- **Login and Sign up don't match (CONFIRMED, 🟡).** Login has Google sign-in, a password visibility
+  toggle and placeholder-only fields; Sign up has labeled fields, no Google option and no visibility
+  toggle. Sign up's hints ("Alex Human", "••••••••") read as already-filled values, especially the
+  dots in the password fields.
+- **Soft blur and gradients on Welcome (CONFIRMED, 🟡).** Two blurred color blobs behind the page and
+  a blurred shadow under the mascot card go against DESIGN.md §5 ("no soft shadows, no gradients").
+  Either intentional for the first impression (then note it in DESIGN.md) or remove.
+
+**Flows**
+- **"Go to Shop" from a pet vital opens the Hats tab (CONFIRMED, 🟡).** The care sheet says "Out of
+  stock, visit the Shop", but the Shop opens on Hats, so you have to find Food & Care yourself.
+  `ShopScreen` needs an initial-category parameter.
+- **Owned shop items look disabled (CONFIRMED, 🟡).** "Sunglasses / Owned / Equip" renders faded
+  with a washed-out Equip button, but Equip is active. Owned should look different from unavailable.
+- **Customization is a dead end (CONFIRMED, 🟡).** It only lists owned accessories (just one for
+  demo), with no link to the Shop, and leaving without "Save Look" silently drops the change.
+- **Whole habit row toggles the claim (CONFIRMED, 🟡).** On Home/Habits a binary habit's entire tile
+  is the claim target, so a tap meant to scroll or open the menu can claim it. Unclaim undoes it, so
+  low risk, but there's no claim feedback to notice the mistake (see "No reward feedback on claim").
+- **Social odds and ends (CONFIRMED, 🟡; Social is frontend-only).** "Nudge" on Friends is plain
+  text with no button look; Add Friend's Search button sits disabled with no hint why; Post Proof
+  promises "+50 XP", which nothing pays yet (INFERRED from "Social tab is frontend-only").
+- **Calendar "Missed Days" uses a frowning face (CONFIRMED, 🟡).** Small, but it's the one guilt cue
+  in an app built on encouragement. A neutral icon fits the voice in DESIGN.md §10 better.
+
+### Code audit 2026-10-26: what the quick-win pass did not fix
+
+Whole-codebase code-quality and security pass (backend: `functions/`, `firestore.rules`, the Dart
+data layer; frontend: every screen and shared widget, code only, not UI/UX). Checked against the
+OWASP Secure Coding checklist and Google Cloud's Architecture Framework. The fixes that were quick
+and safe are in RESOLVED_LOG.md (same date); everything below is still open. Line numbers are as of
+this pass.
+
+**Security and backend**
+
+- **Usernames are only kept consistent by the client (CONFIRMED, 🟠).** `firestore.rules` lets
+  `users/{uid}.username` be set to any string, so it isn't tied to `/usernames` (a modified client
+  could show someone else's handle once Social is real). `/usernames` doesn't check the doc id's
+  length or characters, one uid can hold any number of names, and `usernameForUid` uses
+  `.limit(1)`, so which name comes back is arbitrary if there are several. The app now writes the
+  index and the profile in one transaction, but the rules don't require it. Fix shape: in the rules,
+  require `exists(/databases/$(database)/documents/usernames/$(request.resource.data.username.lower()))`
+  owned by the caller, plus a size/regex check on the doc id. Rules are hand-synced with the
+  console, so this needs a deploy.
+- **No App Check, budget alert, or API-key restriction (CONFIRMED, 🟠).** Any client holding the
+  (public, committed) Firebase config can call every callable. `maxInstances: 10` now caps scale
+  (see RESOLVED_LOG.md); App Check (`enforceAppCheck` on the callables), a billing budget alert, and
+  restricting the API key to the Android app in the GCP console are the rest.
+- **`careItemCountsOnlyDecreased` hard-codes the six item ids (CONFIRMED, 🟡).**
+  `firestore.rules:16`. An inventory missing one key makes the rule error, which denies *every*
+  inventory write including equipping; a seventh item would have no guard at all; counts have no
+  `>= 0` floor. Worth reworking before the catalog grows.
+- **`petCareCheck` won't scale and never stops (CONFIRMED, 🟡).** `functions/src/petCareCheck.ts`
+  reads every pet and runs one transaction per user, one after another, and notifies abandoned
+  accounts every day forever. Notifications can't be deleted, so that collection only grows. Fine
+  at today's scale; batch the checks and skip accounts inactive for N days when it matters.
+- **Client writes have no type or length validation in the rules (CONFIRMED, 🟡).** Name,
+  `habitCategories`, notification `message`, habit/bucket text fields. Only affects the user's own
+  data today; matters once other users can read it.
+- **A sign-up killed between claiming the username and saving the profile (🟡, rare).** Startup
+  now sends an account with *no* claimed username to finish sign-up, but one that claimed it and
+  was then closed before the profile write leaves the profile's `username` empty until the next
+  Edit Profile save.
+
+**Need a decision (game design, not fixed on purpose)**
+
+- **Unclaiming can keep adaptive XP at its maximum (CONFIRMED).** A day keeps its payout when
+  un-claimed, but `claimHabit` counts only days that are *currently* claimed when computing the
+  completion rate (`functions/src/claimHabit.ts:119`). Claiming and then un-claiming every day keeps
+  the multiplier at the "struggling" max: about +38% XP per claim on a hard habit (36 vs 26), at the
+  cost of the visible streak. Option: count days that paid (`rewardPaid`) instead.
+- **Tomorrow can be claimed a day early (CONFIRMED).** `parseDayArgs` accepts any UTC offset up to
+  +14h, so tomorrow's dayKey passes the "not in the future" check if the client claims a +14h
+  offset. Each day still pays once; only the timing is off.
+- **Achievements read only the last 90 days (CONFIRMED).** Every count-based achievement is
+  capped by that window, so a long streak or a high total can't keep growing past it. The
+  completion-count ones now top out at 50, well inside it (Steady Progress was removed and
+  Dedicated trimmed to 10 / 25 / 50 on 2026-10-26), so nothing is unreachable today; a future
+  bigger tier would need a Firestore `count()` query instead. Also: "On Track" checks every active
+  habit rather than today's scheduled ones, and "Habit Architect" counts habits active today, not
+  habits created.
+
+**Data correctness**
+
+- **Home never rolls over at midnight (CONFIRMED, 🟡).** With Home open past midnight it keeps
+  showing yesterday's habits while new actions write to today. A resume/midnight reload fixes it.
+- **Overlapping loads can show older data (CONFIRMED, 🟡).** Home (`_loadData` vs. action reloads),
+  Profile, and the Social screens commit whichever load finishes last; Habits list's `_onReorder`
+  commits its pre-request snapshot after the write. The Habits list date switch got a
+  request-date check in this pass; the same pattern would cover the rest.
+- **Some screens don't refresh what an action changed (CONFIRMED, 🟡).** Habits list refreshes the
+  streak only after a paying claim (not after logging to a minimum or an unclaim), and returning
+  from a habit delete doesn't reload XP/coins.
+- **Mock repositories have drifted from the Firestore ones (CONFIRMED, 🟡).** The mocks only run
+  signed out and in tests, but: mock binary claims compute the reward before marking complete
+  (returns 0 XP), mock "today" ignores the schedule, mock habits have no `createdAt`, mock state
+  doesn't roll over at midnight, mock bucket-list un-complete still takes the reward back, and mock
+  pet decay truncates to whole minutes and resets its clock on every read.
+- **Other small ones (CONFIRMED, 🟡).** Deleting a category's "keep at least one" check isn't
+  transactional (two devices can delete down to zero). Customization lets you change the selection
+  while a save is in flight, so "Look saved!" can describe the wrong accessory. The email
+  verification banner only checks at startup. Nori+ ignores the selected plan (checkout always
+  shows yearly; premium is mock). Bucket-list items get a fresh id per save attempt, so a save that
+  times out but still commits, then is retried, creates a duplicate (Add Habit had the same issue,
+  fixed).
+
+**Efficiency (Firestore reads)**
+
+- **Opening Notifications still recomputes everything (CONFIRMED, 🟡).** Mostly fixed 2026-10-26:
+  the screen now paints the stored list straight away and the sync runs after, and the sync's reads
+  run in parallel. What's left: `_sync` still reads the user and every achievement on each open.
+  Options: only sync when something changed since the last sync.
+- **Archived Habits runs one log query per archived habit (CONFIRMED, 🟡),** just to decide whether
+  Delete is offered (`archived_habits_screen.dart:45`).
+- **Every social write reloads every mounted social screen,** including covered routes and the
+  hub, and each reload re-reads the user from Firestore. Accepted: Social is a showcase (see the
+  scope note under "Social tab is frontend-only").
+
+**Modularity and duplication: what's left after the 2026-10-26 clean-up (CONFIRMED, 🟡)**
+
+Most of the duplication from this audit was merged (see RESOLVED_LOG.md). What remains is
+deliberate or needs a decision:
+
+- **Rules that live in more than one language.** Care-item and accessory prices
+  (`firestore.rules`, `functions/src/shop.ts`, the Dart catalogs), `MAX_DELETABLE_ACTIVE_DAYS` (TS
+  and Dart), and the pet decay rate (`kPetDecayPerHour` in Dart, `PET_DECAY_PER_HOUR` in
+  `notifications.ts`) are each hand-synced, with a comment at every copy. One shared `catalog.json`
+  isn't a quick win: `functions/` deploys on its own, so it can't import a file from the repo root,
+  and the app would need it bundled as an asset too. Worth it only if the catalog grows.
+- **Home keeps its own claim handler.** `HomeScreen._runClaim` is today-only, uses the plain
+  `claimHabit` methods, and detects level-ups by diffing before/after state so a claim made on
+  another tab still celebrates on switching back. `HabitDayActions` (Habits list, Calendar day
+  sheet) celebrates from the claim result's flags instead. Merging them would change when Home
+  celebrates, so it needs a decision first.
+- **Spacing/size literals instead of `lib/theme/` tokens** in many shared widgets
+  (`tactile_button`, `nori_choice_chip`, `nori_segmented_control`, `nori_bottom_nav`,
+  `nori_bottom_sheet`, `section_header`, `habit_tile`, `habit_progress_card`, `pet_vital_ring`) and
+  several screens. Not a mechanical swap: the literals (6, 10, 14, 18...) aren't token values, so
+  each one changes the layout slightly. Do it with a visual check, per component.
+- **Tap-ripple and selected-state cards** (`_TypeCard`, `NoriListRow`, `_PaymentOptionCard`, the
+  Customization slots) still build their own shell on purpose: `NoriCard` doesn't fit a card that
+  needs ink-splash feedback or a color/border animation.
+- **Untestable function bodies.** `shop.ts` and `bucketList.ts` keep their logic inside `onCall`,
+  so unlike the `runX` functions they can't be unit-tested (and have no tests).
+  `habitTransaction.ts` has also become a general helper file. Not duplication, but it's why those
+  two are untested.
+- **Wiring.** `AppData` falls back to Mock repositories after sign-out, so a screen still open
+  can quietly show seed data; `MockAchievementRepository` is the production achievements code
+  despite its name.
+- **Unused interface method.** `FirestoreInventoryRepository.consumeCareItem` is never called (the
+  pet repository spends care items inside its own transaction); it stays only because the
+  interface requires it. `_getDataWithRetry` in `FirestoreUserRepository` is a different loop from
+  the shared write retry (it polls for a null doc).
 
 ## 🟡 Minor / polish / backlog
 
@@ -123,14 +352,6 @@ Edit Profile shows the login email (`AppData.auth.currentEmail`) and writes it t
 field stays stale until the user next saves that screen. Nothing else displays it today. Also
 note Firebase signs the user out once the change is confirmed, so they log back in with the new
 address — worth confirming in QA on a real inbox.
-
-### Bucket-list card shows a reward the server won't pay (2026-09-30)
-
-The add/edit sheet's XP and coin fields accept any number, and the card's `RewardPill` shows it
-as typed, but `completeBucketListItem` silently pays at most 500 XP / 250 coins. Type 3000 XP and
-the card promises 3000 but pays 500. BACKEND.md deliberately left the fields free-text when the
-cap was set. The fix is either clamping the fields in the sheet or showing the capped amount on
-the card. 🟡 cosmetic, but it's a visible broken promise.
 
 ### claimHabit still trusts two client-written habit fields (2026-09-24, found while implementing it)
 
@@ -153,24 +374,15 @@ the trust level chosen for cosmetic stats (docs/BACKEND.md); logged only because
 depends on it. Fix if it ever matters: allow only decreases from the client (like
 `careItemCounts`) and move restoring into a `consumeCareItem` Cloud Function.
 
-### Achievements: 3 of 27 are "coming soon" placeholders, and none checked on real data (2026-10-06, updated 2026-10-26)
+### Achievements: 3 of 23 are "coming soon" placeholders, and none checked on real data (2026-10-06, updated 2026-10-26)
 
-`achievement_repository.dart` defines 27 achievements. 24 compute real progress: 19 from the live
+`achievement_repository.dart` defines 23 achievements. 20 compute real progress: 15 from the live
 repositories (`AppData.bindToUser` points them at Firestore) and the 5 Social ones from mock social
 data (see "Social tab is frontend-only"). 3 are `_soon` placeholders that never progress: Balanced
 Life, Pet's Best Friend, Growing Family. Growing Family depends on multi-pet support, which is
 vision-only, so it can stay a placeholder; Balanced Life and Pet's Best Friend look buildable from
 existing data if wanted. No achievement has been checked against real Firestore data yet;
 `demo@test.com` (30 seeded days) is a good account to do it on.
-
-### Two parallel icon/color registries (2026-09-28 merge, logged 2026-10-05)
-
-Habits store icons/colors through `IconRegistry` (`icon_registry.dart`) and `ColorRegistry`
-(`color_registry.dart`); bucket-list items use the separate top-level `kIconRegistry`/
-`kColorRegistry` maps in the same `icon_registry.dart`, from Jimena's branch. Both work and the
-keys don't conflict, but adding an icon or color means knowing which one a screen uses.
-BACKEND.md's shared-setup checklist already said this was logged here; it wasn't until now.
-Merge into one registry when either side next touches icons.
 
 ### A release APK has never been built (2026-10-05)
 
@@ -191,63 +403,38 @@ the target it's rarely reached, but it's a second copy of the reward rule that n
 
 `claimHabit` returns `giftedAccessoryId` when it grants the sunglasses, but
 `FirestoreHabitRepository._callRewardFunction` drops it — the accessory just appears (and is
-auto-equipped) in the inventory with no celebration or explanation.
+auto-equipped) in the inventory with no celebration or explanation. (Since 2026-10-26 Home at
+least reloads the inventory after a paying claim, so the sunglasses show up on Nori right away.)
 
-### functions/ has 8 moderate transitive npm audit findings (2026-09-24, scaffold)
+### functions/ has 10 transitive npm audit findings (2026-09-24, scaffold; recounted 2026-10-26)
 
-`npm install` in the newly-scaffolded `functions/` pulls in a vulnerable `uuid` (<11.1.1,
-missing buffer bounds check when a `buf` argument is supplied — GHSA-w5hq-g745-h8pq) several
-layers deep inside `firebase-admin`'s own Google Cloud dependencies (`google-gax` →
-`gaxios`/`teeny-request` → `uuid`). Cloud Functions code never calls `uuid` directly or passes
-it a `buf`, so this isn't attacker-reachable through anything Nori's functions do — flagging
-for hygiene, not urgency. `npm audit fix --force` would resolve it by bumping
-`firebase-admin` to a breaking major version (14.x); worth doing as a deliberate upgrade once
-there's real function code to regression-test against, not blind right after scaffolding.
+`npm audit --omit=dev` now reports 10 (9 moderate, 1 high), all inside `firebase-admin`'s own
+Google Cloud dependencies (`google-gax` → `gaxios`/`teeny-request` → `uuid`, `retry-request`).
+Nori's functions never call those packages directly, so this is hygiene, not urgency. Fixing it
+means the major upgrades `firebase-admin@14` and `firebase-functions@7`; now that the functions
+have tests (`npm test`), that upgrade can be regression-checked instead of done blind.
 
-### FirestoreCalendarRepository re-runs its 400-day streak query on every getMonth call (2026-09-23 audit)
+### Accessories don't show on the evolved Nori (2026-10-26, deliberately left uncalibrated)
 
-`FirestoreCalendarRepository.getMonth()` (`lib/data/calendar_repository.dart`) calls
-`_currentStreak()`, which performs a fresh 400-day `logsInRange` query every time — even
-when browsing a past month where the current streak is irrelevant to the display. The
-three `getMonth` fetches (habit definitions, the month's log range, and the streak's
-400-day range) also run sequentially instead of concurrently with `Future.wait`, though
-none depends on the others.
+The evolved (winged) form now has real art — `nori_evolved/`, `NoriEvolvedSprite`, used by both
+`EvolutionScreen` and `NoriRoomStage` (see docs/RESOLVED_LOG.md, 2026-10-26). Equipped accessories
+are **not drawn on it**: `NoriRoomStage` only passes the accessory overlay to the baby's
+`NoriBreathingSprite`, so once a pet evolves, an equipped hat or pair of glasses silently vanishes
+from the home screen (it stays equipped and reappears if the stage ever goes back to baby). Every
+accessory's position is calibrated per frame against the baby's eye-midpoint/head-top anchors
+(`kNoriFrameAnchors`), and the evolved form has none, so showing them with the baby's numbers would
+float them in the wrong place.
 
-### FirestoreCalendarRepository duplicates MockCalendarRepository's status/streak logic (2026-09-23 audit)
-
-`FirestoreCalendarRepository._statusFor` and `_currentStreak` are copied nearly
-line-for-line from `MockCalendarRepository` rather than sharing one implementation. A
-future status or streak rule change — for example, respecting a per-habit
-`allowVacationFreeze` flag — must be made twice; missing one would make the mock and
-Firestore calendars silently disagree, undercutting the mock's doc-comment promise
-that a day's colour and habit list can never disagree.
-
-### Streak/stats day-walk skips a day across DST (2026-09-23 audit)
-
-`FirestoreCalendarRepository._currentStreak` and `MockCalendarRepository._currentStreak`,
-along with `getHabitStats` in both, walk backward by subtracting a fixed
-`Duration(days: 1)`/24 hours from a `DateTime` instead of constructing
-`DateTime(year, month, day - 1)`. On a daylight-saving spring-forward transition,
-local midnight minus 24 hours lands at 23:00 two calendar days back, silently skipping
-a day. This predates the Firestore work in the mock; it was found during this audit,
-not introduced by it.
-
-### Evolution stage 2 has no real art yet (deliberate placeholder, not a bug)
-
-`Pet.stage` already has two values (`baby`, `evolution1` — see `lib/models/pet.dart`
-and FEATURES.md §6), and `PetRepository.syncEvolution` correctly promotes a pet once the
-user's level crosses `evolutionLevelThreshold`. But there is no actual second-stage
-character art: `nori_front/side/back.png` and the `nori_breathing/frame_*.png` sequence
-are all extracted from real photography/video of a physical prop (see
-`nori_breathing_sprite.dart`), not vector illustration — a true "evolved" look needs new
-footage of that same prop, not something that can be drawn or generated in code.
-
-Until that footage exists, `evolution1` reuses the exact same sprite, scaled up slightly
-and given a warm mustard glow + a few sparkle accents (`NoriRoomStage`'s `_EvolvedAura`,
-and the matching glow in `EvolutionScreen`), so evolving reads as "something changed"
-instead of silently doing nothing. This is a deliberate stand-in, not a design decision —
-when real stage-2 art lands, swap it in at both call sites (`NoriRoomStage.stage` and
-`EvolutionScreen`) and drop the aura treatment.
+Decided to leave it like this for now rather than calibrate. What fixing it would take, if it's
+picked up later:
+- Extract eye-midpoint and head-top anchors for the 64 evolved frames (same blob-detection approach
+  as the baby's, see `nori_frame_anchors.dart`) — the wings spread far past the body and the head
+  has leaf horns instead of the baby's horns, so the head-top detector needs adjusting.
+- Decide where hats sit relative to the leaf horns, and re-check every item's scale (the evolved
+  head is smaller on the canvas than the baby's).
+- Check what Customization's pet preview shows for an evolved pet — not looked at yet.
+- Players can still buy accessories they can't see on an evolved Nori; fine for now, but worth a
+  line in any "what's missing" write-up.
 
 ### Neck/hand accessory anchors not implemented (necktie, bow, hand-held items)
 
@@ -331,7 +518,7 @@ would either add risk or not actually reduce duplication:
 |---|---|
 | Tap-ripple cards (`Material`/`InkWell`/`AnimatedContainer` wrapping their own decoration) | Not migrated to `NoriCard` — `habit_tile.dart`'s `InkWell(child: Container(...))`, `nori_list_row.dart`'s `NoriListRow` (`Material` shape + `InkWell`, extracted 2026-09-15 from `profile_screen.dart`'s old `_AccountRow` and now shared with Settings), and `payment_method_screen.dart`'s `_PaymentOptionCard` (`AnimatedContainer` color transition) each need the border radius to stay in sync with a ripple/animation, not just a static decoration — left bespoke rather than force-coupling two widgets' radius values. |
 | Compound local shells (`_CardShell` in habit_progress_card.dart's *content*, `_ItemCardShell`'s inner tile in shop_screen.dart) | Each file already deduped its own 2-3 variants into one local widget before this pass — `NoriCard` now backs each shell's outer `Container`, but the compound layout inside (claim/unclaim buttons, badge overlay) stays local since it's not decoration, it's behavior/layout specific to that screen. |
-| Remaining un-migrated card classes (`add_habit_screen.dart`'s `_TypeCard`, `nori_plus_screen.dart`'s `_FeatureComparisonCard`/`_PlanCard`, `login_screen.dart`/`sign_up_screen.dart`, `customization_screen.dart`, `home_screen.dart`) | Not reviewed this pass — the 2026-09-14 sweep covered the screens already migrated to `NoriScrollScaffold` plus `habit_progress_card.dart`; these are a plausible next slice if this keeps going, just not verified yet. |
+| Remaining un-migrated card classes | Reviewed 2026-10-26 with a scan for containers that are exactly a solid color + radius + ink border: the Nori+ comparison card, Settings' vacation card, Home's care sheet and coin pill, Customization's inventory panel, the four onboarding form cards, and the reward/streak/Soon pills now use `NoriCard`. What's left (`_TypeCard`, `_PlanCard`, Customization's slots, the payment options) has tap-ripple, selected-state or animated styling, so it stays bespoke. |
 
 ### Duplicated logic (2026-09-10 audit; formatting/date/coin-formula dedup done 2026-09-13, see docs/RESOLVED_LOG.md)
 
@@ -342,24 +529,11 @@ duplicated coin-reward formula, and a newly-spotted duplicate id-generation expr
 in `AddHabitScreen`/`BucketListScreen` — see docs/RESOLVED_LOG.md for details, including a real
 `RangeError` bug the id-generation dedup surfaced and fixed.
 
-Still open — deliberately deferred, this one's behavior code, not presentation:
-
-- Claim/unclaim/quick-log orchestration is duplicated across `HomeScreen`,
-  `HabitsListScreen`, and `CalendarScreen`'s day-detail sheet — re-verified 2026-09-13:
-  `HabitsListScreen` and `CalendarScreen` are genuinely near-identical (six methods each,
-  differing only in date source), but `HomeScreen`'s version is meaningfully different
-  (no evolution-celebration sync, different today-only repository methods) — it's closer
-  to "2.5x" than a clean triplication. A `HabitDayController` would remove the
-  `HabitsListScreen`/`CalendarScreen` half of this and, importantly, make the past-day
-  corruption bug (see docs/RESOLVED_LOG.md) fixable in one place instead of two-to-three. Not
-  attempted: this is behavior code that's already had subtle per-screen bugs fixed
-  individually, and there's no test suite yet to catch a regression from merging it.
-- Related, found during the 2026-09-13 pass but out of scope for it: the "sync pet
-  evolution → refetch → compare stage → show celebration" sequence is copy-pasted 4
-  times (`HomeScreen._loadData`, `HomeScreen._reloadUserAndPet`,
-  `CalendarScreen._applyReward`, `HabitsListScreen._claimHabit`), each with its own
-  slightly-different guarding comment. Same risk profile as the item above — worth
-  tackling together once there's test coverage for the evolution-celebration flow.
+Update 2026-10-26: the Habits list / Calendar day sheet half of this is merged into one mixin
+(`HabitDayActions`, `lib/screens/habits/habit_day_actions.dart`), and the past-day edit fix now
+lives in one place. Still open: `HomeScreen` keeps its own claim handling and its own
+"refetch → compare stage → celebrate" sequence (`_loadData`, `_reloadUserAndPet`,
+`_celebrateChanges`) on purpose; see "Code audit 2026-10-26" for why merging it needs a decision.
 
 ### Dead code (2026-09-10 audit; desktop-branching removal done 2026-09-14, see docs/RESOLVED_LOG.md)
 
@@ -395,7 +569,10 @@ unused, now fixed, see docs/RESOLVED_LOG.md.)
 
 ### Testing backlog (2026-09-10 audit)
 
-No `test/` directory exists yet. Highest-value first tests, in order: (1)
+Update 2026-10-26: tests exist now (`flutter test`: habit JSON/archive, pet care, social; `npm test`
+in `functions/`: rewards, XP curve, adaptive XP, request parsing, notifications, seed plan, 42 in
+all). Still untested: `shop.ts`, `bucketList.ts`, `deleteHabit`/`deleteAccount`, every transaction
+path, and the Firestore repositories. The original list, some of it now covered: (1)
 `Habit.computeReward()`/`rewardTier` (`lib/models/habit.dart`) — the economy math, five
 consumers, zero coverage, test the `limit` type first since its pass/fail logic is
 inverted from the other five types; (2) the claim → unclaim round-trip on
@@ -417,6 +594,11 @@ pick up by dropping new source images in `assets/source/achievements/` and follo
 same wiring (`Achievement.imageAsset`, see `achievement_repository.dart`).
 
 ### Social tab is frontend-only; what a backend would still need (2026-10-21)
+
+**Scope (2026-10-26): there is no social backend in this MVP.** The tab is a showcase of how
+Social would look, running on `MockSocialRepository`, so the mock bugs listed below and in "Code
+audit 2026-10-26" are accepted and will not be fixed. The notes are kept so that whoever builds
+the real thing later doesn't copy them over.
 
 The whole tab runs on `MockSocialRepository` (`lib/data/mock_social_repository.dart`), behind the
 `SocialRepository` interface on `AppData.social`. Nothing persists and nobody else's data is
@@ -441,12 +623,23 @@ Achievements). The Social category in `achievement_repository.dart` now has five
 `SocialRepository.getSocialActivity()`, i.e. from the mock social data, so their progress is
 placeholder until social has a backend (and resets on app restart).
 
-### Onboarding tips needed, without cluttering the Habits screen (dictated 2026-09-10, not yet investigated)
+Mock behavior bugs found in the 2026-10-26 code audit, worth knowing before the mock is copied
+into a real implementation (all CONFIRMED in `mock_social_repository.dart`): signing out and into
+another account in the same session keeps the first account's posts, circles, competitions and
+privacy settings (`accountChanged` only clears the cached profile); a profile read that fails is
+cached as if it succeeded, so screens show the seed identity instead of a retry; friend codes from
+`getInviteInfo` can't be searched; a removed friend's posts stay in the feed; "Show me on
+leaderboards" is ignored; competitions never move from Active once `endsAt` passes, proof can be
+submitted before a competition starts, and `submittedToday` never resets; blocking someone leaves
+their request notification (with a working Accept) and their circle memberships. Screens:
+reporting a post from its detail screen leaves the deleted post on screen, and Create Competition
+accepts a target that can't be reached in the chosen duration.
 
-Users need a way to discover: partial completion is editable, tasks can be set back to
-zero, and long-press reorders the list — but not via permanent hint UI cluttering the
-Habits screen itself. Needs a mechanism (first-run tooltip? dismissible one-time coach
-mark? info icon with a sheet?) — not decided yet.
+### First-run help: what's still missing after the intro cards and hints (2026-10-26)
+
+The intro cards and one-time hints shipped (docs/RESOLVED_LOG.md). Left: the Add Habit terms that
+still lack a plain-language explanation, "Mark Day Safe" on limit habits, and any hint for Home (kept
+off on purpose, it's already dense). A hint is one `Tip` value plus one `OneTimeHint` if wanted later.
 
 ### Mock profile picture needed (dictated 2026-09-10, not yet investigated)
 

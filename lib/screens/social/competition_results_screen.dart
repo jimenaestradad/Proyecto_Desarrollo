@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/utils/formatting.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/screens/social/social_load_state.dart';
@@ -146,7 +147,7 @@ class _CompetitionResultsScreenState extends State<CompetitionResultsScreen>
               Text(
                 placement == 0
                     ? 'You did not participate in this competition.'
-                    : 'You finished ${_ordinal(placement)} — +$reward XP',
+                    : 'You finished ${ordinal(placement)} — +$reward XP',
                 style: AppTextStyles.headlineLgMobile,
                 textAlign: TextAlign.center,
               ),
@@ -191,14 +192,4 @@ class _CompetitionResultsScreenState extends State<CompetitionResultsScreen>
       }),
     ),
   );
-}
-
-String _ordinal(int n) {
-  if (n % 100 >= 11 && n % 100 <= 13) return '${n}th';
-  return '$n${switch (n % 10) {
-    1 => 'st',
-    2 => 'nd',
-    3 => 'rd',
-    _ => 'th',
-  }}';
 }

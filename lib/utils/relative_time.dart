@@ -1,3 +1,5 @@
+import 'date_labels.dart';
+
 /// "just now", "25m ago", "2h ago", "Yesterday", "3d ago", then "Oct 4".
 String relativeTimeLabel(DateTime time, {DateTime? now}) {
   final diff = (now ?? DateTime.now()).difference(time);
@@ -6,19 +8,5 @@ String relativeTimeLabel(DateTime time, {DateTime? now}) {
   if (diff.inHours < 24) return '${diff.inHours}h ago';
   if (diff.inDays == 1) return 'Yesterday';
   if (diff.inDays < 7) return '${diff.inDays}d ago';
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  return '${months[time.month - 1]} ${time.day}';
+  return '${monthAbbr(time.month)} ${time.day}';
 }

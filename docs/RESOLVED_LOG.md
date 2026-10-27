@@ -2,6 +2,201 @@
 
 Trimmed historical fix log for Nori, split out of `docs/KNOWN_ISSUES.md` on 2026-09-16 to keep the working file scannable. Full narrative detail from before the split was intentionally condensed; this log favors terse entries going forward.
 
+### 2026-10-26 — slow screens: parallel reads, no wasted reads on bucket-list taps
+
+- **Achievements, Profile and the notification sync fetch in parallel.** They awaited ~10 independent
+  Firestore reads one after another (including the same 90-day habit range twice, now shared).
+  `getAchievementsByCategory`, Profile's `_fetchData` and Achievements' user+achievements load use
+  record `.wait`.
+- **Notifications paints stored items first** (`getNotifications(sync: false)`), then syncs.
+- **Ticking a bucket-list goal does less:** it no longer reads the user (and walks the streak) just
+  to call the pet's `syncEvolution`, which is a no-op for the real pet. A progress bar shows while
+  the Cloud Function runs. The function call itself (cold start) is the remaining wait.
+
+### 2026-10-26 — evolved Nori art on the evolution screen
+
+- **The evolution celebration shows the winged Nori** (`NoriEvolvedSprite`, 64 cut-out frames in
+  `assets/images/nori_evolved/`, ~5.7MB) instead of the baby sprite. The source clip doesn't loop,
+  so the frames are a trimmed stretch (source frames 51–177) whose wrap reads as a wing lift. The
+  wings overflow the 160px badge circle sideways.
+- **The home room stage shows it too** for any evolved pet (it was still the scaled-up baby with a
+  mustard aura; the aura is removed). Equipped accessories are hidden on the evolved form until it
+  has anchors — see KNOWN_ISSUES.
+
+### 2026-10-26 — pre-ship cleanup: dead freeze toggle, hard-coded pet line, Delete Account dialog
+
+- **"Allow Vacation Mode Freeze" is gone from Add Habit.** Nothing read it and per-habit pause is
+  out of MVP scope (the global Vacation Mode in Settings is unaffected). `Habit.allowVacationFreeze`
+  stays in the model and an existing habit's stored value is carried through edits.
+- **Habits no longer claims "Your pet is happy"** regardless of the pet's vitals; today's line is
+  just "Keep up the good work!".
+- **Delete Account's dialog is its own widget** (`DeleteAccountDialog`) that owns its two text
+  controllers, instead of the caller disposing them while the close animation ran. Cancel also
+  used to show "The username didn't match", and now closes quietly. Four widget tests cover it.
+
+### 2026-10-26 — pre-ship quick fixes: bucket-list caps, duplicate achievements, playwright output
+
+- **Bucket-list rewards can't promise more than they pay.** The XP and coin fields take digits only,
+  show "Up to 500" / "Up to 250", and clamp on save; goals already saved with a bigger number show
+  the capped amount (`BucketListItem.maxXpReward` / `maxCoinReward`, matching the server's caps).
+  The mock's debug-only `dev-level-up` item (3000 XP) is untouched on purpose.
+- **Duplicate achievements removed.** Steady Progress (best single habit: 10 / 25 / 50) counted
+  nearly the same thing as the Milestones series (all habits combined), so Steady Progress I-III
+  and Dedicated III (500, unreachable in the 90-day window) are gone and the series is now Getting
+  Started 10, Dedicated I 25, Dedicated II 50. 27 achievements became 23.
+- **`.playwright-mcp/` is git-ignored and gone from history.** Its 19 files were only in the tip
+  commit of `valevasqc-dev`, which was amended (now `a445a89`); a local backup branch
+  `backup/before-playwright-removal` still holds the old commit. The remote still has the old
+  commit until `valevasqc-dev` is force-pushed.
+
+### 2026-10-26 — onboarding recovery, time-zone-proof log queries, delete-account re-login
+
+Four items from the code audit.
+- **Sign-up resumes instead of dead-ending.** The screen now remembers the created account, the
+  email it used and the claimed username as each step succeeds, so after any later failure
+  ("Create Account" again) it continues from the failed step instead of calling `signUp` again
+  ("email already in use"). `UsernameRepository.claim` is a no-op when the same user already holds
+  the name, `updateDisplayName` during sign-up is best-effort, and the "doc not provisioned yet"
+  retry now waits about 4s instead of 2s.
+- **Interrupted sign-up is picked up at startup.** A signed-in account with no claimed username
+  opens `FinishSignUpScreen` (choose username, save profile, name pet) instead of Home. If the
+  check can't be made, it opens Home as before. It costs one small read at launch.
+- **Logs can't vanish after a time-zone change.** `logsInRange` (and the seed script's existing-log
+  query) filter on the `dayKey` string instead of the device-local-midnight `date` Timestamp.
+- **Deleting the account needs a recent login.** The `deleteAccount` function rejects a session
+  that signed in more than 5 minutes ago (`requireRecentLogin`, tested), and the app re-authenticates
+  first: Settings' dialog asks for the password, or opens Google again for a Google-only account.
+  **The server check only applies once `functions` is redeployed; the app works either way.**
+
+Social findings were not touched: the Social tab is a showcase on mock data with no backend in this
+MVP (FEATURES.md §10).
+
+### 2026-10-26 — remaining duplication merged (screens, data layer, functions)
+
+Second half of the duplication clean-up from the code audit.
+- **Screens:**
+  - The claim / un-claim / log / edit-progress handlers copied between the Habits list and the
+    Calendar day sheet are the `HabitDayActions` mixin.
+  - Level Up and Evolution share `CelebrationScreen` (the two screens render pixel-for-pixel as
+    before, checked against the originals).
+  - Sign Up and Choose Username share `UsernameAvailability`.
+  - Twelve hand-built bordered boxes use `NoriCard`: the Nori+ comparison, Settings' vacation card,
+    Home's care sheet and coin pill, Customization's inventory panel, four onboarding form cards,
+    and the reward/streak/Soon pills.
+  - Customization's pet preview is the shared `NoriAccessoryPreview` (layout checked identical for
+    all six accessories).
+  - Social's unread dot is `CircularIconButton.showDot`. This one is a deliberate small visual
+    change: the dot is now `terracotta` like the Habits bell, since DESIGN.md reserves the
+    `Dark` variants for text and icons.
+- **Data layer:**
+  - Both calendar repositories' day-status rule, streak rule, month assembly and per-habit stats
+    are shared functions (`calendarDayStatus`, `streakStep`, `buildMonthStats`,
+    `buildHabitStats`), so the mock and Firestore calendars can't disagree.
+  - The two icon/color registries are one (`IconRegistry`/`ColorRegistry`, with `tryKeyFor` and
+    shared defaults).
+  - Pet decay is `applyPetDecay`, shared by both pet repositories.
+  - The signed-in-uid lookup is `requireSignedInUid`.
+- **Functions:** one `docRefs.ts` builds the per-user paths and the `{dayKey}_{habitId}` log id
+  that used to be spelled out in nine places.
+
+Not behavior changes, apart from the dot color. New tests: 12 for the calendar rules, 4 for the
+registries, 3 for pet decay, 6 for the preview layout, 2 for the function paths.
+
+### 2026-10-26 — Firestore-side duplication merged (follow-up to the code audit)
+
+The "definitions + logs → hydrated habits" loop was written four times (`getTodayHabits`,
+`getHabitsForDate`, `getHabitsForRange`, and the calendar repository's `_scheduledFor`); it is now
+`hydrateDay`/`hydrateScheduled` in `habit_repository.dart`, and `_scheduledFor` is gone.
+`logProgressForDate` and `setProgressForDate` shared everything but how the new value is computed;
+both now go through one `_writeProgress` with the clamp in `clampProgress`. The 5 × 400ms
+"doc not provisioned yet" retry, copied in `updateProfile` and `renamePet`, is
+`retryWhileProvisioning` (`lib/utils/provisioning_retry.dart`). One small behavior change:
+logging progress on a habit with no target now floors at 0, like setting it always did. New tests
+cover the three helpers (`test/data/habit_hydration_test.dart`,
+`test/utils/provisioning_retry_test.dart`); the transaction itself is still untested because there
+is no fake Firestore in the project.
+
+### 2026-10-26 — full code audit (backend + frontend): quick wins
+
+Code-quality/security pass over the whole codebase; what's still open is in KNOWN_ISSUES.md under
+"Code audit 2026-10-26". **Firestore reads:** the streak walk fetched 400 days of logs on every
+call and now fetches 45-day chunks only as far back as the streak reaches. A new
+`CalendarRepository.getCurrentStreak()` stops `getCurrentUser()`, achievements and Profile from
+building a whole month grid just for the streak. Mark-all-read no longer re-runs the notification
+sync, and pet reads no longer write. **Bugs:**
+- Logging in overwrote the Firestore name with the Auth display name, reverting every Edit
+  Profile name change.
+- The vacation toggle didn't await its write.
+- A pet read could overwrite a concurrent care action.
+- Changing days quickly on Habits could show (and act on) the wrong day.
+- Deleting an un-completed bucket item that had paid out took the reward back without the
+  confirmation.
+- Day loops skipped or repeated a date across DST (new `addDays`).
+- Add Habit crashed on empty categories and on out-of-range picker dates, and accepted NaN, a
+  minimum ≥ target, or a custom schedule with no days.
+- The progress dialog saved unparseable text as 0.
+- An exceeded limit habit could be claimed from a Home row.
+- The client offered Delete on habits the server would refuse.
+- Renaming a category onto an existing name created a duplicate that crashed Add Habit.
+- Archived Habits' back arrow dropped its "changed" result.
+- An unknown icon/color key failed the whole habit list.
+- The onboarding `minHeight` could go negative.
+- The Add Password dialog's keyboard submit skipped the match check.
+- Home didn't show the first-completion sunglasses until a full reload.
+- Duration cards showed `:00` seconds.
+- A retried Add Habit save could duplicate the habit.
+- A stale social profile load could land on the next account.
+
+**Security:** login and password-reset messages no longer reveal whether an email has an account.
+A username change writes `/usernames` and the profile in one transaction. An expired session gets
+its own message instead of "couldn't reach the server". **Functions:** `maxInstances: 10` global
+cap; Node 20 (end of life upstream) → 22; `FIRST_COMPLETION_GIFT` shared from `rewards.ts`.
+**Dedup:** `ordinal()`, `relativeTimeLabel()` and the server-unreachable message each have one
+copy now. The functions changes take effect on the next `firebase deploy --only functions`; nothing
+was deployed.
+
+### 2026-10-26 — first-run help: intro cards and one-time hints
+
+New accounts see a three-card intro (`IntroScreen`) after naming their pet, and Habits and Calendar
+each show one dismissible hint card the first time (`OneTimeHint`). Both are remembered per account
+on the device (`TipsStore`, new `shared_preferences` dependency) and replayable from Settings > Help.
+Add Habit's private `_InfoBanner` became the shared `NoriInfoBanner`; no permanent helper text was
+added. Covers the old "Onboarding tips needed" backlog item. Tests: `tips_store_test`,
+`one_time_hint_test`, `intro_screen_test`.
+
+### 2026-10-26 — new accounts had no way to create a habit category
+
+`onUserCreate` seeds `habitCategories: []`, so a new user's Category dropdown on Add Habit was empty
+(blank field, habit saved with no category). The dropdown now says "Choose or add a category" and ends
+with an "Add Category" entry that opens the same prompt as Settings, saves it and selects it. The
+prompt (`showNoriTextPrompt`) is shared with Settings and owns its text controller, which fixes
+the old Settings version disposing it while the dialog was still animating closed. Covered by
+`add_habit_categories_test`.
+
+### 2026-10-26 — full-app UX/UI audit: contrast, labels, calendar, welcome (easy wins)
+
+Whole-app audit (Nielsen's 10 + WCAG/Material checks) at 412×915; the complex findings are in
+KNOWN_ISSUES.md under "UX/UI audit 2026-10-26". Fixed: (1) the theme had no `textButtonTheme`, so
+every TextButton ("Forgot Password?", "See all", "Resend", "Mark all as read"...) fell back to
+`moss` at 2.4–2.8:1; it's now `mossDark` as DESIGN.md §7 already said. (2) Profile stat values and
+Easiest/Most Missed tags, and notification category labels, use darker text variants instead of fill
+colors; the notification CTA lightens its fill so ink text clears 4.5:1. (3) Unlabeled icon buttons
+now have tooltips (shared back button, month/day arrows, Add Habit close, profile/photo edit), and
+each habit/bucket "More" menu names its item. (4) Calendar: upcoming days no longer look identical to
+missed days (transparent + faint outline) and the legend gains Today/Upcoming. (5) Add Habit's
+tracking-type and custom-day pickers use the standard mossLight + thick-border selection, and type
+descriptions no longer cut off at 2 lines. (6) Habit cards no longer render a dangling "Duration ·"
+when a habit has no category. (7) Welcome has a "Log In" link (returning users had to go through the
+sign-up form). (8) Nori's breathing loop holds on frame 0 when the OS "remove animations" setting is on.
+
+### 2026-10-26 — live Cloud Functions no longer ahead of git
+
+Every function file deployed since 2026-10-04 (`deleteAccount`, `bucketList`, `shop`,
+`onUserCreate`, `petCareCheck`, `adaptiveXp`, notifications) is now committed on
+`valevasqc-dev` and redeployed from it, so a deploy from a checkout of that branch no longer
+deletes live functions. One `purchaseCareItem` rebuild expired in Cloud Build's queue (Google-side);
+the previous revision kept serving.
+
 ### 2026-10-26 — account settings: delete account + real login-email change
 
 Settings has a Delete Account row (type your username to confirm) that calls the new
