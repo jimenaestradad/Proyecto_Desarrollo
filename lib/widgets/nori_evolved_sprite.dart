@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'nori_evolved_frame_anchors.dart';
+
 const _frameCount = 64;
 
 /// 64 frames at 12fps (every 2nd frame of the 24fps source), so the loop is
@@ -11,9 +13,9 @@ const _frameAspect = 480 / 300;
 
 /// The evolved (winged) Nori's idle loop: a wing-flap cycle extracted from
 /// real generated footage and cut to transparent PNGs (see
-/// assets/images/nori_evolved). Same approach as [NoriBreathingSprite], minus
-/// the accessory overlay — this form has no per-frame anchors yet, so
-/// accessories aren't drawn on it (see docs/KNOWN_ISSUES.md).
+/// assets/images/nori_evolved). Same approach as [NoriBreathingSprite],
+/// including the accessory overlay hook: [kNoriEvolvedFrameAnchors] tracks the
+/// head through the hop so equipped accessories ride along with it.
 ///
 /// The source clip doesn't loop on its own (it opens with the wings spread and
 /// ends folded), so the frames are the stretch from the folded rest pose back
@@ -21,9 +23,25 @@ const _frameAspect = 480 / 300;
 /// wide because the wings spread far past the body, so [width] is the wing
 /// span, not the body width.
 class NoriEvolvedSprite extends StatefulWidget {
-  const NoriEvolvedSprite({super.key, required this.width});
+  const NoriEvolvedSprite({
+    super.key,
+    required this.width,
+    this.overlayBuilder,
+  });
 
   final double width;
+
+  /// Builds an equipped accessory positioned from this same tick's
+  /// [NoriEvolvedFrameAnchors] (see accessory_art.dart's
+  /// [evolvedPositionedAccessoryArt]), composited in the same
+  /// `AnimatedBuilder` frame as the sprite so the two never drift apart.
+  /// [spriteWidth] is the sprite's actual rendered width.
+  final Widget? Function(
+    BuildContext context,
+    double spriteWidth,
+    NoriEvolvedFrameAnchors anchors,
+  )?
+  overlayBuilder;
 
   @override
   State<NoriEvolvedSprite> createState() => _NoriEvolvedSpriteState();
@@ -80,11 +98,22 @@ class _NoriEvolvedSpriteState extends State<NoriEvolvedSprite>
           0,
           _frameCount - 1,
         );
-        return Image(
+        final image = Image(
           image: _frames[index],
           width: widget.width,
           height: widget.width / _frameAspect,
           gaplessPlayback: true,
+        );
+        final overlay = widget.overlayBuilder?.call(
+          context,
+          widget.width,
+          kNoriEvolvedFrameAnchors[index],
+        );
+        if (overlay == null) return image;
+        return Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.topCenter,
+          children: [image, overlay],
         );
       },
     );

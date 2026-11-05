@@ -1,0 +1,17 @@
+.git
+.dart_tool
+.idea
+.claude
+.playwright-mcp
+build/*
+!build/web
+android
+ios
+functions
+homework
+docs
+test
+tool
+assets/source
+*.local.md
+.DS_Store

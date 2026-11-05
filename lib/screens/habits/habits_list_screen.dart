@@ -17,6 +17,7 @@ import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/habit_progress_card.dart';
 import 'package:nori/widgets/load_error_view.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/one_time_hint.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
@@ -50,6 +51,12 @@ class _HabitsListScreenState extends State<HabitsListScreen>
       .watchHasUnread();
   NoriUser? _user;
   List<Habit>? _habits;
+
+  /// Habits that are active today but not due today (a Mon/Wed/Fri habit on
+  /// a Tuesday). Only loaded when viewing today; listed in their own section
+  /// so every habit is reachable from this tab, but kept out of the day's
+  /// "x / y Completed" count.
+  List<Habit> _notDueToday = const [];
   bool _completedToBottom = false;
 
   /// True while a long-press has put the list into drag-reorder mode —
@@ -78,24 +85,50 @@ class _HabitsListScreenState extends State<HabitsListScreen>
 
   Future<void> _loadData() => guardedLoad(_fetchData, hasData: _habits != null);
 
+  /// The habits due on [date], plus (for today only) the active ones that
+  /// aren't due.
+  Future<(List<Habit>, List<Habit>)> _loadDay(DateTime date) async {
+    final isToday = date == dateOnly(DateTime.now());
+    final (due, active) = await (
+      AppData.habits.getHabitsForDate(date),
+      isToday ? AppData.habits.getTodayHabits() : Future.value(<Habit>[]),
+    ).wait;
+    final dueIds = {for (final habit in due) habit.id};
+    return (
+      due,
+      [
+        for (final habit in active)
+          if (!dueIds.contains(habit.id)) habit,
+      ],
+    );
+  }
+
   Future<void> _fetchData() async {
     final date = _selectedDate;
-    final user = await AppData.user.getCurrentUser();
-    final habits = await AppData.habits.getHabitsForDate(date);
+    final (user, day) = await (
+      AppData.user.getCurrentUser(),
+      _loadDay(date),
+    ).wait;
     if (!mounted) return;
     setState(() {
       _user = user;
       // Dropped if the user has moved to another day meanwhile — that
       // day's own load owns the list now.
-      if (date == _selectedDate) _habits = habits;
+      if (date == _selectedDate) {
+        _habits = day.$1;
+        _notDueToday = day.$2;
+      }
     });
   }
 
   Future<void> _reloadHabits() async {
     final date = _selectedDate;
-    final habits = await AppData.habits.getHabitsForDate(date);
+    final day = await _loadDay(date);
     if (!mounted || date != _selectedDate) return;
-    setState(() => _habits = habits);
+    setState(() {
+      _habits = day.$1;
+      _notDueToday = day.$2;
+    });
   }
 
   /// Steps the viewed day by [deltaDays]. Clamped so it can't go past today
@@ -108,6 +141,7 @@ class _HabitsListScreenState extends State<HabitsListScreen>
     setState(() {
       _selectedDate = next;
       _habits = null;
+      _notDueToday = const [];
     });
     guardedLoad(_reloadHabits, hasData: false);
   }
@@ -413,6 +447,10 @@ class _HabitsListScreenState extends State<HabitsListScreen>
             ],
           ),
         ],
+        if (_notDueToday.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.stackLg),
+          _NotDueTodaySection(habits: _notDueToday, onEdit: _openEditHabit),
+        ],
         const SizedBox(height: AppSpacing.stackMd),
         TactileButton(
           label: 'Add New Habit',
@@ -428,6 +466,68 @@ class _HabitsListScreenState extends State<HabitsListScreen>
             textAlign: TextAlign.center,
             style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
           ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Habits that are active but not scheduled today. Read-only rows (nothing to
+/// log until their day comes) that open the same edit screen, so every habit
+/// can still be found, edited or archived from this tab.
+class _NotDueTodaySection extends StatelessWidget {
+  const _NotDueTodaySection({required this.habits, required this.onEdit});
+
+  final List<Habit> habits;
+  final ValueChanged<Habit> onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Not due today', style: AppTextStyles.labelLg),
+        const SizedBox(height: 2),
+        Text(
+          'Scheduled for other days, so they don\'t count toward today.',
+          style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkFaint),
+        ),
+        const SizedBox(height: AppSpacing.stackSm),
+        for (final habit in habits) ...[
+          NoriCard(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.gutter,
+              vertical: AppSpacing.unit * 2,
+            ),
+            color: AppColors.linen,
+            borderWidth: AppBorder.thin,
+            child: Row(
+              children: [
+                Icon(habit.icon, color: AppColors.inkFaint),
+                const SizedBox(width: AppSpacing.gutter),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(habit.name, style: AppTextStyles.labelLg),
+                      Text(
+                        habit.scheduleLabel,
+                        style: AppTextStyles.labelSm.copyWith(
+                          color: AppColors.inkFaint,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Edit ${habit.name}',
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: () => onEdit(habit),
+                ),
+              ],
+            ),
+          ),
+          if (habit != habits.last) const SizedBox(height: AppSpacing.stackSm),
         ],
       ],
     );

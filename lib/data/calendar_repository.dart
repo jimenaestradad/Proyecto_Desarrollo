@@ -275,12 +275,15 @@ class FirestoreCalendarRepository implements CalendarRepository {
   Future<CalendarMonthStats> getMonth(int year, int month) async {
     final today = dateOnly(DateTime.now());
 
-    // Two queries total for the whole month — not one per day.
-    final definitions = await _habits.fetchAllDefinitions();
-    final logs = await _habits.logsInRange(
-      DateTime(year, month, 1),
-      DateTime(year, month + 1, 0),
-    );
+    // Two queries total for the whole month — not one per day — and run
+    // together, since neither needs the other.
+    final (definitions, logs) = await (
+      _habits.fetchAllDefinitions(),
+      _habits.logsInRange(
+        DateTime(year, month, 1),
+        DateTime(year, month + 1, 0),
+      ),
+    ).wait;
 
     return buildMonthStats(
       year: year,

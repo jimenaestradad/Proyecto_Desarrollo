@@ -48,12 +48,15 @@ class FirestoreUserRepository implements UserRepository {
 
   @override
   Future<NoriUser> getCurrentUser() async {
-    final data = await _getDataWithRetry();
     // currentStreak is derived, never stored (docs/BACKEND.md, "Derived,
     // never stored") -- same rule MockUserRepository already follows, via
     // whatever CalendarRepository AppData currently has wired (mock or,
-    // eventually, Valeria's FirestoreCalendarRepository).
-    final streak = await _calendar.getCurrentStreak();
+    // eventually, Valeria's FirestoreCalendarRepository). Fetched alongside
+    // the user doc rather than after it: the two reads are independent.
+    final (data, streak) = await (
+      _getDataWithRetry(),
+      _calendar.getCurrentStreak(),
+    ).wait;
     return NoriUser(
       id: _uid,
       name: data['name'] as String? ?? '',

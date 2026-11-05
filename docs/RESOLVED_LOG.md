@@ -2,6 +2,119 @@
 
 Trimmed historical fix log for Nori, split out of `docs/KNOWN_ISSUES.md` on 2026-09-16 to keep the working file scannable. Full narrative detail from before the split was intentionally condensed; this log favors terse entries going forward.
 
+### 2026-11-04 — All Cloud Functions redeployed on Node 22, verified live
+
+Node 20 passed its decommission date (2026-10-30), so `firebase deploy --only functions` moved all
+ten callables/scheduled functions plus `onUserCreate` from nodejs20 to nodejs22 (`purchaseCareItem` was
+already there), which also cleared its failed revision. Verified afterwards: every Cloud Run service
+Ready, public (`allUsers` binding, or `invoker-iam-disabled` on `purchasecareitem`), CORS preflight 204
+with `access-control-allow-origin` on both preflight and POST, no 5xx in the logs, and a throwaway
+account run end to end (sign-up provisioning, claim/unclaim/re-claim pays once, care item and
+accessory purchases incl. bogus/too-poor/duplicate refusals, bucket complete/uncomplete/delete
+reversal, deleteHabit, no-token 401, deleteAccount leaving nothing behind): 25/25 passed. Not
+re-clicked in the browser UI (the Playwright browser was held by another process), and the hourly
+`petCareCheck` hadn't yet run on the new revision (last run 15:35Z was the old one, next 16:41Z):
+check its log line "pets checked" after that.
+
+### 2026-11-04 — Accessories now render on the evolved Nori
+
+Equipped accessories used to vanish once a pet evolved (no anchors for the evolved frames).
+Extracted a per-frame eye midpoint for all 64 evolved frames (`nori_evolved_frame_anchors.dart`);
+the evolved head is rigid (constant 40px eye gap, X wobble under ~4px), so it only translates
+vertically as he hops and one anchor tracks every head item. `NoriEvolvedSprite` gained the same
+`overlayBuilder` hook as the baby sprite, `accessory_art.dart` has an evolved placement table
+(baby scales converted by x0.311, then re-tuned on composited frames), and Style Pet now shows the evolved sprite for evolved
+pets. Tail Charm Clasp is not drawn there (tail is hidden most of the loop) — see KNOWN_ISSUES.
+Steampunk Goggles are now worn pulled up like a headband on **all three** renders (baby Home,
+baby static preview, evolved), matching the reference sheet; they used to sit over the eyes on
+the baby (a stretch hack, `widthStretch`, was removed with it). The Flower Crown got the same
+treatment (full wreath across the head like the reference, sized/placed off the eye gap) on all three. Also fixed `chef-hat.png`, whose interior was transparent (hollow outline on every form): the
+enclosed area is now filled white. Verified by rendering all six items on the evolved
+`NoriRoomStage` in Chrome across the hop; the Customization panel itself was not run live.
+
+### 2026-11-03 — BACKEND.md cleanup: stale statements fixed, history moved here
+
+BACKEND.md is now a current-state reference; the dated narrative it used to carry is condensed here.
+
+- **Stale statements fixed.** "Starting point" said there were no Firestore/Auth/Functions SDKs or
+  `functions/` directory. Auth said "No account deletion in MVP" (`deleteAccount` exists). The
+  security-rules sketch still named `isCompletedToday`/`lastAwardedXp`/`lastAwardedCoins` on habits
+  (removed 2026-09-24). The Data-sprint seed step said "via the emulator". The schema block lacked
+  `notifications` and `notificationState`, and the Auth section listed an `onboardingCompletedAt`
+  field that was never built (nothing writes it, and the rules wouldn't allow it).
+  The `unclaimHabit` entry no longer says it demotes the pet: since pay-once it doesn't touch user
+  or pet.
+- **Habit-doc history (2026-09-23/24).** The original plan stored `currentValue`, `isCompletedToday`,
+  `lastAwardedXp` and `lastAwardedCoins` on the habit doc, which had no way to roll over at
+  midnight. They moved into `habitLogs` for every day, today included; `Habit.createdAt` also gave
+  `isScheduledOn` an implicit lower bound. Original bug: KNOWN_ISSUES 2026-09-23 entry.
+- **Seed script run (2026-10-05)** on `demo@test.com`: 6 habits, 30 days → 117 logs, level 5,
+  1,480 XP, 740 coins, sunglasses gifted, pet still baby (evolves at 7), 4 missed days, short
+  current streak. Verified against Firestore. Written 2026-10-04.
+- **`claimHabit` verification (2026-09-29):** 25 checks against live `nori-pet` with a disposable
+  account: claim/unclaim round trip landed on identical XP/coins/level, sunglasses gifted once and
+  never revoked, a direct client write to `coins` rejected by rules, an impossible `dayKey`
+  rejected, claims outside `startDate`/`endDate` rejected. `onUserCreate` was verified the same day
+  (fresh sign-up matched every provisioning value).
+- **Deploy log.** All 7 original functions + rules deployed 2026-09-29 (Blaze plan active).
+  2026-10-04: `deleteBucketListItem`, `deleteHabit` (9 live), the `pet.stage` sync in the other
+  bucket-list functions, `claimHabit`'s archived-day check, and the matching rules. 2026-10-26:
+  adaptive XP, the pay-once coin rule and `deleteAccount` (11 live). `deleteAccount` verified live
+  2026-10-26 on throwaway accounts (Auth user and `pet/main` gone afterwards).
+- **Dropped as redundant:** the sprint-mapping note about the ClickUp backlog draft, the superseded
+  emulator-first "original plan" paragraph, the struck-through gaps #1 (non-atomic claim, fixed
+  2026-09-28) and #3 (habit-doc schema, fixed 2026-09-24), and per-function "added/implemented
+  <date>" tags.
+- **Still to do elsewhere:** `firestore.rules` comments cite BACKEND.md by line number
+  (`BACKEND.md:296-299`, `:129-134`, `:300-309`, `:310-328`) and KNOWN_ISSUES cites `BACKEND.md:427`;
+  those numbers were already off and are more so now. They should cite section names instead.
+
+### 2026-11-04 — Home shows today's habits, Habits shows all; pet name, release permission, profile fixes
+
+- **Home lists only the habits due today; the Habits tab lists every active habit.** Home called
+  `getTodayHabits` (every active habit, due or not), so it said 1/6 while Habits said 1/5. Home now uses
+  `getHabitsForDate(today)`. Habits keeps the due list and adds a **"Not due today"** section below it
+  (name, schedule such as "Mon · Wed · Fri", an edit button), kept out of the "x / y Completed" count.
+  `getTodayHabits` is unchanged on purpose: achievements count habits with it ("Habit Architect").
+  Verified on a throwaway account with a weekends-only habit on a Wednesday.
+- **The Home HUD shows the pet's own name.** It was hard-coded to "Nori", so the name chosen in
+  onboarding never appeared. Verified by renaming the demo pet to "Mochi" and back.
+- **`INTERNET` is declared in the main Android manifest.** Flutter only adds it to debug/profile; the
+  Firebase libraries may merge it into a release build, but a release APK shouldn't depend on that.
+  Not built here (no Android SDK).
+- **Edit Profile says "That username is already taken" for a taken name** instead of "Unable to save
+  changes". `changeUsername` now checks the name before the transaction (an exception thrown inside a
+  transaction handler came back wrapped, so the screen never recognised it).
+- **Edit Profile shows the live "username available / already taken" hint** like Sign Up (same
+  `UsernameAvailability` mixin); the account's own current name shows nothing, and Save is blocked while
+  a taken name is typed. Verified on the demo account without saving.
+- **Deleting an account confirms it** ("Your account has been deleted.") on the Welcome screen.
+- **Home's empty state points at the Habits tab** for a brand-new account.
+
+### 2026-11-03 — QA pass fixes: logout error, dialog crashes, invisible progress fill, shop feedback
+
+- **Logging out no longer shows "Couldn't reach the server".** `unbindUser()` fires
+  `social.accountChanged()` while the Social tab is still mounted; the reload ran against Firestore
+  with nobody signed in. `SocialLoadState` now skips the reload when `AppData.auth.currentUserId` is
+  null. Social also takes an `active` flag like the other tabs, so its header XP refreshes when you
+  switch to it (not verified across an XP change, only on a fresh load).
+- **Four dialogs own their text controllers** (Forgot Password and Google account-link in
+  `login_screen.dart`, Set a Password in `settings_screen.dart`, change-email password in
+  `edit_profile_screen.dart`). Disposing them right after `showDialog` returned left the closing
+  dialog on a dead controller: in debug, Cancel on Forgot Password left a red error box and broke
+  every tap until reload. Verified on Forgot Password → Cancel.
+- **`ProgressBarPill` draws its fill on short bars.** The Container already pads by its border, and
+  the fill was inset by the border again, leaving no height at 6px (Home XP pill) and 8px (Today's
+  Goal). Covered by `test/widgets/progress_bar_pill_test.dart` (fails on the old code).
+- **Shop purchases show "Buying…"** and disable the other Buy buttons while one is in flight, instead
+  of dropping a second tap silently. `callCloudFunction` now `debugPrint`s the real exception before
+  returning the generic message, so a blocked preflight or 403 is visible in the console.
+- **Add Bucket List Goal with an empty title shows "Give your goal a title."**; achievement counts
+  are capped at the goal ("1/1", not "6/1"; not checked on screen).
+- **Independent reads now run together** in Home's load, `FirestoreUserRepository.getCurrentUser`,
+  the calendar month load and the shop. Measured effect: none worth claiming, see KNOWN_ISSUES
+  ("Load times").
+
 ### 2026-10-26 — slow screens: parallel reads, no wasted reads on bucket-list taps
 
 - **Achievements, Profile and the notification sync fetch in parallel.** They awaited ~10 independent

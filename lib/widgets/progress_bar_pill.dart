@@ -28,7 +28,6 @@ class ProgressBarPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderWidth = bordered ? AppBorder.thin : 0.0;
     return Semantics(
       label: semanticLabel,
       value: '${(progress.clamp(0, 1) * 100).round()}%',
@@ -41,29 +40,23 @@ class ProgressBarPill extends StatelessWidget {
               ? Border.all(color: AppColors.ink, width: AppBorder.thin)
               : null,
         ),
+        // The Container already pads its child by the border's width
+        // (BoxDecoration.padding), so everything below is laid out inside
+        // the track. Insetting again here used to eat the whole fill on the
+        // short bars (6px XP pill, 8px Today's Goal): 2px of border on each
+        // side, twice, left nothing to draw.
         child: LayoutBuilder(
           builder: (context, constraints) {
-            // Same inset the fill above uses, so the tick lines up with the
-            // track it's actually marking instead of the outer bounds the
-            // border sits on.
-            final innerWidth = (constraints.maxWidth - borderWidth * 2).clamp(
-              0.0,
-              double.infinity,
-            );
+            final innerWidth = constraints.maxWidth;
             return Stack(
               children: [
-                // Inset by the border width and clipped on its own RRect,
-                // not the outer Container's `clipBehavior`: a Container
-                // clips to the *outer* edge of its decoration, not inset by
-                // the border's stroke, so a sharp-cornered fill rectangle
-                // clipped that way can bleed into the rounded border's
-                // corner instead of stopping inside it — most visible on a
-                // fully/near-fully filled bar.
-                Positioned(
-                  left: borderWidth,
-                  top: borderWidth,
-                  right: borderWidth,
-                  bottom: borderWidth,
+                // Clipped on its own RRect, not the outer Container's
+                // `clipBehavior`: a Container clips to the *outer* edge of
+                // its decoration, not inset by the border's stroke, so a
+                // sharp-cornered fill rectangle clipped that way can bleed
+                // into the rounded border's corner instead of stopping
+                // inside it — most visible on a fully/near-fully filled bar.
+                Positioned.fill(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(height),
                     child: Align(
@@ -84,7 +77,6 @@ class ProgressBarPill extends StatelessWidget {
                     // solid block from 0 to thresholdFraction instead of a
                     // thin marker at that position.
                     left:
-                        borderWidth +
                         (thresholdFraction!.clamp(0, 1) * innerWidth -
                                 AppBorder.standard / 2)
                             .clamp(

@@ -81,7 +81,16 @@ class _ShopScreenState extends State<ShopScreen>
   int _selectedCategory = 0;
   NoriUser? _user;
   Inventory? _inventory;
-  bool _isPurchasing = false;
+
+  /// The item whose purchase is in flight. While set, every Buy button is
+  /// disabled and that one reads "Buying…" — a second tap used to be
+  /// dropped silently during the ~2s the purchase function takes.
+  String? _purchasingId;
+  bool get _isPurchasing => _purchasingId != null;
+
+  void _setPurchasing(String? itemId) {
+    if (mounted) setState(() => _purchasingId = itemId);
+  }
 
   @override
   void initState() {
@@ -92,8 +101,10 @@ class _ShopScreenState extends State<ShopScreen>
   Future<void> _loadData() => guardedLoad(_reloadData, hasData: _user != null);
 
   Future<void> _reloadData() async {
-    final user = await AppData.user.getCurrentUser();
-    final inventory = await AppData.inventory.getInventory();
+    final (user, inventory) = await (
+      AppData.user.getCurrentUser(),
+      AppData.inventory.getInventory(),
+    ).wait;
     if (!mounted) return;
     setState(() {
       _user = user;
@@ -121,7 +132,7 @@ class _ShopScreenState extends State<ShopScreen>
 
   Future<void> _buyCareItem(CareItem item) async {
     if (_isPurchasing) return;
-    _isPurchasing = true;
+    _setPurchasing(item.id);
     try {
       final user = _user;
       if (user == null) return;
@@ -139,13 +150,13 @@ class _ShopScreenState extends State<ShopScreen>
       if (!ok || !mounted) return;
       _showSnack('Bought ${item.name} — head to Home to use it!');
     } finally {
-      _isPurchasing = false;
+      _setPurchasing(null);
     }
   }
 
   Future<void> _buyAccessory(AccessoryItem item) async {
     if (_isPurchasing) return;
-    _isPurchasing = true;
+    _setPurchasing(item.id);
     try {
       final user = _user;
       if (user == null) return;
@@ -160,7 +171,7 @@ class _ShopScreenState extends State<ShopScreen>
       if (!ok || !mounted) return;
       _showSnack('Bought ${item.name}!');
     } finally {
-      _isPurchasing = false;
+      _setPurchasing(null);
     }
   }
 
@@ -254,7 +265,8 @@ class _ShopScreenState extends State<ShopScreen>
             _AccessoryCard(
               item: item,
               owned: inventory.ownedAccessoryIds.contains(item.id),
-              onBuy: () => _buyAccessory(item),
+              buying: _purchasingId == item.id,
+              onBuy: _isPurchasing ? null : () => _buyAccessory(item),
               onEquip: _openCustomization,
             ),
         ],
@@ -271,7 +283,11 @@ class _ShopScreenState extends State<ShopScreen>
         childAspectRatio: 0.61,
         children: [
           for (final item in kCareItemCatalog)
-            _CareItemCard(item: item, onBuy: () => _buyCareItem(item)),
+            _CareItemCard(
+              item: item,
+              buying: _purchasingId == item.id,
+              onBuy: _isPurchasing ? null : () => _buyCareItem(item),
+            ),
         ],
       );
     }
@@ -510,13 +526,17 @@ class _AccessoryCard extends StatelessWidget {
   const _AccessoryCard({
     required this.item,
     required this.owned,
+    required this.buying,
     required this.onBuy,
     required this.onEquip,
   });
 
   final AccessoryItem item;
   final bool owned;
-  final VoidCallback onBuy;
+  final bool buying;
+
+  /// Null while any purchase is in flight, which disables the button.
+  final VoidCallback? onBuy;
   final VoidCallback onEquip;
 
   @override
@@ -534,17 +554,28 @@ class _AccessoryCard extends StatelessWidget {
               style: AppTextStyles.labelLg.copyWith(color: AppColors.inkMuted),
             )
           : _PriceRow(price: item.price),
-      buttonLabel: owned ? 'Equip' : 'Buy',
+      buttonLabel: owned
+          ? 'Equip'
+          : buying
+          ? 'Buying…'
+          : 'Buy',
       onPressed: owned ? onEquip : onBuy,
     );
   }
 }
 
 class _CareItemCard extends StatelessWidget {
-  const _CareItemCard({required this.item, required this.onBuy});
+  const _CareItemCard({
+    required this.item,
+    required this.buying,
+    required this.onBuy,
+  });
 
   final CareItem item;
-  final VoidCallback onBuy;
+  final bool buying;
+
+  /// Null while any purchase is in flight, which disables the button.
+  final VoidCallback? onBuy;
 
   @override
   Widget build(BuildContext context) {
@@ -554,7 +585,7 @@ class _CareItemCard extends StatelessWidget {
       color: item.color,
       name: item.name,
       priceLabel: _PriceRow(price: item.price),
-      buttonLabel: 'Buy · +${item.grants}',
+      buttonLabel: buying ? 'Buying…' : 'Buy · +${item.grants}',
       onPressed: onBuy,
     );
   }

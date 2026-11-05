@@ -120,6 +120,15 @@ class FirestoreUsernameRepository implements UsernameRepository {
     if (newKey == oldKey) return;
     final oldRef = _usernames.doc(oldKey);
     final newRef = _usernames.doc(newKey);
+    // Checked up front as well as inside the transaction: an exception thrown
+    // from a transaction handler can come back wrapped, so Edit Profile never
+    // saw UsernameTakenException and showed "Unable to save changes" for a
+    // plainly taken name. The in-transaction check stays as the atomic guard
+    // against two people claiming it at once.
+    final existing = await newRef.get();
+    if (existing.exists && existing.data()?['uid'] != uid) {
+      throw UsernameTakenException(newUsername);
+    }
     await _firestore.runTransaction((transaction) async {
       // All reads before writes -- Firestore transaction rule.
       final newSnapshot = await transaction.get(newRef);

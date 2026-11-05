@@ -39,10 +39,9 @@ class NoriRoomStage extends StatelessWidget {
   /// accessory_art.dart's hand-drawn, flat-outlined illustrations, matching
   /// his own art style rather than a generic UI icon.
   ///
-  /// Only drawn on the baby form: accessory positions are calibrated against
-  /// the baby's frames, and the evolved form has no anchors yet (see
-  /// docs/KNOWN_ISSUES.md), so it's hidden there rather than floating in the
-  /// wrong place.
+  /// Both forms track their own per-frame head anchors. Items with no sensible
+  /// spot on the evolved form (the tail charm -- see [accessoryFitsEvolved])
+  /// are simply not drawn there.
   final AccessoryItem? equippedAccessory;
 
   bool get _isEvolved => stage != PetEvolutionStage.baby;
@@ -73,8 +72,17 @@ class NoriRoomStage extends StatelessWidget {
                   onTap: onTapNori,
                   child: _isEvolved
                       ? LayoutBuilder(
-                          builder: (context, box) =>
-                              NoriEvolvedSprite(width: box.maxWidth),
+                          builder: (context, box) => NoriEvolvedSprite(
+                            width: box.maxWidth,
+                            overlayBuilder: equippedAccessory == null
+                                ? null
+                                : (context, spriteWidth, anchors) =>
+                                      evolvedPositionedAccessoryArt(
+                                        item: equippedAccessory!,
+                                        spriteWidth: spriteWidth,
+                                        anchors: anchors,
+                                      ),
+                          ),
                         )
                       : NoriBreathingSprite(
                           overlayBuilder: equippedAccessory == null

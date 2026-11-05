@@ -397,6 +397,10 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
   late IconData _icon;
   late Color _color;
 
+  /// Shown under the title after Add/Save with it empty — the tap used to
+  /// do nothing at all.
+  String? _titleError;
+
   @override
   void initState() {
     super.initState();
@@ -424,7 +428,10 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
 
   void _save() {
     final title = _titleController.text.trim();
-    if (title.isEmpty) return;
+    if (title.isEmpty) {
+      setState(() => _titleError = 'Give your goal a title.');
+      return;
+    }
     final description = _descriptionController.text.trim();
     final existing = widget.existing;
     // Falls back to the item's own existing reward (not the new-item default)
@@ -483,9 +490,13 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
               controller: _titleController,
               autofocus: true,
               textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Title (e.g. Visit Japan)',
+                errorText: _titleError,
               ),
+              onChanged: (_) {
+                if (_titleError != null) setState(() => _titleError = null);
+              },
             ),
             const SizedBox(height: AppSpacing.stackSm),
             TextField(

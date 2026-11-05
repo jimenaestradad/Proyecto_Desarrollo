@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 
 /// Thin, shared "call a callable Cloud Function, catch, surface a plain
 /// error" helper -- see docs/BACKEND.md, "Online only -- no offline mode":
@@ -45,6 +46,10 @@ Future<Map<String, dynamic>> callCloudFunction(
     }
     return <String, dynamic>{};
   } on FirebaseFunctionsException catch (e) {
+    // Logged before it's flattened into one friendly sentence below: a
+    // blocked CORS preflight or a missing IAM binding otherwise shows up
+    // only as "Couldn't reach the server", with nothing in the console.
+    debugPrint('$name failed: ${e.code} ${e.message} ${e.details ?? ''}');
     // `e.message` is whatever the function passed to `HttpsError` for an
     // expected, user-facing rejection (e.g. "Not enough coins.",
     // "You already own this accessory.") -- surface that as-is. Anything
@@ -59,11 +64,12 @@ Future<Map<String, dynamic>> callCloudFunction(
       _ => serverUnreachableMessage,
     };
     throw CloudFunctionFailure(message);
-  } catch (_) {
+  } catch (e) {
     // Network failure, timeout, or anything else that isn't the
     // function's own expected rejection -- same generic message either
     // way (docs/BACKEND.md, "Online only -- no offline mode": "everything
     // fails the same way").
+    debugPrint('$name failed: $e');
     throw const CloudFunctionFailure(serverUnreachableMessage);
   }
 }

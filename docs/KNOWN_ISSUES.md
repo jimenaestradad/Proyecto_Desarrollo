@@ -36,14 +36,140 @@ re-running the audit.
 
 ## 🟠 Important
 
-### Vacation mode has never been exercised live (2026-10-05, replaces a 2026-09-23 entry)
+### Vacation mode: frozen days still unverified (2026-10-05; half closed 2026-11-03)
 
-The 2026-09-23 blocker is gone: `onUserCreate` now creates `/users/{uid}` with
-`vacationModeEnabled: false` and `vacationRanges: []`, `firestore.rules` lets the owner update both
-fields, and `AppData.vacationLog` is the real `FirestoreVacationLog`. But no account on `nori-pet`
-has ever saved a vacation range (checked 2026-10-05), so starting/ending a freeze, and the calendar
-and streak treating frozen days as safe, are untested end to end. One manual pass on
-`demo@test.com` closes this.
+Enable/Disable in Settings works end to end on `demo@test.com` (2026-11-03 QA pass): both taps
+saved without error and the badge flipped Inactive/Active. Still untested: how the calendar and
+streak treat a frozen *past or future* day, because a same-day freeze changes nothing visible.
+Two things seen on the way: ending a freeze the same day it started leaves a zero-length range
+(`start == end == today`) in `vacationRanges` (UNRESOLVED whether anything reads that as a frozen
+day), and nothing outside Settings shows that Vacation is on (no banner on Home/Habits, and the
+Calendar legend has no "frozen" entry).
+
+### QA pass 2026-11-03: bugs found (web debug build, 412×915, `demo@test.com`)
+
+Full click-through of every tab plus the evolution path, with the browser console and Cloud
+Functions logs read alongside. Static checks were clean (`flutter test` 73/73; `flutter analyze` one
+`unused_element_parameter` warning at `lib/widgets/accessory_art.dart:204`). Everything below is
+CONFIRMED unless marked otherwise.
+
+- **Buying a care item failed with "Couldn't reach the server" (2026-11-03 13:32Z) because
+  `purchaseCareItem` was not publicly invokable. Fixed live in the console by valevasqc at ~13:43;
+  the service is still flagged not-ready (below).** Cloud Run logged three `OPTIONS` preflights from
+  `localhost` answered `403` ("not authenticated … Empty Authorization header"). Browsers send no
+  Authorization header on a CORS preflight, so the browser blocked the real call (the "CORS" error
+  in the console) and the app showed its generic message. `claimHabit` and `purchaseAccessory` still
+  have the `allUsers` → `roles/run.invoker` binding; `purchaseCareItem` had lost it, and no
+  `SetIamPolicy` audit entry explains when (UNRESOLVED; the last deploy touching it was 2026-10-26
+  18:14, revision 00006). Callable functions must be public at the Cloud Run layer because the real
+  auth check is the Firebase ID token inside the function, and the same 403 would hit Android.
+  The console change set `invoker-iam-disabled=true` (not an IAM binding) and the preflight now
+  returns 204 for all three callables. The console save also left a failed revision (00007, image
+  not found); redeploying `purchaseCareItem` cleared it (**closed 2026-11-04**, see
+  `docs/RESOLVED_LOG.md`). The cause of the lost `allUsers` binding is still UNRESOLVED, so after any
+  deploy re-check that every callable answers a CORS preflight with 204.
+- **Minor (still open):** the first claim after idle takes 3s+ with no pending state (cold start;
+  later ones ~1.5s); the care sheet route has no semantics label (console warning on every open);
+  "See pet" from a notification lands on Home with the habit panel open, covering the pet; the evolved
+  sprite in the evolution overlay pops in late (blank circle for ~1.8s); Archived Habits "Restore"
+  label crowds its button edge.
+
+Not bugs, checked: undoing a claim keeps the XP/coins (pay-once rule, 2026-10-26; `BACKEND.md:427`
+still says "exact reversal"); the Edit Habit icon row has a sixth icon off-screen but scrolls.
+
+### QA pass 2 (2026-11-03, afternoon): second sweep, load times, more bugs
+
+Second pass over everything the first one skipped, same setup. All Cloud Run services were checked
+too: every function except the scheduled `petcarecheck` is public, all 9 callables answer a CORS
+preflight with 204, and there were **zero 4xx/5xx responses** from any function during the whole run
+(6 `purchaseCareItem`, 2 `purchaseAccessory`, 6 `claimHabit`, plus bucket-list and unclaim calls, all
+200). XP, coins and level reconcile exactly against the logs (total XP 2,458 = habit logs 1,658 +
+bucket goals 800; coins 505 = 1,215 earned − 710 spent). The older 401s on `deleteaccount`/
+`claimhabit` (2026-10-26 16:57Z) were the same missing-public-binding problem during that deploy and
+are gone now; INFERRED that a deploy can drop the public binding, so re-check with a preflight after
+every deploy (`curl -s -o /dev/null -w "%{http_code}" -X OPTIONS <fn url> -H "Origin: http://localhost" -H
+"Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: authorization,content-type"`
+should print 204).
+
+**Passed (no bug):** all 6 care items bought and used; both hats bought and equipped; all five habit
+types (Binary, Quantity, Duration, Multiple, Limit) logged, completed and undone; previous-day
+navigation and backfill; bucket list add/edit/undo/re-claim/delete; categories add/rename/delete;
+archive and restore; edit-habit save; Edit Profile save; Replay intro; Nori Plus (preview only);
+calendar month navigation; every Social screen opens (mock); Forgot Password dialog; wrong-password
+login message; evolution at level 7 (earlier pass).
+
+**New bugs**
+- **Deleting a category used by a habit is allowed with no warning.** "Study" was deleted while "Read
+  10 mins" used it; nothing broke (the edit form still shows the old label) but the habit now carries
+  a category that no longer exists. Category and bucket-list deletes have no confirmation.
+- **Nori Plus says Free is limited to 3 habits, but nothing enforces it** (the free demo account has
+  6). Fine for a labeled preview; worth knowing before presenting.
+
+**Load times (debug web build, Chrome headless, remote Firebase `nori-pet`; a release build will be
+faster for boot, but the Firestore/function waits below are network-bound and will not change)**
+
+| What | Time | Verdict |
+|---|---|---|
+| First login after starting the app | ~10–12s to a usable Home | **Too slow** |
+| Login (warm) | route 2.0s, Home usable 4.3s | slow-ish |
+| Cold reload with a saved session | Flutter up 3.5s, Home usable 7.6s | **Too slow**; ~4s is data loading after boot |
+| Tab switch (Home/Habits/Calendar/Social/Profile) | 0.1–0.2s | fine (cached) |
+| Previous day on Habits | 0.6s | fine |
+| Calendar previous/next month | 1.6–1.8s each | **slow, no skeleton** |
+| Open Settings / Shop / Achievements | 1.3s / 1.0s / 0.9s | borderline |
+| Bucket List, Notifications, Archived Habits | 0.1–0.5s | fine |
+| Quick-log (+250 ml etc.) | 1.0–1.8s | slow, no pending state |
+| Complete / checkbox claim (Cloud Function) | 1.5–2.7s, first after idle 3s+ | **slow, no pending state** |
+| Undo claim (Cloud Function) | 1.9–2.5s | slow |
+| Buy care item / accessory (Cloud Function) | 1.5–3.0s | slow, no pending state |
+| Add / edit bucket goal, archive, restore, rename | 0.6–0.8s | fine |
+| Log out | 0.6s | fine (but shows the error above) |
+
+**Still open, not solved.** On 2026-11-03 Home's `_loadData`, `getCurrentUser` (user doc + streak),
+the calendar's month load and the shop's two reads were changed to run their independent reads
+together (`Future.wait`; see RESOLVED_LOG.md). It did **not** measurably help: the Home data phase
+(Flutter up → Home usable) was ~4.1s before and 3.5–4.2s after (two samples, debug build), so the
+sequential awaits were not the main cost. UNRESOLVED where the ~4s goes. Next step is to time each
+read in `_loadData` separately (suspects: the streak walk behind `getCurrentUser`, which reads habit
+definitions, a 45-day log chunk and the vacation log in turn, and the definitions being fetched 3+
+times per load). The actions in the table all work; purchases now show "Buying…" and ignore a second
+tap, but claims and quick-logs still show nothing while the ~2s call runs.
+
+**Not tested in either pass:** Delete Account (destructive), Sign Up and Google sign-in (the real
+sign-up path needs a fresh email), changing the account email, avatar upload, long-press reorder of
+habits, text scaling at 1.3×, and a real phone/Android build (everything here ran in a browser).
+
+### QA pass 3 (2026-11-04): sign-up, delete account, profile, reorder
+
+Run against live `nori-pet` with a throwaway account (created, used and deleted twice; the demo
+account was only logged into). Backend verified with the Admin SDK, not just the UI. Cloud Run: zero
+4xx/5xx from any function during the pass; the only 4xx were the expected auth rejections from
+deliberate bad input.
+
+**Passed:** sign-up validation (empty fields, short/taken username with a live hint, mismatched or weak
+password, existing email, malformed email); full sign-up provisioning (Auth user, `/users` doc, baby
+pet at 100/100/100, inventory, username claim); naming the pet; intro cards; first habit completion
+(+20 XP, +10 coins, 1-day streak, sunglasses gift); creating a first category from Add Habit; the
+verification-email banner (Resend with a 30s cooldown, Dismiss); email change with a wrong and a right
+password; long-press drag reorder (persisted); **Delete Account** (wrong username and wrong password
+both refuse; a real delete removes the Auth user, `/users` doc, every subcollection and the username
+claim, in ~5s, and the old credentials no longer log in).
+
+**Open**
+- **Avatar image does not work (known, not built).** Nobody can set a profile picture: the camera
+  button on Edit Profile only shows a "Coming soon" snackbar, though it looks real, and
+  `user.avatarUrl` is never written, so every account shows the default avatar art. Only the display
+  side exists (`NoriAvatar` renders `avatarUrl`; Firestore rules already let the owner write that
+  field). Missing: an image picker (`image_picker`), somewhere to store the file (Firebase Storage is
+  not enabled on `nori-pet`; or a small resized data-URI in the user doc), the save code, a "remove
+  photo" action, and an Android check. Say so in the write-up, or hide the button before presenting.
+- **The first claim after a quiet spell took ~8s** (cold start of `claimHabit`; the first claim of a
+  new account). Later calls are 1.5-2.5s. Warm the app up before a demo, or set `minInstances: 1` on
+  `claimHabit`, `unclaimHabit` and the purchase functions for the demo window (small cost).
+- **Google sign-in was not tested** (needs a real Google popup; Android also needs the signing key's
+  SHA fingerprints registered in Firebase).
+- **Not tested:** text scaling at 1.3x, a real Android device, and the release APK (no Android SDK on
+  this Mac: `flutter doctor` reports it missing, so `flutter build apk` can't run here yet).
 
 ### No reward feedback on claim itself (2026-09-10 audit; level-up half fixed 2026-09-15)
 
@@ -146,15 +272,6 @@ easy wins are in RESOLVED_LOG.md). Labels: **CONFIRMED** = seen in the render or
   (see RESOLVED_LOG.md), but `onUserCreate` still seeds `habitCategories: []`. Seeding a few defaults
   (e.g. Health, Study, Finance, like the demo account) would mean a first habit needs no extra step;
   it's a Cloud Functions change plus a deploy, so left for you to decide.
-- **Four more dialogs dispose their text controllers too early (CONFIRMED, 🟡).** Set a Password
-  (`settings_screen.dart`), the change-email password prompt (`edit_profile_screen.dart`), and the
-  Google account-link and Forgot Password prompts (`login_screen.dart`) call `dispose()` on their
-  controllers right after `showDialog` returns, while the close animation is still drawing the
-  field. It's the pattern fixed in `showNoriTextPrompt` and, for Delete Account (2026-10-26), in
-  `DeleteAccountDialog`; it only asserts in debug builds. Fix by moving each dialog into a small
-  StatefulWidget that owns its controllers.
-
-**System status and feedback**
 - **Nori's sprite and the Home vital rings don't show distress (CONFIRMED, 🟡).** At 0% on all three
   vitals the pet looks exactly as content as at 100%, and the rings are unlabeled icon circles (the
   percentage only reaches screen readers). The pet should read as hungry/dirty/sad before you tap.
@@ -414,27 +531,21 @@ Nori's functions never call those packages directly, so this is hygiene, not urg
 means the major upgrades `firebase-admin@14` and `firebase-functions@7`; now that the functions
 have tests (`npm test`), that upgrade can be regression-checked instead of done blind.
 
-### Accessories don't show on the evolved Nori (2026-10-26, deliberately left uncalibrated)
+### Tail Charm Clasp doesn't show on the evolved Nori (2026-11-04, deliberate)
 
-The evolved (winged) form now has real art — `nori_evolved/`, `NoriEvolvedSprite`, used by both
-`EvolutionScreen` and `NoriRoomStage` (see docs/RESOLVED_LOG.md, 2026-10-26). Equipped accessories
-are **not drawn on it**: `NoriRoomStage` only passes the accessory overlay to the baby's
-`NoriBreathingSprite`, so once a pet evolves, an equipped hat or pair of glasses silently vanishes
-from the home screen (it stays equipped and reappears if the stage ever goes back to baby). Every
-accessory's position is calibrated per frame against the baby's eye-midpoint/head-top anchors
-(`kNoriFrameAnchors`), and the evolved form has none, so showing them with the baby's numbers would
-float them in the wrong place.
+Head accessories (crown, bow, sunglasses, goggles, chef hat) now track the evolved form (see
+docs/RESOLVED_LOG.md, 2026-11-04). The **Tail Charm Clasp** is the exception: the evolved tail is
+hidden behind the wings or legs for roughly three quarters of the loop, with only a small stub
+visible mid-hop, so a charm hung on it would float in mid-air. It stays equipped but is not drawn
+once the pet evolves (`accessoryFitsEvolved` in `accessory_art.dart`).
 
-Decided to leave it like this for now rather than calibrate. What fixing it would take, if it's
-picked up later:
-- Extract eye-midpoint and head-top anchors for the 64 evolved frames (same blob-detection approach
-  as the baby's, see `nori_frame_anchors.dart`) — the wings spread far past the body and the head
-  has leaf horns instead of the baby's horns, so the head-top detector needs adjusting.
-- Decide where hats sit relative to the leaf horns, and re-check every item's scale (the evolved
-  head is smaller on the canvas than the baby's).
-- Check what Customization's pet preview shows for an evolved pet — not looked at yet.
-- Players can still buy accessories they can't see on an evolved Nori; fine for now, but worth a
-  line in any "what's missing" write-up.
+**Intended resolution (valevasqc, 2026-11-04; not built):** in the real app the tail clasp would be
+replaced by a similar accessory that does fit the evolved form — e.g. swapping the old piece for a
+new one in the player's inventory when the pet evolves — rather than giving the clasp its own spot
+on the evolved art. Open details when this is picked up: what the replacement is, whether the swap
+is automatic or offered, and what happens to an already-equipped/owned clasp (refund, convert, keep
+for the baby form). Until then, players can still buy and equip it on an evolved pet, and nothing
+tells them it won't show. The Shop's per-item preview still uses the baby art regardless of stage.
 
 ### Neck/hand accessory anchors not implemented (necktie, bow, hand-held items)
 

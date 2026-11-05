@@ -63,14 +63,20 @@ class AppData {
   );
   static PetRepository pet = MockPetRepository(inventory);
   static InventoryRepository inventory = MockInventoryRepository();
-  static AchievementRepository achievements = MockAchievementRepository(
-    habits,
-    calendar,
-    bucketList,
-    pet,
-    inventory,
-    social,
-  );
+  static AchievementRepository achievements = _buildAchievements();
+
+  /// [MockAchievementRepository] captures [bucketList]/[pet]/[inventory] at
+  /// construction, so [bindToUser]/[unbindUser] must call this again after
+  /// swapping any of them.
+  static AchievementRepository _buildAchievements() =>
+      MockAchievementRepository(
+        habits,
+        calendar,
+        bucketList,
+        pet,
+        inventory,
+        social,
+      );
 
   /// Points the per-account repositories at [uid]'s real Firestore data.
   /// Called right after a sign-up/login/auto-login succeeds (main.dart,
@@ -108,14 +114,7 @@ class AppData {
     pet = FirestorePetRepository(uid: uid);
     inventory = FirestoreInventoryRepository(uid: uid);
     bucketList = FirestoreBucketListRepository(uid: uid);
-    achievements = MockAchievementRepository(
-      habits,
-      calendar,
-      bucketList,
-      pet,
-      inventory,
-      social,
-    );
+    achievements = _buildAchievements();
     notifications = FirestoreNotificationRepository(
       uid: uid,
       user: user,
@@ -133,14 +132,7 @@ class AppData {
     inventory = MockInventoryRepository();
     pet = MockPetRepository(inventory);
     bucketList = MockBucketListRepository();
-    achievements = MockAchievementRepository(
-      habits,
-      calendar,
-      bucketList,
-      pet,
-      inventory,
-      social,
-    );
+    achievements = _buildAchievements();
     notifications = MockNotificationRepository();
     social.accountChanged();
   }

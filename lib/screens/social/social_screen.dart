@@ -46,7 +46,11 @@ import 'package:nori/widgets/tactile_button.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
 class SocialScreen extends StatefulWidget {
-  const SocialScreen({super.key});
+  const SocialScreen({super.key, required this.active});
+
+  /// See [HomeScreen.active] — same [IndexedStack] staleness fix. Without it
+  /// the header kept the XP from the first visit after claims on other tabs.
+  final bool active;
 
   @override
   State<SocialScreen> createState() => _SocialScreenState();
@@ -67,6 +71,12 @@ class _SocialScreenState extends State<SocialScreen>
   final Set<String> _nudged = {};
   final Set<String> _nudging = {};
   bool _resetting = false;
+
+  @override
+  void didUpdateWidget(covariant SocialScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.active && widget.active) reload();
+  }
 
   @override
   Future<void> loadSocial() async {

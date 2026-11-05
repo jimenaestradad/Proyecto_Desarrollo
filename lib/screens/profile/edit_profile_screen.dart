@@ -3,6 +3,7 @@ import 'package:nori/data/app_data.dart';
 import 'package:nori/data/auth_repository.dart';
 import 'package:nori/data/username_repository.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/screens/onboarding/username_availability.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/nori_avatar.dart';
@@ -28,11 +29,29 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen>
-    with RemoteLoadState<EditProfileScreen> {
+    with
+        RemoteLoadState<EditProfileScreen>,
+        UsernameAvailability<EditProfileScreen> {
   late final _nameController = TextEditingController(text: widget.user.name);
   late final _usernameController = TextEditingController(
     text: widget.user.username,
   );
+
+  @override
+  TextEditingController get usernameController => _usernameController;
+
+  /// Live availability check, skipped while the field still holds the
+  /// person's own current username (that one is always "taken" by them).
+  void _onUsernameEdited(String value) {
+    final unchanged =
+        value.trim().toLowerCase() == widget.user.username.trim().toLowerCase();
+    if (unchanged) {
+      setState(() => usernameStatus = UsernameStatus.idle);
+      return;
+    }
+    onUsernameChanged(value);
+  }
+
   // The login email, not the profile doc's copy -- they differ once a
   // requested email change has been confirmed from the inbox.
   late final String _loginEmail =
@@ -90,6 +109,11 @@ class _EditProfileScreenState extends State<EditProfileScreen>
 
     if (username.length < 3) {
       _showMessage('Username must be at least 3 characters.');
+      return;
+    }
+
+    if (usernameStatus == UsernameStatus.taken) {
+      _showMessage('That username is already taken — please choose another.');
       return;
     }
 
@@ -168,47 +192,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     Navigator.pop(context, true);
   }
 
-  Future<String?> _promptForPassword() async {
-    final controller = TextEditingController();
-    final password = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-          side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
-        ),
-        title: const Text('Confirm Your Password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Enter your current password to change your email.'),
-            const SizedBox(height: AppSpacing.gutter),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              obscureText: true,
-              decoration: const InputDecoration(hintText: 'Current password'),
-              onSubmitted: (value) => Navigator.pop(dialogContext, value),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    return password;
-  }
+  Future<String?> _promptForPassword() => showDialog<String>(
+    context: context,
+    builder: (_) => const _ConfirmPasswordDialog(),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -274,6 +261,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                     icon: Icons.alternate_email,
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.username],
+                    onChanged: _onUsernameEdited,
+                    suffixIcon: usernameSuffixIcon,
+                    helperText: usernameHelperText,
+                    helperColor: usernameHelperColor,
                   ),
                   NoriTextField(
                     controller: _emailController,
@@ -301,6 +292,64 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Asks for the current password before an email change. Owns its
+/// controller so it's disposed with the dialog, after the close animation —
+/// disposing right after `showDialog` returns left the still-animating field
+/// on a dead controller.
+class _ConfirmPasswordDialog extends StatefulWidget {
+  const _ConfirmPasswordDialog();
+
+  @override
+  State<_ConfirmPasswordDialog> createState() => _ConfirmPasswordDialogState();
+}
+
+class _ConfirmPasswordDialogState extends State<_ConfirmPasswordDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+      ),
+      title: const Text('Confirm Your Password'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Enter your current password to change your email.'),
+          const SizedBox(height: AppSpacing.gutter),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            obscureText: true,
+            decoration: const InputDecoration(hintText: 'Current password'),
+            onSubmitted: (value) => Navigator.pop(context, value),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: const Text('Continue'),
+        ),
+      ],
     );
   }
 }

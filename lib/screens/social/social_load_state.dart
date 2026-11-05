@@ -55,7 +55,10 @@ mixin SocialLoadState<T extends StatefulWidget>
   }
 
   void _onSocialChanged() {
-    if (mounted) reload();
+    // Signing out fires this too (AppData.unbindUser) while the tab is still
+    // mounted; with nobody signed in the reload would hit Firestore and
+    // surface "Couldn't reach the server" on the welcome screen.
+    if (mounted && AppData.auth.currentUserId != null) reload();
   }
 
   Future<void> reload() => guardedLoad(hasData: _hasLoaded, () async {

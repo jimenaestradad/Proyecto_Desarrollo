@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/accessory_catalog.dart';
+import 'nori_evolved_frame_anchors.dart';
 import 'nori_frame_anchors.dart';
 
 /// Draws one equipped accessory as a hand-drawn cutout PNG (see
@@ -12,24 +13,10 @@ import 'nori_frame_anchors.dart';
 /// [_kImageAspectRatios] so the box is sized correctly before the image
 /// itself has loaded.
 class AccessoryArt extends StatelessWidget {
-  const AccessoryArt({
-    super.key,
-    required this.item,
-    required this.headWidth,
-    this.renderWidth,
-  });
+  const AccessoryArt({super.key, required this.item, required this.headWidth});
 
   final AccessoryItem item;
   final double headWidth;
-
-  /// Overrides the box's actual on-screen width while [headWidth] still
-  /// determines its height (via [_kImageAspectRatios]) -- lets an item
-  /// stretch wider (or narrower) without its own art growing/shrinking
-  /// taller too. Used by steampunk-goggles, whose lenses needed to spread
-  /// out to actually line up with Nori's (wider-set) eyes -- see
-  /// [_AccessoryPlacement.widthStretch]. Defaults to [headWidth] (no
-  /// stretch, the original behavior).
-  final double? renderWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -37,11 +24,8 @@ class AccessoryArt extends StatelessWidget {
     final aspect = _kImageAspectRatios[item.id];
     if (image == null || aspect == null) return const SizedBox.shrink();
     return SizedBox(
-      width: renderWidth ?? headWidth,
+      width: headWidth,
       height: headWidth * aspect,
-      // fill (not contain) so a non-1.0 renderWidth actually stretches the
-      // art instead of letterboxing it -- a no-op when renderWidth is
-      // unset, since the box already matches the image's own aspect then.
       child: Image.asset(image, fit: BoxFit.fill),
     );
   }
@@ -79,7 +63,6 @@ class _AccessoryPlacement {
     required this.scale,
     required this.topFraction,
     this.dxFraction = 0,
-    this.widthStretch = 1,
   });
 
   final double scale;
@@ -91,18 +74,13 @@ class _AccessoryPlacement {
   /// exception, since the tail it hangs from sticks out to his side rather
   /// than sitting on the centerline.
   final double dxFraction;
-
-  /// Stretches the art horizontally only (see [AccessoryArt.renderWidth]) --
-  /// 1 (the default) draws it at its own natural aspect ratio.
-  final double widthStretch;
 }
 
 const Map<String, _AccessoryPlacement> _kPlacements = {
-  // Sits right at the top of the round head (measured against
-  // nori_front.png's own alpha silhouette: the ears/head roundness starts
-  // at ~13.5% of the image height, well below the horn tips), dipping
-  // slightly into the horn valley the way a headband actually would.
-  'flower-crown': _AccessoryPlacement(scale: 0.32, topFraction: 0.08),
+  // A full wreath across the top of the head with the horns rising behind it,
+  // as in the reference sheet: ~2.5 eye gaps wide (gap is 210px of
+  // nori_front.png's 800), centred ~0.7 gaps above the eye line.
+  'flower-crown': _AccessoryPlacement(scale: 0.667, topFraction: 0.059),
   // Perched up between the horns rather than resting low on the forehead
   // -- nori_front.png's horn valley sits around 9-10% down, so the bow's
   // box needs to start well above that (negative topFraction) to read as
@@ -118,18 +96,12 @@ const Map<String, _AccessoryPlacement> _kPlacements = {
   // so the box centers there.
   'horn-bow': _AccessoryPlacement(scale: 0.22, topFraction: -0.03),
   'sunglasses': _AccessoryPlacement(scale: 0.52, topFraction: 0.25),
-  // These are real glasses, not pushed-up-on-the-forehead ones --
-  // Jimena wants them actually covering his eyes. Same eye-line depth
-  // as sunglasses below (topFraction centers the box on eyeMidFrac,
-  // ~0.363), with a bigger scale than the old forehead version so the
-  // lenses are big enough to fully cover the eyes.
-  'steampunk-goggles': _AccessoryPlacement(
-    scale: 0.46,
-    topFraction: 0.275,
-    // Stretched wider so the lenses line up with Nori's actual (wider-
-    // set) eyes instead of sitting bunched together in the middle.
-    widthStretch: 1.3,
-  ),
+  // Worn pulled up like a headband, as in the reference sheet: lenses sit on
+  // top of the head flanking the horn bases, strap wrapping the head. Sized
+  // off nori_front.png's eye gap (210px of 800): art ~2.3 gaps wide so the
+  // lenses (35.5% of its width apart) land ~one gap apart, centred ~0.66 gaps
+  // above the eye line.
+  'steampunk-goggles': _AccessoryPlacement(scale: 0.60, topFraction: 0.06),
   'chef-hat': _AccessoryPlacement(scale: 0.28, topFraction: -0.12),
   // The clasp hooks onto the tail's leafy tip -- measured directly off
   // nori_front.png (green tail-leaf pixels average at ~77% of the image's
@@ -174,11 +146,7 @@ Widget positionedAccessoryArt({
   final placement = _kPlacements[item.id];
   if (placement == null) return const SizedBox.shrink();
   final headWidth = referenceSize * placement.scale;
-  final art = AccessoryArt(
-    item: item,
-    headWidth: headWidth,
-    renderWidth: headWidth * placement.widthStretch,
-  );
+  final art = AccessoryArt(item: item, headWidth: headWidth);
   final dx =
       referenceSize * (_kFaceCenterOffsetFraction + placement.dxFraction);
   return Positioned(
@@ -201,7 +169,6 @@ class _AnimatedAccessoryPlacement {
     required this.anchor,
     required this.dyFrac,
     this.dxFrac = 0,
-    this.widthStretch = 1,
   });
 
   final double scale;
@@ -221,10 +188,6 @@ class _AnimatedAccessoryPlacement {
   /// `horn-bow`, which sits off-center near the left horn rather than
   /// centered like a hat.
   final double dxFrac;
-
-  /// Stretches the art horizontally only (see [AccessoryArt.renderWidth]) --
-  /// 1 (the default) draws it at its own natural aspect ratio.
-  final double widthStretch;
 }
 
 /// Anchor-based placements for [NoriRoomStage]'s animated breathing sprite.
@@ -248,16 +211,16 @@ class _AnimatedAccessoryPlacement {
 /// README entry for which sheet/item). `tail` *is* anchored, first used by
 /// `tail-charm-clasp` below.
 const Map<String, _AnimatedAccessoryPlacement> _kAnimatedPlacements = {
-  // headTopY tracks the very tip of the horns, not the head surface below
-  // them (confirmed from Jimena's Home screenshot: at 0.08 the crown was
-  // floating in a visible gap above the horns instead of resting on the
-  // head) -- pushed down further so it sits right at the horn/head line.
+  // Full wreath like the reference sheet (see the static placement): ~2.5 eye
+  // gaps wide, centred ~0.7 gaps above the eye line (gap = 59.7px of the
+  // 223px canvas), so anchored off eyeMid like the goggles.
   'flower-crown': _AnimatedAccessoryPlacement(
-    scale: 0.32,
-    anchor: AccessoryAnchor.headTop,
-    dyFrac: 0.18,
+    scale: 0.68,
+    anchor: AccessoryAnchor.eyeMid,
+    dyFrac: -0.316,
   ),
-  // Same headTopY-is-the-horn-tips correction as the flower crown above,
+  // headTopY tracks the very tip of the horns, not the head surface below
+  // them, so this is pushed down to rest in the valley between them --
   // scaled down since the bow nestles *between* the horns (in the valley)
   // rather than resting on the wider head surface below them. Centered
   // (dxFrac: 0) instead of shifted toward one horn -- same fix as the
@@ -275,20 +238,14 @@ const Map<String, _AnimatedAccessoryPlacement> _kAnimatedPlacements = {
     anchor: AccessoryAnchor.headTop,
     dyFrac: 0.04,
   ),
-  // Pushed-up-on-the-forehead goggles — anchored off eyeMid like sunglasses
-  // (same "near the eyes" family) but with a bigger upward nudge, so they
-  // sit above the eyes instead of on them. Was riding up on/above the
-  // horns at -0.17 -- pulled back down toward the forehead.
-  // Real glasses that should cover his eyes, not sit pushed up on the
-  // forehead -- same "center the box on eyeMidY" formula as sunglasses
-  // below, scaled up so the lenses are actually big enough to cover them.
-  // No widthStretch here (unlike the static placement) -- this one was
-  // already correctly sized/positioned on the Home screen before the
-  // stretch was added; only Style Pet/the Shop needed it.
+  // Pulled-up goggles (headband style, per the reference sheet), anchored
+  // off eyeMid like the glasses but sitting on top of the head: ~2.3 eye gaps
+  // wide, lens centres ~0.66 gaps above the eye line (eye gap is 59.7px of
+  // the 223px canvas).
   'steampunk-goggles': _AnimatedAccessoryPlacement(
-    scale: 0.46,
+    scale: 0.615,
     anchor: AccessoryAnchor.eyeMid,
-    dyFrac: -0.06,
+    dyFrac: -0.284,
   ),
   // dyFrac centers the lens box on the eye line: -scale * (own aspect
   // ratio, 58/130) / 2.
@@ -365,7 +322,6 @@ Widget? animatedPositionedAccessoryArt({
 
   final scale = spriteWidth / kNoriFrameCanvasSize.width;
   final accWidth = spriteWidth * placement.scale;
-  final renderWidth = accWidth * placement.widthStretch;
   final double top;
   double anchorX;
   switch (placement.anchor) {
@@ -389,17 +345,74 @@ Widget? animatedPositionedAccessoryArt({
       top = tailY * scale + placement.dyFrac * spriteWidth;
       anchorX = _kTailXMean;
   }
-  final left =
-      anchorX * scale - renderWidth / 2 + placement.dxFrac * spriteWidth;
+  final left = anchorX * scale - accWidth / 2 + placement.dxFrac * spriteWidth;
 
   return Positioned(
     top: top,
     left: left,
-    child: AccessoryArt(
-      item: item,
-      headWidth: accWidth,
-      renderWidth: renderWidth,
-    ),
+    child: AccessoryArt(item: item, headWidth: accWidth),
+  );
+}
+
+/// Placement for the evolved (winged) form. Everything is measured off the
+/// per-frame eye midpoint ([NoriEvolvedFrameAnchors]) because the evolved head
+/// is rigid -- it only translates as he hops -- so a single anchor tracks every
+/// head item. [scale] is the art's width as a fraction of the sprite's width;
+/// [dyFrac] is the vertical offset from the eye midpoint to the art's top
+/// edge, same units. Both were derived from the baby's calibrated values
+/// (eye gap is 40/480 of the evolved canvas vs 59.7/223 on the baby, so a
+/// baby scale converts by x0.311) and then re-tuned by compositing onto frames
+/// from across the loop, since the evolved head is taller relative to its eyes
+/// and its leaf horns are far longer and sit at the head's centre.
+///
+/// Deliberately absent: `tail-charm-clasp`. The evolved tail is hidden behind
+/// the wings or legs for ~3/4 of the loop (only a small stub shows mid-hop),
+/// so a charm hung on it would float in mid-air -- see
+/// [accessoryFitsEvolved].
+class _EvolvedPlacement {
+  const _EvolvedPlacement({required this.scale, required this.dyFrac});
+
+  final double scale;
+  final double dyFrac;
+}
+
+const Map<String, _EvolvedPlacement> _kEvolvedPlacements = {
+  // Full wreath across the head, horns rising behind it (matches the baby's):
+  // ~2.5 eye gaps wide, centred ~0.7 gaps above the eye line.
+  'flower-crown': _EvolvedPlacement(scale: 0.212, dyFrac: -0.098),
+  // Centred between the horn bases, just above the forehead marks.
+  'horn-bow': _EvolvedPlacement(scale: 0.075, dyFrac: -0.085),
+  // Lens centres land on the pupils (box centred on the eye line).
+  'sunglasses': _EvolvedPlacement(scale: 0.162, dyFrac: -0.036),
+  // Pulled up like a headband (matches the baby's): lenses flank the horn
+  // bases, ~0.66 eye gaps above the eye line.
+  'steampunk-goggles': _EvolvedPlacement(scale: 0.20, dyFrac: -0.091),
+  // Perched on the dome with the horns rising past its sides.
+  'chef-hat': _EvolvedPlacement(scale: 0.10, dyFrac: -0.136),
+};
+
+/// Whether [item] has a sensible spot on the evolved form. False means it is
+/// still equipped but not drawn there (currently just `tail-charm-clasp`;
+/// the plan is to replace it with a similar evolved-friendly accessory rather
+/// than place it -- see docs/KNOWN_ISSUES.md).
+bool accessoryFitsEvolved(AccessoryItem item) =>
+    _kEvolvedPlacements.containsKey(item.id);
+
+/// Evolved-form counterpart to [animatedPositionedAccessoryArt]. Returns null
+/// when [item] doesn't fit the evolved form (see [accessoryFitsEvolved]).
+Widget? evolvedPositionedAccessoryArt({
+  required AccessoryItem item,
+  required double spriteWidth,
+  required NoriEvolvedFrameAnchors anchors,
+}) {
+  final placement = _kEvolvedPlacements[item.id];
+  if (placement == null) return null;
+  final scale = spriteWidth / kNoriEvolvedCanvasWidth;
+  final accWidth = spriteWidth * placement.scale;
+  return Positioned(
+    top: anchors.eyeMidY * scale + placement.dyFrac * spriteWidth,
+    left: anchors.eyeMidX * scale - accWidth / 2,
+    child: AccessoryArt(item: item, headWidth: accWidth),
   );
 }
 

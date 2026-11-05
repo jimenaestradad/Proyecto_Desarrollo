@@ -81,11 +81,20 @@ class _HomeScreenState extends State<HomeScreen>
     final previousStage = _pet?.stage;
     final previousLevel = _user?.level;
     await guardedLoad(hasData: _user != null, () async {
-      final user = await AppData.user.getCurrentUser();
-      final habits = await AppData.habits.getTodayHabits();
-      await AppData.pet.syncEvolution(user.level);
-      final pet = await AppData.pet.getPet();
-      final inventory = await AppData.inventory.getInventory();
+      // Started together, not one after another: each is its own Firestore
+      // round trip, and awaiting them in turn made Home take ~4s to appear.
+      // The pet still waits for the user, since syncEvolution needs the level.
+      final userFuture = AppData.user.getCurrentUser();
+      final petFuture = userFuture.then((user) async {
+        await AppData.pet.syncEvolution(user.level);
+        return AppData.pet.getPet();
+      });
+      final (user, habits, pet, inventory) = await (
+        userFuture,
+        AppData.habits.getHabitsForDate(DateTime.now()),
+        petFuture,
+        AppData.inventory.getInventory(),
+      ).wait;
       if (!mounted) return;
       setState(() {
         _user = user;
@@ -98,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _reloadHabits() async {
-    final habits = await AppData.habits.getTodayHabits();
+    final habits = await AppData.habits.getHabitsForDate(DateTime.now());
     if (!mounted) return;
     setState(() => _habits = habits);
   }
@@ -429,7 +438,9 @@ class _RoomHudState extends State<_RoomHud> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Nori',
+                      pet.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.headlineMd.copyWith(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -1010,7 +1021,8 @@ class _HabitPanelState extends State<_HabitPanel> {
                 alignment: Alignment.topCenter,
                 child: habits.isEmpty
                     ? Text(
-                        'No habits scheduled for today.',
+                        'No habits scheduled for today. Add or review your '
+                        'habits in the Habits tab.',
                         textAlign: TextAlign.center,
                         style: AppTextStyles.bodyMd.copyWith(
                           color: AppColors.inkFaint,

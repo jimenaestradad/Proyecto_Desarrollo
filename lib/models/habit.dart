@@ -270,6 +270,24 @@ class Habit {
     };
   }
 
+  /// Short human description of [repeat] for lists: "Every day", "Weekdays",
+  /// "Weekends" or the chosen days ("Mon · Wed · Fri").
+  String get scheduleLabel {
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return switch (repeat) {
+      HabitRepeat.daily => 'Every day',
+      HabitRepeat.weekdays => 'Weekdays',
+      HabitRepeat.weekends => 'Weekends',
+      HabitRepeat.custom =>
+        customDays == null || customDays!.isEmpty
+            ? 'Every day'
+            : (customDays!.toList()..sort())
+                  .where((day) => day >= 1 && day <= 7)
+                  .map((day) => names[day - 1])
+                  .join(' · '),
+    };
+  }
+
   /// Whether [date] falls inside the optional [startDate]/[endDate] window
   /// and outside every [archivedRanges] stretch. Unlike [isScheduledOn] this
   /// ignores the repeat schedule, so today's list can hide an ended or

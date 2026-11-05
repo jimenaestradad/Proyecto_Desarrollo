@@ -103,5 +103,5 @@ Widget _screenFor(String? name) => switch (name) {
       child: SocialIntroView(onFindFriends: () {}, onInvite: () {}),
     ),
   ),
-  _ => const SocialScreen(),
+  _ => const SocialScreen(active: true),
 };

@@ -260,7 +260,8 @@ class _AchievementCard extends StatelessWidget {
                 ),
                 if (achievement.progressTarget > 0)
                   Text(
-                    '${achievement.progressCurrent}/${achievement.progressTarget}',
+                    // Capped so a done "add 1 friend" reads 1/1, not 6/1.
+                    '${achievement.progressCurrent.clamp(0, achievement.progressTarget)}/${achievement.progressTarget}',
                     style: AppTextStyles.labelSm.copyWith(color: accentColor),
                   ),
               ],

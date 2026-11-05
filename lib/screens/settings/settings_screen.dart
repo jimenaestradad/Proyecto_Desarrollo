@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/auth_repository.dart';
+import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/data/tips_store.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/onboarding/intro_screen.dart';
@@ -14,6 +15,10 @@ import 'package:nori/widgets/nori_list_row.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/nori_text_prompt.dart';
+
+/// The one account that gets the dev-only reset row below; the
+/// `resetDemoAccount` Cloud Function enforces the same email server-side.
+const kDemoAccountEmail = 'demo@test.com';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -65,62 +70,12 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _addPassword() async {
-    final passwordController = TextEditingController();
-    final confirmController = TextEditingController();
-    void submit(BuildContext dialogContext) {
-      if (passwordController.text != confirmController.text) {
-        _showMessage('Passwords do not match.');
-        return;
-      }
-      Navigator.pop(dialogContext, passwordController.text);
-    }
-
     final password = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-          side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
-        ),
-        title: const Text('Set a Password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Add a password so you can also log in without Google.'),
-            const SizedBox(height: AppSpacing.gutter),
-            TextField(
-              controller: passwordController,
-              autofocus: true,
-              obscureText: true,
-              decoration: const InputDecoration(hintText: 'New password'),
-            ),
-            const SizedBox(height: AppSpacing.unit),
-            TextField(
-              controller: confirmController,
-              obscureText: true,
-              decoration: const InputDecoration(hintText: 'Confirm password'),
-              // Same check as Save — submitting from the keyboard used to
-              // skip the match check entirely.
-              onSubmitted: (_) => submit(dialogContext),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => submit(dialogContext),
-            child: const Text('Save'),
-          ),
-        ],
+      builder: (_) => _SetPasswordDialog(
+        onMismatch: () => _showMessage('Passwords do not match.'),
       ),
     );
-    passwordController.dispose();
-    confirmController.dispose();
     if (password == null || password.isEmpty || !mounted) return;
 
     try {
@@ -181,7 +136,25 @@ class _SettingsScreenState extends State<SettingsScreen>
     // Same teardown as ProfileScreen._logOut.
     AppData.unbindUser();
     if (!mounted) return;
+    // Shown before leaving: the messenger lives above the navigator, so the
+    // message is still on screen once Welcome is up.
+    _showMessage('Your account has been deleted.');
     Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false);
+  }
+
+  /// Dev-only: the `resetDemoAccount` function takes back every bucket-list
+  /// payout (de-evolving Nori) so that flow can be tested again. The server
+  /// refuses anyone but [kDemoAccountEmail]; this row just hides itself.
+  Future<void> _resetDemoAccount() async {
+    await guardedAction(() async {
+      try {
+        await callCloudFunction('resetDemoAccount', {});
+      } on CloudFunctionFailure catch (e) {
+        _showMessage(e.message);
+        return;
+      }
+      _showMessage('Demo account reset — bucket list items pay out again.');
+    });
   }
 
   Future<void> _loadCategories() async {
@@ -321,6 +294,21 @@ class _SettingsScreenState extends State<SettingsScreen>
                     onTap: _replayIntro,
                   ),
                   const SizedBox(height: AppSpacing.stackMd),
+                  if (user.email.toLowerCase() == kDemoAccountEmail) ...[
+                    Text(
+                      'Developer',
+                      style: AppTextStyles.labelLg.copyWith(
+                        color: AppColors.inkMuted,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.unit),
+                    NoriListRow(
+                      icon: Icons.restart_alt,
+                      label: 'Reset demo account',
+                      onTap: _resetDemoAccount,
+                    ),
+                    const SizedBox(height: AppSpacing.stackMd),
+                  ],
                   Text(
                     'Account',
                     style: AppTextStyles.labelLg.copyWith(
@@ -574,6 +562,79 @@ class DeleteAccountRequest {
 
   final bool usernameMatches;
   final String password;
+}
+
+/// "Set a Password" for a Google-only account. Its own widget so it owns
+/// its text controllers, for the same reason as [DeleteAccountDialog].
+class _SetPasswordDialog extends StatefulWidget {
+  const _SetPasswordDialog({required this.onMismatch});
+
+  final VoidCallback onMismatch;
+
+  @override
+  State<_SetPasswordDialog> createState() => _SetPasswordDialogState();
+}
+
+class _SetPasswordDialogState extends State<_SetPasswordDialog> {
+  final _passwordController = TextEditingController();
+  final _confirmController = TextEditingController();
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_passwordController.text != _confirmController.text) {
+      widget.onMismatch();
+      return;
+    }
+    Navigator.pop(context, _passwordController.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+      ),
+      title: const Text('Set a Password'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Add a password so you can also log in without Google.'),
+          const SizedBox(height: AppSpacing.gutter),
+          TextField(
+            controller: _passwordController,
+            autofocus: true,
+            obscureText: true,
+            decoration: const InputDecoration(hintText: 'New password'),
+          ),
+          const SizedBox(height: AppSpacing.unit),
+          TextField(
+            controller: _confirmController,
+            obscureText: true,
+            decoration: const InputDecoration(hintText: 'Confirm password'),
+            // Same check as Save — submitting from the keyboard used to
+            // skip the match check entirely.
+            onSubmitted: (_) => _submit(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Save')),
+      ],
+    );
+  }
 }
 
 /// The confirm-by-typing dialog for deleting the account. Its own widget so

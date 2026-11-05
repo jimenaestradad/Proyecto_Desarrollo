@@ -70,10 +70,10 @@ abstract class HabitRepository {
   Future<void> reorderHabits(List<String> orderedIds);
 
   /// Habits scheduled on [date] (per [Habit.isScheduledOn]), hydrated with
-  /// that date's logged progress/claim state. For today this is exactly
-  /// [getTodayHabits] (which — unlike this method — does not filter by
-  /// schedule, so the two can differ in which habits appear even though
-  /// they agree on today's own state).
+  /// that date's logged progress/claim state. What Home and Habits list for
+  /// today. [getTodayHabits] is the wider set — every habit that is active
+  /// today, due or not — so it's for counting habits (achievements), not for
+  /// showing what to do today; the two agree on a habit's own state.
   ///
   /// Dates older than the tracked history window come back with zero
   /// state; there is no "we don't know" distinct from "nothing was logged".
@@ -381,8 +381,14 @@ class MockHabitRepository implements HabitRepository {
 
   @override
   Future<List<Habit>> getHabitsForDate(DateTime date) async {
-    if (_isToday(date)) return getTodayHabits();
     final day = dateOnly(date);
+    if (_isToday(date)) {
+      final today = await getTodayHabits();
+      return [
+        for (final habit in today)
+          if (habit.isScheduledOn(day)) habit,
+      ];
+    }
     return [
       for (final definition in _habits)
         if (definition.isScheduledOn(day))

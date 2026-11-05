@@ -37,4 +37,5 @@ export { claimHabit } from "./claimHabit";
 export { unclaimHabit } from "./unclaimHabit";
 export { deleteHabit } from "./deleteHabit";
 export { deleteAccount } from "./deleteAccount";
+export { resetDemoAccount } from "./resetDemoAccount";
 export { petCareCheck } from "./petCareCheck";

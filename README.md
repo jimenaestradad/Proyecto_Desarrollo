@@ -9,6 +9,7 @@ project for UFM's Desarrollo de Productos de Software course.
 - [Features](docs/FEATURES.md) — feature spec (habits, XP, streaks, pets, economy, social) and MVP boundary
 - [Roadmap](docs/ROADMAP.md) — sprint structure and current phase
 - [Backend](docs/BACKEND.md) — Firebase/Firestore/Cloud Functions plan
+- [Database Diagram](docs/DB_DIAGRAM.md) — entity-relationship view of the Firestore collections
 - [Open Decisions](docs/OPEN_DECISIONS.md) — unresolved product decisions
 - [Known Issues](docs/KNOWN_ISSUES.md) — open bugs and gaps
 

@@ -165,44 +165,10 @@ class _LoginScreenState extends State<LoginScreen> {
   /// links the two via [AuthRepository.linkGoogleAccount] rather than
   /// just showing the raw Firebase error.
   Future<void> _resolveAccountLinking(GoogleAccountLinkingRequired e) async {
-    final passwordController = TextEditingController();
     final password = await showDialog<String>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Account already exists'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${e.email} already has a Nori account with a password. '
-                'Enter that password to connect it to Google Sign-In.',
-              ),
-              const SizedBox(height: AppSpacing.gutter),
-              TextField(
-                controller: passwordController,
-                autofocus: true,
-                obscureText: true,
-                decoration: const InputDecoration(hintText: 'Password'),
-                onSubmitted: (value) => Navigator.pop(context, value),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, passwordController.text),
-              child: const Text('Connect'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => _LinkPasswordDialog(email: e.email),
     );
-    passwordController.dispose();
     if (password == null || password.isEmpty || !mounted) return;
 
     setState(() => _loading = true);
@@ -228,35 +194,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _forgotPassword() async {
     if (_loading) return;
-    final emailController = TextEditingController(
-      text: _emailController.text.trim(),
-    );
     final email = await showDialog<String>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Reset your password'),
-          content: TextField(
-            controller: emailController,
-            autofocus: true,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(hintText: 'Email address'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () =>
-                  Navigator.pop(context, emailController.text.trim()),
-              child: const Text('Send link'),
-            ),
-          ],
-        );
-      },
+      builder: (_) =>
+          _ResetPasswordDialog(initialEmail: _emailController.text.trim()),
     );
-    emailController.dispose();
     if (email == null || email.isEmpty || !mounted) return;
 
     try {
@@ -470,6 +412,109 @@ class _LoginScreenState extends State<LoginScreen> {
           width: AppBorder.thick,
         ),
       ),
+    );
+  }
+}
+
+/// Asks for the existing account's password when Google sign-in hits an
+/// email that already has one. Owns its controller so it's disposed with
+/// the dialog, after the close animation — disposing right after
+/// `showDialog` returns left the still-animating field on a dead controller.
+class _LinkPasswordDialog extends StatefulWidget {
+  const _LinkPasswordDialog({required this.email});
+
+  final String email;
+
+  @override
+  State<_LinkPasswordDialog> createState() => _LinkPasswordDialogState();
+}
+
+class _LinkPasswordDialogState extends State<_LinkPasswordDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Account already exists'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${widget.email} already has a Nori account with a password. '
+            'Enter that password to connect it to Google Sign-In.',
+          ),
+          const SizedBox(height: AppSpacing.gutter),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            obscureText: true,
+            decoration: const InputDecoration(hintText: 'Password'),
+            onSubmitted: (value) => Navigator.pop(context, value),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: const Text('Connect'),
+        ),
+      ],
+    );
+  }
+}
+
+/// "Forgot Password?" prompt, prefilled with whatever is in the email
+/// field. Owns its controller for the same reason as [_LinkPasswordDialog]:
+/// Cancel used to leave a red error box in place of the field.
+class _ResetPasswordDialog extends StatefulWidget {
+  const _ResetPasswordDialog({required this.initialEmail});
+
+  final String initialEmail;
+
+  @override
+  State<_ResetPasswordDialog> createState() => _ResetPasswordDialogState();
+}
+
+class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
+  late final _controller = TextEditingController(text: widget.initialEmail);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reset your password'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        keyboardType: TextInputType.emailAddress,
+        decoration: const InputDecoration(hintText: 'Email address'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _controller.text.trim()),
+          child: const Text('Send link'),
+        ),
+      ],
     );
   }
 }

@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/accessory_catalog.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/inventory.dart';
+import 'package:nori/models/pet.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/accessory_art.dart';
 import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_card.dart';
+import 'package:nori/widgets/nori_evolved_sprite.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
@@ -20,6 +22,7 @@ class CustomizationScreen extends StatefulWidget {
 class _CustomizationScreenState extends State<CustomizationScreen>
     with RemoteLoadState<CustomizationScreen> {
   Inventory? _inventory;
+  PetEvolutionStage _stage = PetEvolutionStage.baby;
   String? _draftEquippedId;
   bool _isSaving = false;
 
@@ -32,9 +35,11 @@ class _CustomizationScreenState extends State<CustomizationScreen>
   Future<void> _loadInventory() async {
     await guardedLoad(hasData: _inventory != null, () async {
       final inventory = await AppData.inventory.getInventory();
+      final pet = await AppData.pet.getPet();
       if (!mounted) return;
       setState(() {
         _inventory = inventory;
+        _stage = pet.stage;
         _draftEquippedId = inventory.equippedAccessoryId;
       });
     });
@@ -105,6 +110,7 @@ class _CustomizationScreenState extends State<CustomizationScreen>
                               ),
                               child: _PetPreview(
                                 height: isWide ? 340 : 280,
+                                evolved: _stage != PetEvolutionStage.baby,
                                 equippedItem: draftEquippedId == null
                                     ? null
                                     : accessoryById(draftEquippedId),
@@ -165,9 +171,17 @@ class _CustomizationHeader extends StatelessWidget {
 /// selected (not-yet-saved) accessory as flat-illustration art near Nori's
 /// head — see accessory_art.dart.
 class _PetPreview extends StatelessWidget {
-  const _PetPreview({required this.height, this.equippedItem});
+  const _PetPreview({
+    required this.height,
+    required this.evolved,
+    this.equippedItem,
+  });
 
   final double height;
+
+  /// Show the winged form instead of the baby, so the preview matches the
+  /// pet on Home.
+  final bool evolved;
   final AccessoryItem? equippedItem;
 
   @override
@@ -194,7 +208,28 @@ class _PetPreview extends StatelessWidget {
               ),
             ),
           ),
-          NoriAccessoryPreview(height: petHeight, item: equippedItem),
+          if (evolved)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // The evolved canvas is mostly wing span, so size by the
+                // panel's width as well as petHeight.
+                final spriteWidth = (constraints.maxWidth - AppSpacing.stackMd)
+                    .clamp(0.0, petHeight * 1.6 * 1.15);
+                return NoriEvolvedSprite(
+                  width: spriteWidth,
+                  overlayBuilder: equippedItem == null
+                      ? null
+                      : (context, spriteWidth, anchors) =>
+                            evolvedPositionedAccessoryArt(
+                              item: equippedItem!,
+                              spriteWidth: spriteWidth,
+                              anchors: anchors,
+                            ),
+                );
+              },
+            )
+          else
+            NoriAccessoryPreview(height: petHeight, item: equippedItem),
         ],
       ),
     );
