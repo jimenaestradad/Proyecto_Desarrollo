@@ -66,7 +66,7 @@ class _AchievementsScreenState extends State<AchievementsScreen>
                 children: [
                   _AchievementsHeader(user: user),
                   const SizedBox(height: AppSpacing.stackLg),
-                  Text('Your Trophies', style: AppTextStyles.headlineLgMobile),
+                  Text('Your trophies', style: AppTextStyles.headlineLgMobile),
                   const SizedBox(height: AppSpacing.stackSm),
                   Text(
                     'Track your progress and show off your consistency. Every habit brings you closer to your next milestone.',
@@ -170,7 +170,7 @@ class _AchievementCard extends StatelessWidget {
     AchievementStatus.unlocked => 'Completed',
     AchievementStatus.inProgress => 'Progress',
     AchievementStatus.locked => 'Locked',
-    AchievementStatus.comingSoon => 'Coming Soon',
+    AchievementStatus.comingSoon => 'Coming soon',
   };
 
   @override

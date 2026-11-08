@@ -3,17 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart' show AuthCredential;
 import '../models/nori_user.dart';
 import 'user_repository.dart';
 
-/// The contract every auth provider plugs into — [MockAuthRepository] for
-/// local dev/demo, [FirebaseAuthRepository] (firebase_auth_repository.dart)
-/// for the real thing. `app_data.dart` picks which one screens get; no
-/// screen imports either implementation directly.
-///
-/// [AuthCredential] (from firebase_auth) leaking into this otherwise
-/// provider-agnostic interface is a deliberate exception: account linking
-/// is inherently tied to how the underlying provider represents a pending
-/// credential, and there's only ever going to be one non-mock
-/// implementation of this contract — see CLAUDE.md's note on not
-/// over-engineering provider-swappability this project doesn't need.
+/// Authentication contract selected by `app_data.dart` for screens.
+/// [AuthCredential] exposes the provider's pending credential for account linking.
 abstract class AuthRepository {
   Future<NoriUser> signUp({
     required String name,
@@ -24,24 +15,13 @@ abstract class AuthRepository {
 
   Future<NoriUser> logIn({required String email, required String password});
 
-  /// Signs in (or, the first time, creates an account) with a Google
-  /// account. Throws [AuthException] with a user-facing message if the
-  /// person cancels the picker or the sign-in otherwise fails, or
-  /// [GoogleAccountLinkingRequired] if that email already has a
-  /// password-based Nori account — the caller should prompt for that
-  /// account's password and retry via [linkGoogleAccount].
-  ///
-  /// [GoogleSignInResult.needsUsername] tells the caller whether to route
-  /// through a username picker (new Google sign-up, or a previous attempt
-  /// that never finished claiming one) before treating the person as
-  /// signed in for real.
+  /// Signs in with Google; throws [AuthException] or [GoogleAccountLinkingRequired].
+  /// Use [linkGoogleAccount] for an existing password account and
+  /// [GoogleSignInResult.needsUsername] to route unfinished username setup.
   Future<GoogleSignInResult> logInWithGoogle();
 
-  /// Finishes a Google sign-in that [logInWithGoogle] flagged via
-  /// [GoogleAccountLinkingRequired]: signs into the existing
-  /// password-based account and links [pendingCredential] to it so future
-  /// sign-ins can use either method. Throws [AuthException] if the
-  /// password is wrong or linking otherwise fails.
+  /// Signs into an existing password account and links [pendingCredential].
+  /// Throws [AuthException] if authentication or linking fails.
   Future<GoogleSignInResult> linkGoogleAccount({
     required String email,
     required String password,
@@ -72,19 +52,18 @@ abstract class AuthRepository {
   /// Home or to the Welcome screen.
   String? get currentUserId;
 
-  /// Whether the signed-in user can already log in with email+password --
-  /// false for a Google-only account. Used to decide whether account
-  /// settings should offer [addPassword] (the Google->password linking
-  /// direction -- see docs/BACKEND.md, "Account linking, both
-  /// directions"). Always true in [MockAuthRepository]/when signed out.
+  /// Emits when a signed-in session ends without the person asking: the token
+  /// expired or was revoked, or the account was disabled or deleted elsewhere.
+  /// Never emits for [logOut] or [deleteAccount]; those screens navigate on
+  /// their own. Listened to once, by the app shell (main.dart).
+  Stream<void> get sessionLost;
+
+  /// Whether email/password login is available; gates the [addPassword] option.
+  /// Always true in [MockAuthRepository] or when signed out.
   Future<bool> hasPasswordProvider();
 
-  /// Attaches a password sign-in method to the current (Google-only)
-  /// account, so the same uid can also log in with email+password from
-  /// then on -- the other half of account linking (password->Google is
-  /// [linkGoogleAccount]). Throws [AuthException] with a user-facing
-  /// message on failure (e.g. the account already has a password, or the
-  /// password is too weak).
+  /// Adds password login to the current Google-only account, preserving its uid.
+  /// Throws [AuthException] with a user-facing failure message.
   Future<void> addPassword(String password);
 
   /// The email the signed-in user actually logs in with, or null when
@@ -106,12 +85,17 @@ abstract class AuthRepository {
     required String password,
   });
 
-  /// Permanently deletes the signed-in account and all of its data (the
-  /// deleteAccount Cloud Function), then signs out. Re-authenticates first,
-  /// because the function refuses a session that signed in more than a few
-  /// minutes ago: with [password] for an account that has one, or by
-  /// asking for Google again for a Google-only account (leave [password]
-  /// null). Throws [AuthException] with a user-facing message on failure.
+  /// Changes the password of a password account: re-checks [currentPassword],
+  /// then sets [newPassword]. Throws [AuthException] with a user-facing
+  /// message on failure (wrong current password, weak new one).
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  });
+
+  /// Re-authenticates, deletes the account and its data, then signs out.
+  /// Supply [password] for password accounts; Google-only accounts use Google's picker.
+  /// Throws [AuthException] on failure.
   Future<void> deleteAccount({String? password});
 }
 
@@ -139,11 +123,8 @@ class GoogleSignInResult {
   final bool needsUsername;
 }
 
-/// Thrown by [AuthRepository.logInWithGoogle] when the Google account's
-/// email already has a password-based Nori account (the only other
-/// sign-in method this app supports). Carries what
-/// [AuthRepository.linkGoogleAccount] needs to finish connecting the two
-/// once the person re-enters that account's password.
+/// Signals a Google email already registered with password authentication.
+/// Carries the credentials [AuthRepository.linkGoogleAccount] needs after password entry.
 class GoogleAccountLinkingRequired implements Exception {
   const GoogleAccountLinkingRequired({
     required this.email,
@@ -159,6 +140,9 @@ class MockAuthRepository implements AuthRepository {
 
   @override
   String? get currentUserId => _currentUserId;
+
+  @override
+  Stream<void> get sessionLost => const Stream.empty();
 
   @override
   Future<NoriUser> signUp({
@@ -248,6 +232,14 @@ class MockAuthRepository implements AuthRepository {
   Future<void> changeEmail({
     required String newEmail,
     required String password,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+  }
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
   }) async {
     await Future.delayed(const Duration(milliseconds: 300));
   }

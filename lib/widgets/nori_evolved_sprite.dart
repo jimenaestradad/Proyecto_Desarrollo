@@ -11,17 +11,9 @@ const _loopDuration = Duration(milliseconds: 5333);
 /// Pixel size every `nori_evolved/frame_NN.png` was exported at.
 const _frameAspect = 480 / 300;
 
-/// The evolved (winged) Nori's idle loop: a wing-flap cycle extracted from
-/// real generated footage and cut to transparent PNGs (see
-/// assets/images/nori_evolved). Same approach as [NoriBreathingSprite],
-/// including the accessory overlay hook: [kNoriEvolvedFrameAnchors] tracks the
-/// head through the hop so equipped accessories ride along with it.
-///
-/// The source clip doesn't loop on its own (it opens with the wings spread and
-/// ends folded), so the frames are the stretch from the folded rest pose back
-/// to a matching mid-fold; the wrap reads as a quick wing lift. The canvas is
-/// wide because the wings spread far past the body, so [width] is the wing
-/// span, not the body width.
+/// Wing-flap idle loop from transparent PNGs in assets/images/nori_evolved.
+/// [kNoriEvolvedFrameAnchors] keeps accessories attached through the hop.
+/// [width] measures the wing span, rather than body width.
 class NoriEvolvedSprite extends StatefulWidget {
   const NoriEvolvedSprite({
     super.key,
@@ -31,11 +23,8 @@ class NoriEvolvedSprite extends StatefulWidget {
 
   final double width;
 
-  /// Builds an equipped accessory positioned from this same tick's
-  /// [NoriEvolvedFrameAnchors] (see accessory_art.dart's
-  /// [evolvedPositionedAccessoryArt]), composited in the same
-  /// `AnimatedBuilder` frame as the sprite so the two never drift apart.
-  /// [spriteWidth] is the sprite's actual rendered width.
+  /// Builds an accessory from this tick's [NoriEvolvedFrameAnchors] and [spriteWidth].
+  /// Shares the sprite's AnimatedBuilder frame to prevent drift.
   final Widget? Function(
     BuildContext context,
     double spriteWidth,

@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Top-of-screen row: a leading widget (back button or avatar), a title, and
-/// an optional trailing widget. `leading`/`trailing` are plain widget slots —
-/// a multi-part trailing (e.g. a streak chip next to an XP pill) is just a
-/// `Row` passed in. Screens with a genuinely different shape (extra
-/// responsive branching, a composite trailing control) build their own
-/// header instead of forcing it into this one.
+/// Header row with leading widget, title and optional trailing widget.
+/// Slots accept composite widgets; screens needing a different layout build their own.
 class NoriScreenHeader extends StatelessWidget {
   const NoriScreenHeader({
     super.key,
@@ -39,8 +35,23 @@ class NoriScreenHeader extends StatelessWidget {
       children: [
         leading,
         Expanded(
-          child: Text(title, style: titleStyle, textAlign: titleTextAlign),
+          // One line that shrinks to fit: with a large system font the avatar,
+          // streak chip and XP pill leave little room, and the title used to
+          // break mid-word ("Calenda / r").
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: titleTextAlign == TextAlign.center
+                ? Alignment.center
+                : AlignmentDirectional.centerStart,
+            child: Text(
+              title,
+              style: titleStyle,
+              textAlign: titleTextAlign,
+              maxLines: 1,
+            ),
+          ),
         ),
+        if (trailing != null) const SizedBox(width: 8),
         ?trailing,
       ],
     );

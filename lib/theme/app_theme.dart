@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
+import 'app_spacing.dart';
 import 'app_text_styles.dart';
 
 export 'app_colors.dart';
@@ -9,6 +10,14 @@ export 'app_text_styles.dart';
 
 class AppTheme {
   AppTheme._();
+
+  /// The red confirm button for permanent deletes (Delete account, Delete
+  /// habit, Delete bucket-list goal), so every destructive confirm reads the
+  /// same. Pass as `FilledButton(style: AppTheme.destructiveFilledButton)`.
+  static ButtonStyle get destructiveFilledButton => FilledButton.styleFrom(
+    backgroundColor: AppColors.error,
+    foregroundColor: AppColors.onError,
+  );
 
   static ThemeData get light {
     final colorScheme = const ColorScheme.light(
@@ -83,21 +92,29 @@ class AppTheme {
           foregroundColor: WidgetStatePropertyAll(AppColors.mossDark),
         ),
       ),
+      // Ink outline on every state, and an ink thumb when off: the default
+      // white thumb on the pale off-track was barely visible on linen.
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? AppColors.white
+              : AppColors.ink,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? AppColors.moss
+              : AppColors.linenAlt,
+        ),
+        trackOutlineColor: const WidgetStatePropertyAll(AppColors.ink),
+        trackOutlineWidth: const WidgetStatePropertyAll(AppBorder.thin),
+      ),
       splashFactory: InkRipple.splashFactory,
     );
   }
 }
 
-/// Wires mouse into every [Scrollable]'s drag-to-scroll devices — Flutter's
-/// default [ScrollBehavior] only allows touch/stylus/trackpad, so a real
-/// mouse instead scrolls via the wheel (invisible, works fine normally).
-/// That default falls apart specifically under Chrome DevTools' device
-/// toolbar (the documented way to preview the mobile layout on web, per
-/// CLAUDE.md): once a device preset like Pixel is active, input arrives as
-/// simulated touch but can still surface to Flutter as [PointerDeviceKind.
-/// mouse] depending on Chrome/Flutter version, and the wheel stops firing
-/// too — leaving no way to scroll at all. Add mouse explicitly so drag-to-
-/// scroll works the same regardless of which of those two paths fires.
+/// Enables mouse drag scrolling alongside Flutter's default input devices.
+/// Chrome DevTools device emulation can surface touch as mouse and suppress the wheel.
 class AppScrollBehavior extends MaterialScrollBehavior {
   @override
   Set<PointerDeviceKind> get dragDevices => {

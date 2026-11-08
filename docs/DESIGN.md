@@ -6,7 +6,7 @@ or briefing a design tool (Stitch, Claude Design) so its output matches the app.
 **Source of truth is the code**, not this file: tokens live in [`lib/theme/`](../lib/theme/)
 and component shapes in [`lib/widgets/`](../lib/widgets/). This doc mirrors them in prose. If
 you add or change a token, change it in `lib/theme/` and update the matching table here in the
-same commit. Everything below was read from the code as of 2026-10-21.
+same commit. Everything below was checked against the code as of 2026-11-05.
 
 These are the defaults the existing screens already share, not a lock on new ideas. If a screen
 genuinely needs something new (a new color, a new component), add it as a token or shared
@@ -33,21 +33,21 @@ Never write a raw `Color(0x…)` or `Colors.*` in a screen. Use `AppColors.*`.
 | Token | Hex | Role |
 |---|---|---|
 | `ink` | `#3A2E22` | Every outline/border, headings, primary text, icons |
-| `inkMuted` | `#7A6B4F` | Secondary text, `labelSm` default, list-row icons |
+| `inkMuted` | `#6B5D43` | Secondary text, `labelSm` default, list-row icons |
 | `inkFaint` | `#6E634F` | Hints, timestamps, empty-state text, unselected nav |
 | `linen` | `#F3ECDD` | **Scaffold background**, progress-bar track |
 | `linenAlt` | `#F6F1E4` | Text-field fill, subtle alt surface |
 | `white` | `#FFFFFF` | Default card / list-row / nav-bar surface |
 | `moss` | `#8FA06B` | Primary: level progress, checkboxes, `FilledButton` fill |
 | `mossLight` | `#DCE6CC` | Selected states (nav item, highlighted row), pet portrait card |
-| `mossDark` | `#5B7A45` | Section-header icons, selected nav icon, text-button actions |
-| `terracotta` | `#C9986A` | Secondary: **primary CTA (`TactileButton`) fill**, FAB, today's-goal progress |
-| `terracottaDark` | `#B5652F` | Text/icon on terracotta-tinted containers |
+| `mossDark` | `#4A6A36` | Section-header icons, selected nav icon, text-button actions |
+| `terracotta` | `#C9986A` | Secondary: **primary CTA (`TactileButton`) fill**, the Habits tab's floating add button, today's-goal progress |
+| `terracottaDark` | `#944B1C` | Text/icon on terracotta-tinted containers |
 | `blush` | `#EED9CF` | Avatar background, happiness icon bg |
 | `blushPink` | `#F0D9E0` | Accent card tint |
 | `mustard` | `#FBE38A` | XP pill, reward pill |
 | `mustardLight` | `#F4E3A8` | Streak chip, "Preview only" banner, "Soon" badge |
-| `mustardDark` | `#9A7C1F` | Streak/coin icon, text on mustard chips |
+| `mustardDark` | `#735B10` | Streak/coin icon, text on mustard chips |
 | `sky` | `#D9E7EA` | Pale background tint (e.g. water habit) |
 | `skyBlue` | `#7AB8D9` | Ring/bar **fill** that must read clearly (hygiene vital) — not a background |
 | `error` / `onError` | `#BA1A1A` / `#FFFFFF` | Errors (Material defaults, no 2a equivalent) |
@@ -55,13 +55,14 @@ Never write a raw `Color(0x…)` or `Colors.*` in a screen. Use `AppColors.*`.
 
 ### Color rules
 - **Background is always `linen`.** Cards sit on it in `white` or a pastel tint.
-- **Pastel tints** (`mossLight`, `blushPink`, `mustardLight`, `sky`, `blush`, `linenAlt`,
-  `terracotta`) are for card/badge fills. Text on them stays `ink`.
+- **Pastel tints** (`mossLight`, `blushPink`, `mustardLight`, `sky`, `blush`,
+  `terracotta`; `linenAlt` is a surface color, never an item color) are for card/badge fills. Text on them stays `ink`.
 - **The "dark" variant of a hue** (`mossDark`, `terracottaDark`, `mustardDark`) is for icons or
   text that sit on that hue's light variant.
 - **Habit color choices** are limited to the keys in `ColorRegistry`
-  (`lib/data/color_registry.dart`): terracotta, sky, mossLight, blushPink, mustardLight, blush,
-  linenAlt. A new user-pickable color must be added there too, or it won't serialize.
+  (`lib/data/color_registry.dart`): terracotta, sky, mossLight, blushPink, mustardLight, blush.
+  A new user-pickable color must be added there too, or it won't serialize. `linenAlt` is retired
+  from this list (too close to the page background): items saved with it load as `mossLight`.
 - **Avatars for other people** (feed authors, leaderboard rows) get a deterministic fill from
   `NoriAvatar`'s palette: mossLight, blushPink, mustardLight, sky, terracotta.
 
@@ -73,7 +74,8 @@ surface = linen · outline = ink · surfaceTint = transparent (no M3 elevation t
 
 ## 3. Typography — `lib/theme/app_text_styles.dart`
 
-Two Google Fonts only. All styles default to `ink` except `labelSm` (`inkMuted`).
+Two Google Fonts only, bundled in `assets/google_fonts/` (see its README) so they never fall back to
+Roboto offline. All styles default to `ink` except `labelSm` (`inkMuted`).
 
 | Token | Font | Size / line height | Weight | Use |
 |---|---|---|---|---|
@@ -161,9 +163,15 @@ shared widget instead.
 |---|---|---|
 | `NoriCard` | The ink-bordered card shell used almost everywhere | white, radius 16, border 2.5, padding 20 (all overridable) |
 | `TactileButton` | **Primary CTA** | terracotta pill, ink text `labelLg`, border 2.5, hard 3px shadow, 14px vertical padding, optional trailing icon, 50% fill when disabled |
-| `FilledButton` (themed) | Secondary filled action, dialog confirm | moss fill, ink text |
+| `FilledButton` (themed) | Secondary filled action, dialog confirm | moss fill, ink text. The habit **Complete** / **I stayed under** (limit habits) button is white text on `mossDark` |
+| `Switch` (themed) | Settings toggles | ink thumb when off, white when on; moss track when on, `linenAlt` off; thin ink outline on both |
 | `TextButton` (`mossDark` fg) | Tertiary / "See all" / section trailing action | no border |
-| `CircularIconButton` | Header action (Shop, Archived, Notifications…) | 88%-white circle, 2.5 ink border, 20px ink icon, 8px padding, tooltip required |
+| `RewardBurst` | Cue for a habit that just paid | white pill with a `RewardPill` inside, rises ~40px and fades over 1.3s from the tap point (still, fade only, under reduced motion); light haptic; fired at tap time, only when the claim pays. No modal, nothing to dismiss |
+| `NotificationsBell` | The one bell (Habits, Social) | `CircularIconButton` with a dot when anything is unread in the pet/app or social inbox; opens `NotificationsScreen` (All / Pet / Social) |
+| Shop item card | Shop grid | not owned: green Buy + price; can't afford: red price + disabled "Need N more"; owned: "Owned" badge + white Equip; worn: `mossLight` card, thick border, "Wearing" badge + "Take off". Never faded |
+| `PetVitalRing` | Home's pet vital meters (happiness, fullness, hygiene) | 54px ring filled to the vital's value; below `kLowVital` (30) the center turns `errorContainer`, the icon `onErrorContainer`, and a red dot sits top-right (same rule as the server's "Pet Needs You") |
+| Floating add button | Habits tab only, today only | `FloatingActionButton`, terracotta, 2.5 ink border, no elevation, `Icons.add` |
+| `CircularIconButton` | Header action (Shop, Bucket List, Notifications…) | 88%-white circle, 2.5 ink border, 20px ink icon, 8px padding, tooltip required; `largeTapTarget: true` lays it out in a 48dp box |
 | `NoriIconBadge` | Colored icon tile | fixed size, thin border, circle or 12-radius square |
 | `NoriAvatar` | User avatar | circle, 3px border, blush bg; illustrated default for you, initials + palette color for others; 40px default |
 | `XpPill` | "★ 1,250 XP" | mustard pill, thin border, star icon, `labelLg` (compact: `labelSm`) |
@@ -173,13 +181,16 @@ shared widget instead.
 | `SectionHeader` | Section title row | optional mossDark 20px icon, Fredoka 18px title, trailing widget slot |
 | `NoriScreenHeader` | Top-of-screen row | leading (back button or avatar), title, optional trailing (pills, icon buttons) |
 | `NoriScrollScaffold` | Page body | scroll view, padding 20 / 16 top / 48 bottom, centered, max-width capped |
-| `NoriListRow` | Tappable nav row | white, radius 16, thin border, icon (inkMuted) + `labelLg` + optional trailing + chevron |
+| `NoriListRow` | Tappable nav row | white, radius 16, thin border, icon (inkMuted) + `labelLg` + optional trailing + chevron; `destructive: true` makes it `errorContainer` with `onErrorContainer` text and icon (Delete Account) |
 | `NoriTextField` | Labeled input | `labelSm` label above, pill shape, linenAlt fill, 2.5 border → 3 when focused, ink prefix icon |
 | `NoriBottomNav` | 5-tab bar | white, 2.5 ink top border; selected item = mossLight fill + thin border + radius 16 |
 | `FutureFeatureBanner` / `SoonBadge` | "Preview only" / "Soon" markers | mustardLight, thin border, `rocket_launch` icon |
 | `NoriInfoBanner` | Short explanatory note | sky fill, thin ink border, radius 16, 20px icon + `labelLg` text; optional close button via `onDismiss` (Add Habit's "Adaptive XP" / "Minimum Threshold" notes) |
 | `OneTimeHint` | A `NoriInfoBanner` shown once per account until dismissed | state in `TipsStore` (`shared_preferences`, keyed by uid); takes no space when hidden; one per screen, max two lines of copy |
 | `showNoriTextPrompt` | One-line text dialog | the dialog spec below, Cancel + Save; used for category names |
+| `NoriEmptyState` | Friendly empty state | 72px tinted ink-bordered circle with a Material icon, heading, muted body, optional `TactileButton` CTA |
+| `NoriChoiceChip` / `NoriSegmentedControl` | Filter pill / full-width tab switcher | chip: selected = `mossLight` fill + heavier ink border; segmented control takes optional count badges |
+| `showNoriSheet` | Modal bottom sheet | white, ink top border, radius `md`, grab handle, optional title |
 | `LoadErrorView` | First-load failure | `cloud_off_rounded` 56px, `headlineLgMobile` title, `bodyLg` muted message, non-expanded TactileButton "Try again" |
 
 Dialogs: `AlertDialog` with white background, radius 16, thin ink border; `TextButton` cancel +
@@ -195,13 +206,24 @@ Dialogs: `AlertDialog` with white background, radius 16, thin ink border; `TextB
   header row → `stackMd` → content sections separated by `stackLg`.
 - **Tab-level header** (Home, Habits, Social, Profile): title in `headlineMd` + trailing cluster of
   `CircularIconButton`s / `XpPill` / `StreakChip`. Social and Profile lead with the user's avatar.
-- **Pushed sub-screen header:** `NoriScreenHeader.backButton` + title in `headlineLgMobile`.
+- **Pushed sub-screen header:** `NoriScreenHeader.backButton` (plain arrow, left) + left-aligned title in `headlineLgMobile`, on every pushed screen. No circled arrows, no X, no `AppBar`.
 - **Sections:** `SectionHeader` → `stackSm` → cards separated by `stackSm`.
 - **Horizontal carousels** (e.g. circles, badges): fixed-height `ListView` of ~96px-wide
   bordered tiles, gap `stackSm`, last tile is a dashed-feel "add" tile (linenAlt, inkFaint
   border and icon).
 - **Bottom nav** is persistent across the 5 tabs (Home, Habits, Calendar, Social, Profile);
-  tabs live in an `IndexedStack` so scroll position survives tab switches.
+  tabs live in an `IndexedStack` so scroll position survives tab switches. Its labels follow the
+  system font scale (no fixed-size `FittedBox`) and the bar grows with them; ellipsis is only a
+  backstop for extreme scales.
+- **Home:** the room fills the screen edge to edge (no rounded, padded card); the HUD and a
+  frosted habit panel float over it. The panel is white at 50% alpha (more reads as a flat tan
+  card), rounds only its top corners, and has top/left/right ink borders only, since a bottom
+  border would double the nav bar's own top border. Collapsed it shows a one-line summary plus
+  one actionable habit; dragging the handle expands today's habits in place and the chevron goes
+  to Habits.
+- **Quick-log chip** (`+250`, `+15 mins` on a habit tile): a `mossLight` pill, at least 48×48.
+  Mustard was tried and read as the adjacent streak chip.
+- **Home's expanded habit list** fades out under the panel header as it scrolls.
 
 ---
 
@@ -209,16 +231,16 @@ Dialogs: `AlertDialog` with white background, radius 16, thin ink border; `TextB
 
 - **Loading:** centered `CircularProgressIndicator` (themed moss) for a first load.
 - **Error:** `LoadErrorView` with retry. Never spin forever.
-- **Empty:** today mostly a centered `bodyMd` line in `inkFaint` (e.g. "No habits scheduled for
-  today."). For a richer empty state, keep the same language: one Material icon (not
-  illustration-by-emoji), a `headlineLgMobile` line, muted body, and one `TactileButton` CTA.
+- **Empty:** `NoriEmptyState` (one Material icon, a heading, muted body, optional
+  `TactileButton` CTA); a few short lists still use a centered `bodyMd` line in `inkFaint`
+  (e.g. "No habits scheduled for today.").
 - **Disabled:** 50%-alpha fill on the button; text stays ink.
 - **Feedback for not-yet-built actions:** a "Coming soon" `SnackBar`.
 - **First-run help:** never a permanent line of helper text and never a spotlight overlay.
   (1) `IntroScreen`: three swipeable `NoriCard`s (icon badge, `headlineLgMobile` title, `bodyLg`
   muted body) shown once after naming the pet, with Skip, step dots and a `TactileButton`.
   (2) `OneTimeHint`: a dismissible `NoriInfoBanner` on Habits and Calendar, once. Both are
-  replayable from Settings > Help > "Replay intro and tips". New hints are a `Tip` enum value plus
+  replayable from Settings > Help > "Replay intro and tips". New hints are a `Tip` enum value (habitsGestures, calendarDays, limitHabits) plus
   one `OneTimeHint`; keep them to a single sentence and don't put one on Home.
 
 ---

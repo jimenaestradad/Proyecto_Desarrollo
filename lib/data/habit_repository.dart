@@ -8,17 +8,16 @@ import 'cloud_functions_client.dart';
 import 'habit_history_store.dart';
 import 'signed_in_uid.dart';
 
-/// What a completion/claim/un-claim action just paid out (or clawed back).
-/// With [FirestoreHabitRepository] the claimHabit/unclaimHabit Cloud Function
-/// has already applied it to the user and pet docs — screens only reload.
-/// [leveledUp]/[evolved] come from the function's before/after values, so a
-/// screen can celebrate without holding its own pre-claim snapshot.
+/// Rewards applied by a completion, claim or unclaim action.
+/// Firestore functions already update user/pet data; screens reload and use
+/// [leveledUp]/[evolved] to decide whether to celebrate.
 class HabitRewardResult {
   const HabitRewardResult(
     this.xpDelta,
     this.coinsDelta, {
     this.leveledUp = false,
     this.evolved = false,
+    this.giftedAccessoryId,
   });
 
   static const none = HabitRewardResult(0, 0);
@@ -27,6 +26,9 @@ class HabitRewardResult {
   final int coinsDelta;
   final bool leveledUp;
   final bool evolved;
+
+  /// Set when this claim granted the one-time first-habit accessory.
+  final String? giftedAccessoryId;
 }
 
 abstract class HabitRepository {
@@ -49,12 +51,8 @@ abstract class HabitRepository {
 
   Future<void> addHabit(Habit habit);
 
-  /// Replaces a habit's definition (name, target, schedule, etc.) in place.
-  /// Today's live `currentValue`/`isCompletedToday`/`lastAwarded*` are always
-  /// preserved from the stored habit, no matter what [habit] carries for
-  /// those fields — callers (e.g. editing a habit from a past day, where the
-  /// only `Habit` object on hand is hydrated with *that day's* state) don't
-  /// need to, and can't safely, carry them forward themselves.
+  /// Replaces the definition while preserving today's stored progress and rewards.
+  /// Callers may supply a [habit] hydrated with a past day's state.
   Future<void> updateHabit(Habit habit);
 
   /// Reverses a non-binary claim, mirroring [setHabitCompleted]'s `false`
@@ -69,14 +67,9 @@ abstract class HabitRepository {
   /// Persists a manual drag-reorder of the day's habit list.
   Future<void> reorderHabits(List<String> orderedIds);
 
-  /// Habits scheduled on [date] (per [Habit.isScheduledOn]), hydrated with
-  /// that date's logged progress/claim state. What Home and Habits list for
-  /// today. [getTodayHabits] is the wider set — every habit that is active
-  /// today, due or not — so it's for counting habits (achievements), not for
-  /// showing what to do today; the two agree on a habit's own state.
-  ///
-  /// Dates older than the tracked history window come back with zero
-  /// state; there is no "we don't know" distinct from "nothing was logged".
+  /// Returns scheduled habits hydrated with [date]'s progress and claims.
+  /// [getTodayHabits] includes all active habits for counts, even when not due.
+  /// Dates outside tracked history return zero state.
   Future<List<Habit>> getHabitsForDate(DateTime date);
 
   /// [setHabitCompleted] for an arbitrary past date. Binary habits only.
@@ -226,7 +219,7 @@ class MockHabitRepository implements HabitRepository {
       name: 'Social Media',
       subtitle: 'Keep under 2h today',
       icon: Icons.smartphone,
-      color: AppColors.linenAlt,
+      color: AppColors.sky,
       xpReward: 20,
       coinReward: 10,
       repeat: HabitRepeat.daily,
@@ -286,12 +279,8 @@ class MockHabitRepository implements HabitRepository {
     _habits[index] = habit.copyWith(currentValue: nextValue.toDouble());
   }
 
-  /// The value a claim actually completes at. Pressing "Complete" is a
-  /// shortcut that finishes the habit outright — like a binary habit's
-  /// checkbox — so a progress-tracked habit snaps up to its target instead
-  /// of claiming whatever partial number happens to be logged. Limit habits
-  /// are excluded: their target is a ceiling to stay under, not a floor to
-  /// jump to, so "Mark Day Safe" claims the value as actually logged.
+  /// Completing a progress habit snaps its value up to the target.
+  /// Limit habits instead claim the logged value because their target is a ceiling.
   double _claimValue(Habit habit) {
     if (habit.isInverted) return habit.currentValue;
     final target = habit.targetValue;
@@ -596,19 +585,9 @@ class MockHabitRepository implements HabitRepository {
   }
 }
 
-/// Real Firestore-backed implementation of the plain-CRUD subset of
-/// [HabitRepository] — create/update/reorder, and progress logging for any
-/// day, today included. A habit doc holds only its *definition*; a day's
-/// logged progress (`currentValue`/`isCompletedToday`/`lastAwardedXp`/
-/// `lastAwardedCoins`) always lives in `habitLogs`, keyed by date — there is
-/// no separate "today" storage to fall out of sync at midnight. See
-/// docs/BACKEND.md "Data sprint" for what's in scope here vs. deferred:
-///
-/// - [setHabitCompleted], [claimHabit], [unclaimHabit] (and their `*ForDate`
-///   twins) mint/burn XP and coins — `firestore.rules` denies clients from
-///   writing those fields directly on purpose (see the rules file), so they
-///   call the claimHabit/unclaimHabit Cloud Functions instead, which update
-///   the log, user, pet and inventory in one transaction.
+/// Firestore habit definitions and date-keyed progress in `habitLogs`, including today.
+/// Claim/unclaim operations use Cloud Functions to update rewards atomically
+/// across the log, user, pet and inventory.
 class FirestoreHabitRepository implements HabitRepository {
   /// Every document lives under the signed-in user — see
   /// docs/BACKEND.md "Firestore schema". Throws if nobody's signed in.
@@ -632,21 +611,9 @@ class FirestoreHabitRepository implements HabitRepository {
       .doc(_uid)
       .collection('habitLogs');
 
-  /// Every `habitLogs` entry for the days [start]..[end] (inclusive), keyed
-  /// by its document id (`{dayKey}_{habitId}`) — **one** query, not one per
-  /// day. Filters on the `dayKey` string (`yyyy-mm-dd` sorts chronologically),
-  /// not the `date` Timestamp: that one is the device's local midnight when
-  /// written, so after a time-zone change a day's log could fall outside that
-  /// day's query and vanish from the calendar. [FirestoreCalendarRepository] in `calendar_repository.dart` is
-  /// built entirely on this: fetch the whole visible range once, then derive
-  /// day statuses/streaks/stats in memory, instead of the N+1 query pattern
-  /// [MockCalendarRepository] gets away with only because its "queries" are
-  /// free in-memory map lookups.
-  ///
-  /// Public (not `_`-prefixed) specifically so a different file can call it
-  /// — `HabitRepository` itself has no "batch fetch a range" concept, since
-  /// that's a Firestore-specific optimization, not something every backend
-  /// needs to expose the same way.
+  /// Fetches inclusive [start]..[end] logs in one query, keyed by `{dayKey}_{habitId}`.
+  /// Filters by dayKey to preserve calendar dates across time-zone changes.
+  /// Exposed for calendar range hydration without per-day queries.
   Future<Map<String, HabitDayState>> logsInRange(
     DateTime start,
     DateTime end,
@@ -670,11 +637,8 @@ class FirestoreHabitRepository implements HabitRepository {
     return Habit.fromJson(doc.id, doc.data()!);
   }
 
-  /// Every habit definition, archived and ended ones included, ordered by
-  /// `order`. Deliberately unfiltered: whether a habit counts on a given day
-  /// is [Habit.isActiveOn]'s call (its archived stretches, its end date), so
-  /// an archived habit still shows up on the past days it was active instead
-  /// of vanishing from history. Public for [FirestoreCalendarRepository].
+  /// Returns all definitions ordered by `order`, including archived and ended habits.
+  /// [Habit.isActiveOn] determines which belong on each historical date.
   Future<List<Habit>> fetchAllDefinitions() async {
     final snapshot = await _habits.orderBy('order').get();
     return [
@@ -682,18 +646,9 @@ class FirestoreHabitRepository implements HabitRepository {
     ];
   }
 
-  /// The subset of `Habit.toJson()` that actually lives on the habit doc.
-  /// `currentValue`/`isCompletedToday`/`lastAwardedXp`/`lastAwardedCoins`
-  /// live in `habitLogs` instead — for *every* day, including today, not
-  /// just past ones (that's the fix for the midnight-rollover bug: a habit
-  /// doc is now a pure, dateless definition, so there's nothing on it that
-  /// needs resetting when the calendar day changes). `order`/`archived`/
-  /// `createdAt` are each owned by a different write path — `reorderHabits`,
-  /// a future archive/delete flow, and [addHabit] respectively — not by
-  /// editing a habit's own definition, so [updateHabit] excludes them too.
-  /// `adaptiveMultiplier` is left out as well: claimHabit recomputes and
-  /// stores it on every claim (functions/src/adaptiveXp.ts), so a client
-  /// write would only ever put back a stale value.
+  /// Selects editable definition fields; daily progress and rewards live in `habitLogs`.
+  /// Excludes order/archive/creation fields owned by other write paths and
+  /// adaptiveMultiplier, which claimHabit recomputes.
   Map<String, dynamic> _definitionFields(Map<String, dynamic> json) => {
     'name': json['name'],
     'subtitle': json['subtitle'],
@@ -751,12 +706,8 @@ class FirestoreHabitRepository implements HabitRepository {
 
   @override
   Future<void> updateHabit(Habit habit) async {
-    // .update() only touches the keys given — everything else on the
-    // stored document is left alone, which is what makes this safe to call
-    // without needing to preserve anything: there's no currentValue/
-    // isCompletedToday/lastAwarded* on the habit doc to clobber anymore
-    // (see _definitionFields), and order/archived/createdAt are each owned
-    // by a different write path than "edit this habit's definition".
+    // Update only editable definition fields, preserving fields owned by other write paths.
+    // Daily progress and rewards live separately in habitLogs.
     await _habits.doc(habit.id).update(_definitionFields(habit.toJson()));
   }
 
@@ -821,6 +772,7 @@ class FirestoreHabitRepository implements HabitRepository {
       evolved:
           stageIndex(result['petStage']) >
           stageIndex(result['previousPetStage']),
+      giftedAccessoryId: result['giftedAccessoryId'] as String?,
     );
   }
 
@@ -871,12 +823,9 @@ class FirestoreHabitRepository implements HabitRepository {
     double value,
   ) => _writeProgress(habitId, date, (_) => value);
 
-  /// The one write path behind [logProgressForDate] (add to the day's
-  /// value) and [setProgressForDate] (replace it): [next] maps the day's
-  /// current value to the one to store, and the result is clamped by
-  /// [clampProgress]. Does nothing if the habit doesn't exist or the day is
-  /// already claimed — a claimed day's value only changes by un-claiming
-  /// first, since the claim fixed it (claimValue in functions/src/rewards.ts).
+  /// Maps the day's current value through [next] and clamps it with [clampProgress].
+  /// Shared by additive and replacement logging; missing habits and claimed days
+  /// are unchanged, since progress must be unclaimed before editing.
   Future<void> _writeProgress(
     String habitId,
     DateTime date,
@@ -897,15 +846,15 @@ class FirestoreHabitRepository implements HabitRepository {
           ? HabitDayState.fromJson(snapshot.data()!)
           : HabitDayState.empty;
       if (previous.claimed) return;
-      // set(), not update() — the doc may not exist yet if this is the
-      // first time progress was logged on this past day. habitId/dayKey/
-      // date are re-sent every time alongside the changed value, but
-      // firestore.rules' hasOnly(['value']) still allows it: diff() only
-      // flags keys whose *value* actually changed, and those three don't.
+      final value = clampProgress(definition, next(previous.value));
+      if (snapshot.exists) {
+        // Only `value`: re-sending `date` in a changed timezone would break
+        // the rules' value-only update check.
+        tx.update(ref, {'value': value});
+        return;
+      }
       tx.set(ref, {
-        ...previous
-            .copyWith(value: clampProgress(definition, next(previous.value)))
-            .toJson(),
+        ...previous.copyWith(value: value).toJson(),
         'habitId': habitId,
         'dayKey': dayKey(day),
         'date': day,
@@ -1018,12 +967,8 @@ List<ArchivedRange> archiveRangesAfterRestoring(List<ArchivedRange> ranges) {
   ];
 }
 
-/// [habits] (definitions) hydrated with [day]'s entry from [logs] — the
-/// shape every screen expects (see [Habit.hydrate]). [logs] is keyed by log
-/// doc id (`{dayKey}_{habitId}`), as returned by
-/// [FirestoreHabitRepository.logsInRange]; a habit with no entry for the day
-/// gets [HabitDayState.empty]. Shared by the habit and calendar repositories
-/// so a day's list and that day's calendar colour are built the same way.
+/// Hydrates [habits] with [day]'s [logs], keyed by `{dayKey}_{habitId}`.
+/// Missing entries use [HabitDayState.empty]; shared with calendar rendering.
 List<Habit> hydrateDay(
   DateTime day,
   Iterable<Habit> habits,
@@ -1036,16 +981,8 @@ List<Habit> hydrateDay(
   ];
 }
 
-/// [hydrateDay] for just the [definitions] scheduled on [day]
-/// ([Habit.isScheduledOn]) — which habits a day's list and calendar cell
-/// show, as opposed to [FirestoreHabitRepository.getTodayHabits], which
-/// shows every active one. Reads from an already-fetched [logs] map, so
-/// loops over many days ([FirestoreCalendarRepository]'s month, streak and
-/// stats) cost no extra queries. Pass every habit as [definitions], archived
-/// and ended ones included
-/// ([FirestoreHabitRepository.fetchAllDefinitions]): taking only today's
-/// active habits would erase an ended habit from the past days it was
-/// actually on.
+/// Hydrates definitions scheduled on [day] from prefetched [logs], without extra queries.
+/// Include archived and ended definitions so their past active days remain visible.
 List<Habit> hydrateScheduled(
   DateTime day,
   Iterable<Habit> definitions,

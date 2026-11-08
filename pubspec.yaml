@@ -16,6 +16,7 @@ dependencies:
     sdk: flutter
   google_fonts: ^8.2.1
   shared_preferences: ^2.5.5
+  image_picker: ^1.2.3
 
 dev_dependencies:
   flutter_test:
@@ -31,6 +32,10 @@ flutter:
     - assets/images/nori_evolved/
     - assets/images/accessories/
     - assets/images/achievements/
+    - assets/images/social/
+    # Bundled Fredoka + Karla; google_fonts picks these up before the network.
+    # See assets/google_fonts/README.md.
+    - assets/google_fonts/
 
 # Android is the only real target (see CLAUDE.md); ios: false leaves the
 # scaffolded ios/ folder untouched. web: true also regenerates the browser

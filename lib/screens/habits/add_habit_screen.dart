@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/habit_history_store.dart' show addDays, dateOnly;
 import 'package:nori/data/habit_repository.dart' show kMaxDeletableActiveDays;
@@ -10,9 +11,13 @@ import 'package:nori/utils/id_generator.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/delete_habit_dialog.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
+import 'package:nori/data/tips_store.dart';
 import 'package:nori/widgets/nori_info_banner.dart';
+import 'package:nori/widgets/one_time_hint.dart';
+import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_text_prompt.dart';
 import 'package:nori/widgets/tactile_button.dart';
+import '../../widgets/scroll_edge_fade.dart';
 
 class AddHabitScreen extends StatefulWidget {
   const AddHabitScreen({super.key, this.habit});
@@ -35,8 +40,8 @@ class _AddHabitScreenState extends State<AddHabitScreen>
     Icons.savings,
     Icons.bedtime,
   ];
-  // Every key in ColorRegistry, so whatever is picked round-trips through
-  // Firestore. terracotta first: it was the only color before the picker.
+  // All registered in ColorRegistry, so whatever is picked round-trips
+  // through Firestore.
   static const _colors = [
     AppColors.terracotta,
     AppColors.sky,
@@ -44,7 +49,6 @@ class _AddHabitScreenState extends State<AddHabitScreen>
     AppColors.blushPink,
     AppColors.mustardLight,
     AppColors.blush,
-    AppColors.linenAlt,
   ];
   final _nameController = TextEditingController();
   final _targetController = TextEditingController();
@@ -52,12 +56,25 @@ class _AddHabitScreenState extends State<AddHabitScreen>
   final _minThresholdController = TextEditingController();
   final _quickLogController = TextEditingController();
 
+  /// Lets a failed Save take the person to the field the message is about
+  /// (the form is one long scroll, so it is usually out of sight).
+  final _targetFocus = FocusNode();
+  final _quickLogFocus = FocusNode();
+  final _minThresholdFocus = FocusNode();
+  final _customDaysKey = GlobalKey();
+
+  /// The message a refused Save left on each field, shown under it in red
+  /// until the person edits it (or picks a day, for the custom schedule).
+  final Map<FocusNode, String> _fieldErrors = {};
+  String? _customDaysError;
+
   /// Dropdown value for the trailing "Add Category" entry. Never a real
   /// category: it opens a prompt, and the field is put back right after.
   static const _addCategoryValue = '\u0000add-category';
   final _categoryFieldKey = GlobalKey<FormFieldState<String>>();
 
   List<String> _categories = const [];
+  bool _categoriesLoaded = false;
   IconData _selectedIcon = _icons.first;
   Color _selectedColor = _colors.first;
   String? _selectedCategory;
@@ -136,6 +153,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
     if (!mounted) return;
     setState(() {
       _categories = categories;
+      _categoriesLoaded = true;
       // Editing a habit whose subtitle isn't a known category (e.g. one of
       // the seed habits, which store free-text subtitles) keeps that text
       // selected rather than silently overwriting it on save.
@@ -150,7 +168,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
   Future<void> _addCategory() async {
     final name = (await showNoriTextPrompt(
       context,
-      title: 'New Category',
+      title: 'New category',
       hint: 'e.g. Finance',
     ))?.trim();
     if (!mounted) return;
@@ -178,6 +196,9 @@ class _AddHabitScreenState extends State<AddHabitScreen>
     _unitController.dispose();
     _minThresholdController.dispose();
     _quickLogController.dispose();
+    _targetFocus.dispose();
+    _quickLogFocus.dispose();
+    _minThresholdFocus.dispose();
     super.dispose();
   }
 
@@ -261,7 +282,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
         final target = double.tryParse(_targetController.text.trim());
         final unit = _unitController.text.trim();
         if (target == null || target <= 0) return '25% of target';
-        final step = (target * 0.25).clamp(1, double.infinity).roundToDouble();
+        final step = defaultQuickLogStep(target);
         return '+${formatTrimmedNumber(step)}${unit.isEmpty ? '' : ' $unit'}';
     }
   }
@@ -275,7 +296,8 @@ class _AddHabitScreenState extends State<AddHabitScreen>
       isPercent ? text.substring(0, text.length - 1).trim() : text,
     );
     if (number == null) return null;
-    return isPercent ? target * number / 100 : number;
+    final amount = isPercent ? target * number / 100 : number;
+    return amount.isFinite ? amount : null;
   }
 
   String _dateRangeLabel() {
@@ -298,15 +320,34 @@ class _AddHabitScreenState extends State<AddHabitScreen>
     // Not while archive/delete is running: both end by popping this route.
     if (_isSaving || _isManaging) return;
 
-    void showError(String message) {
+    // The snackbar names the problem; [focus] (a text field) or [section] (a
+    // non-text control) is then scrolled into view, and a text field also
+    // takes focus so it shows its active border.
+    void showError(String message, {FocusNode? focus, GlobalKey? section}) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));
+      setState(() {
+        _fieldErrors.clear();
+        _customDaysError = null;
+        if (focus != null) _fieldErrors[focus] = message;
+        if (section == _customDaysKey) _customDaysError = message;
+      });
+      focus?.requestFocus();
+      final target = focus?.context ?? section?.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(
+          target,
+          alignment: 0.25,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     }
 
     final target = _positiveNumber(_targetController.text.trim());
     if (_needsTarget && target == null) {
-      showError('Enter an Ideal Target greater than 0.');
+      showError('Enter an ideal target greater than 0.', focus: _targetFocus);
       return;
     }
 
@@ -318,7 +359,8 @@ class _AddHabitScreenState extends State<AddHabitScreen>
       quickLogAmount = _parseQuickLog(quickLogText, target!);
       if (quickLogAmount == null) {
         showError(
-          'Quick-Log Amount must be a number above 0, like 250 or 25%.',
+          'Quick-log amount must be a number above 0, like 250 or 25%.',
+          focus: _quickLogFocus,
         );
         return;
       }
@@ -331,19 +373,28 @@ class _AddHabitScreenState extends State<AddHabitScreen>
         minThresholdText.isNotEmpty) {
       minThreshold = _positiveNumber(minThresholdText);
       if (minThreshold == null) {
-        showError('Minimum Threshold must be a number above 0.');
+        showError(
+          'Minimum threshold must be a number above 0.',
+          focus: _minThresholdFocus,
+        );
         return;
       }
       // Logging is capped at the target, so a minimum at or above it could
       // never be reached on its own.
       if (target != null && minThreshold >= target) {
-        showError('Minimum Threshold must be below the Ideal Target.');
+        showError(
+          'Minimum threshold must be below the ideal target.',
+          focus: _minThresholdFocus,
+        );
         return;
       }
     }
 
     if (_repeat == HabitRepeat.custom && _customDays.isEmpty) {
-      showError('Pick at least one day for a custom schedule.');
+      showError(
+        'Pick at least one day for a custom schedule.',
+        section: _customDaysKey,
+      );
       return;
     }
 
@@ -407,7 +458,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
         child: TactileButton(
           label: _isSaving
               ? 'Saving...'
-              : (_isEditing ? 'Save Changes' : 'Save Habit'),
+              : (_isEditing ? 'Save changes' : 'Save habit'),
           icon: Icons.check_circle,
           onPressed: _isSaving ? null : _saveHabit,
         ),
@@ -428,31 +479,13 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _isEditing ? 'Edit Habit' : 'New Habit',
-                              style: AppTextStyles.headlineLgMobile,
-                            ),
-                          ),
-                          IconButton.filled(
-                            tooltip: 'Close',
-                            onPressed: () => Navigator.pop(context),
-                            style: IconButton.styleFrom(
-                              backgroundColor: AppColors.white,
-                              foregroundColor: AppColors.ink,
-                              side: const BorderSide(
-                                color: AppColors.ink,
-                                width: AppBorder.thin,
-                              ),
-                            ),
-                            icon: const Icon(Icons.close),
-                          ),
-                        ],
+                      NoriScreenHeader(
+                        leading: NoriScreenHeader.backButton(context),
+                        title: _isEditing ? 'Edit habit' : 'New habit',
+                        titleStyle: AppTextStyles.headlineLgMobile,
                       ),
                       const SizedBox(height: AppSpacing.stackMd),
-                      _FieldLabel(label: 'Habit Name'),
+                      _FieldLabel(label: 'Habit name'),
                       const SizedBox(height: AppSpacing.unit),
                       TextField(
                         controller: _nameController,
@@ -465,27 +498,29 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                       const SizedBox(height: AppSpacing.stackMd),
                       _FieldLabel(label: 'Icon'),
                       const SizedBox(height: AppSpacing.unit),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (
-                              var index = 0;
-                              index < _icons.length;
-                              index++
-                            ) ...[
-                              _IconChoice(
-                                icon: _icons[index],
-                                selected: _selectedIcon == _icons[index],
-                                selectedColor: _selectedColor,
-                                onTap: () => setState(
-                                  () => _selectedIcon = _icons[index],
+                      ScrollEdgeFade(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              for (
+                                var index = 0;
+                                index < _icons.length;
+                                index++
+                              ) ...[
+                                _IconChoice(
+                                  icon: _icons[index],
+                                  selected: _selectedIcon == _icons[index],
+                                  selectedColor: _selectedColor,
+                                  onTap: () => setState(
+                                    () => _selectedIcon = _icons[index],
+                                  ),
                                 ),
-                              ),
-                              if (index != _icons.length - 1)
-                                const SizedBox(width: AppSpacing.stackSm),
+                                if (index != _icons.length - 1)
+                                  const SizedBox(width: AppSpacing.stackSm),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
                       const SizedBox(height: AppSpacing.stackMd),
@@ -522,11 +557,8 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                         ),
                         decoration: _fieldDecoration(),
                         items: [
-                          // A habit's existing subtitle might not be a known
-                          // category (e.g. a seeded demo habit's free-text
-                          // subtitle, or one deleted later in Settings) —
-                          // keep it selectable instead of silently
-                          // overwriting it with the first category on save.
+                          // Keep an existing unknown subtitle selectable, including deleted categories,
+                          // so saving does not silently replace it with the first category.
                           if (_selectedCategory != null &&
                               !_categories.contains(_selectedCategory))
                             DropdownMenuItem(
@@ -544,7 +576,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                               children: [
                                 Icon(Icons.add, size: 18),
                                 SizedBox(width: AppSpacing.unit),
-                                Text('Add Category'),
+                                Text('Add category'),
                               ],
                             ),
                           ),
@@ -558,8 +590,20 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                           setState(() => _selectedCategory = category);
                         },
                       ),
+                      // Only while there are none: it goes away the moment
+                      // one is added, so it isn't a dismissible tip.
+                      if (_categoriesLoaded && _categories.isEmpty) ...[
+                        const SizedBox(height: AppSpacing.stackSm),
+                        NoriInfoBanner(
+                          icon: Icons.label_outline,
+                          message:
+                              'No categories yet. Add one to group your habits.',
+                          actionLabel: 'Add one',
+                          onAction: _addCategory,
+                        ),
+                      ],
                       const SizedBox(height: AppSpacing.stackMd),
-                      _FieldLabel(label: 'Tracking Type'),
+                      _FieldLabel(label: 'Tracking type'),
                       const SizedBox(height: AppSpacing.unit),
                       for (
                         var row = 0;
@@ -605,7 +649,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                       ],
                       if (_needsTarget) ...[
                         const SizedBox(height: AppSpacing.stackMd),
-                        _FieldLabel(label: 'Ideal Target'),
+                        _FieldLabel(label: 'Ideal target'),
                         const SizedBox(height: AppSpacing.unit),
                         Row(
                           children: [
@@ -613,13 +657,17 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                               flex: 2,
                               child: TextField(
                                 controller: _targetController,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
+                                focusNode: _targetFocus,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(9),
+                                ],
                                 style: AppTextStyles.bodyLg,
+                                onChanged: (_) => _clearError(_targetFocus),
                                 decoration: _fieldDecoration(
                                   hintText: 'e.g. 1000',
+                                  errorText: _fieldErrors[_targetFocus],
                                 ),
                               ),
                             ),
@@ -638,16 +686,19 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                           ],
                         ),
                         const SizedBox(height: AppSpacing.stackMd),
-                        _FieldLabel(label: 'Quick-Log Amount'),
+                        _FieldLabel(label: 'Quick-log amount'),
                         const SizedBox(height: AppSpacing.unit),
                         TextField(
                           controller: _quickLogController,
+                          focusNode: _quickLogFocus,
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
                           style: AppTextStyles.bodyLg,
+                          onChanged: (_) => _clearError(_quickLogFocus),
                           decoration: _fieldDecoration(
                             hintText: _quickLogHint(),
+                            errorText: _fieldErrors[_quickLogFocus],
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -662,7 +713,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                       if (_supportsThreshold) ...[
                         const SizedBox(height: AppSpacing.stackMd),
                         _ToggleRow(
-                          title: 'Minimum Threshold',
+                          title: 'Minimum threshold',
                           subtitle: 'Streak protection',
                           value: _minThresholdEnabled,
                           onChanged: (value) =>
@@ -672,11 +723,16 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                           const SizedBox(height: AppSpacing.stackSm),
                           TextField(
                             controller: _minThresholdController,
+                            focusNode: _minThresholdFocus,
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
                             style: AppTextStyles.bodyLg,
-                            decoration: _fieldDecoration(hintText: 'e.g. 750'),
+                            onChanged: (_) => _clearError(_minThresholdFocus),
+                            decoration: _fieldDecoration(
+                              hintText: 'e.g. 750',
+                              errorText: _fieldErrors[_minThresholdFocus],
+                            ),
                           ),
                           const SizedBox(height: AppSpacing.stackSm),
                           const NoriInfoBanner(
@@ -722,12 +778,13 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                         ],
                       ),
                       const SizedBox(height: AppSpacing.stackSm),
-                      const NoriInfoBanner(
+                      // Dismissable once per account, like the other hints.
+                      const OneTimeHint(
+                        tip: Tip.adaptiveXp,
                         icon: Icons.bolt,
                         message:
                             'Adaptive XP: a habit pays a bit more while you struggle with it and a bit less once it comes easy (Easy 9–13, Medium 16–24, Hard 26–36 XP).',
                       ),
-                      const SizedBox(height: AppSpacing.stackSm),
                       _RewardPreview(
                         difficulty: _difficulty,
                         adaptiveMultiplier:
@@ -762,6 +819,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                       if (_repeat == HabitRepeat.custom) ...[
                         const SizedBox(height: AppSpacing.stackSm),
                         Wrap(
+                          key: _customDaysKey,
                           spacing: AppSpacing.unit,
                           runSpacing: AppSpacing.unit,
                           children: [
@@ -770,6 +828,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                                 label: weekdayInitial(day),
                                 selected: _customDays.contains(day),
                                 onTap: () => setState(() {
+                                  _customDaysError = null;
                                   if (!_customDays.remove(day)) {
                                     _customDays.add(day);
                                   }
@@ -777,10 +836,19 @@ class _AddHabitScreenState extends State<AddHabitScreen>
                               ),
                           ],
                         ),
+                        if (_customDaysError != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            _customDaysError!,
+                            style: AppTextStyles.labelSm.copyWith(
+                              color: AppColors.error,
+                            ),
+                          ),
+                        ],
                       ],
                       const SizedBox(height: AppSpacing.stackMd),
                       _ToggleRow(
-                        title: 'Set End Date',
+                        title: 'Set end date',
                         subtitle:
                             'Hides the habit from your list after this date.',
                         value: _endDateEnabled,
@@ -858,7 +926,7 @@ class _AddHabitScreenState extends State<AddHabitScreen>
       ..showSnackBar(
         SnackBar(
           content: Text(
-            'Archived "${habit.name}" — restore it from Archived habits.',
+            'Archived "${habit.name}" — restore it from Settings > Archived habits.',
           ),
         ),
       );
@@ -876,9 +944,12 @@ class _AddHabitScreenState extends State<AddHabitScreen>
     if (ok) Navigator.pop(context, true);
   }
 
-  InputDecoration _fieldDecoration({String? hintText}) {
+  InputDecoration _fieldDecoration({String? hintText, String? errorText}) {
     return InputDecoration(
       hintText: hintText,
+      errorText: errorText,
+      errorMaxLines: 3,
+      errorStyle: AppTextStyles.labelSm.copyWith(color: AppColors.error),
       hintStyle: AppTextStyles.bodyLg.copyWith(color: AppColors.inkFaint),
       filled: true,
       fillColor: AppColors.white,
@@ -907,7 +978,28 @@ class _AddHabitScreenState extends State<AddHabitScreen>
           width: AppBorder.standard,
         ),
       ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        borderSide: const BorderSide(
+          color: AppColors.error,
+          width: AppBorder.standard,
+        ),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        borderSide: const BorderSide(
+          color: AppColors.error,
+          width: AppBorder.standard,
+        ),
+      ),
     );
+  }
+
+  /// Drops the red message under [focus]'s field once the person edits it.
+  void _clearError(FocusNode focus) {
+    if (_fieldErrors.containsKey(focus)) {
+      setState(() => _fieldErrors.remove(focus));
+    }
   }
 }
 
@@ -1129,14 +1221,7 @@ class _ToggleRow extends StatelessWidget {
             ],
           ),
         ),
-        Switch(
-          value: value,
-          onChanged: onChanged,
-          activeThumbColor: AppColors.white,
-          activeTrackColor: AppColors.moss,
-          inactiveThumbColor: AppColors.white,
-          inactiveTrackColor: AppColors.linenAlt,
-        ),
+        Switch(value: value, onChanged: onChanged),
       ],
     );
   }
@@ -1150,12 +1235,8 @@ class _RewardPreview extends StatelessWidget {
 
   final HabitDifficulty difficulty;
 
-  /// The habit's actual per-claim multiplier when editing an existing
-  /// habit (1.0 for a new one). Folding this into the preview — instead of
-  /// always showing the raw difficulty base — is what keeps this number in
-  /// sync with the reward pill the Habits screen shows for the same habit;
-  /// previously they could disagree once a habit's multiplier drifted from
-  /// 1.0 (e.g. the seeded Gym Session habit, at 1.2x).
+  /// Existing habit's per-claim multiplier, or 1.0 for a new habit.
+  /// Keeps the preview aligned with the Habits screen's reward pill.
   final double adaptiveMultiplier;
 
   @override
@@ -1191,7 +1272,7 @@ class _RewardPreview extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '+$coins Coins · Pet care & shop',
+                  '+$coins coins · Pet care & shop',
                   style: AppTextStyles.labelSm.copyWith(
                     color: AppColors.inkMuted,
                   ),
@@ -1227,7 +1308,7 @@ class _ManageHabitSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TactileButton(
-          label: 'Archive Habit',
+          label: 'Archive habit',
           icon: Icons.archive_outlined,
           backgroundColor: AppColors.white,
           onPressed: busy ? null : onArchive,
@@ -1235,14 +1316,14 @@ class _ManageHabitSection extends StatelessWidget {
         const SizedBox(height: AppSpacing.unit),
         Text(
           'Hides it from today on. Its history stays, and you can restore it '
-          'from Archived habits.',
+          'from Settings > Archived habits.',
           style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
           textAlign: TextAlign.center,
         ),
         if (canDelete) ...[
           const SizedBox(height: AppSpacing.stackMd),
           TactileButton(
-            label: 'Delete Habit',
+            label: 'Delete habit',
             icon: Icons.delete_outline,
             backgroundColor: AppColors.errorContainer,
             foregroundColor: AppColors.onErrorContainer,

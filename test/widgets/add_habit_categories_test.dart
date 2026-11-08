@@ -48,11 +48,11 @@ void main() {
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
     // Only the add entry exists (the closed field's hint is also on screen).
-    expect(find.text('Add Category'), findsOneWidget);
+    expect(find.text('Add category'), findsOneWidget);
 
-    await tester.tap(find.text('Add Category'));
+    await tester.tap(find.text('Add category'));
     await tester.pumpAndSettle();
-    expect(find.text('New Category'), findsOneWidget);
+    expect(find.text('New category'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField).last, 'Finance');
     await tester.tap(find.text('Save'));
@@ -75,12 +75,41 @@ void main() {
 
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Add Category'));
+    await tester.tap(find.text('Add category'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
     expect(categories.names, isEmpty);
     expect(find.text('Choose or add a category'), findsOneWidget);
+  });
+
+  testWidgets('the no-categories hint adds one and then goes away', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1236, 4200);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(const MaterialApp(home: AddHabitScreen()));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('No categories yet. Add one to group your habits.'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Add one'));
+    await tester.pumpAndSettle();
+    expect(find.text('New category'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, 'Study');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(categories.names, ['Study']);
+    expect(
+      find.text('No categories yet. Add one to group your habits.'),
+      findsNothing,
+    );
   });
 }

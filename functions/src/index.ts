@@ -1,17 +1,5 @@
-/**
- * Nori — Cloud Functions.
- *
- * See ../docs/BACKEND.md for the full plan this implements: the schema,
- * the Cloud-Functions-vs-direct-write rule of thumb, and the concrete
- * function list. Each function lives in its own file and is re-exported
- * below; Firebase only deploys what this file exports. Jimena's:
- * onUserCreate, purchaseCareItem/purchaseAccessory (shop.ts), and
- * complete/uncomplete/deleteBucketListItem (bucketList.ts). Valeria's:
- * claimHabit, unclaimHabit, deleteHabit (see docs/BACKEND.md "Division of
- * labor"). Everything deploys from this one entry point — a second
- * functions/ folder would make each side's `firebase deploy` delete the
- * other's.
- */
+// Cloud Functions entry point: Firebase deploys the functions exported here.
+// Keep one functions/ entry point so separate deploys cannot delete each other’s functions.
 
 import * as admin from "firebase-admin";
 import { setGlobalOptions } from "firebase-functions/v2";
@@ -20,9 +8,7 @@ import { setGlobalOptions } from "firebase-functions/v2";
 // getFirestore() inside their handlers, never at import time.
 admin.initializeApp();
 
-// Caps how many instances any one v2 function can scale to, so a retry
-// loop or someone hammering a callable can't run up the bill. Far above
-// what two testers need; raise it if real traffic ever gets near.
+// Caps v2 instances to limit costs from retries or repeated calls.
 // Must run before the exports below define their functions.
 setGlobalOptions({ maxInstances: 10 });
 

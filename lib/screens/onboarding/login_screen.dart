@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/auth_repository.dart';
+import 'package:nori/utils/app_log.dart';
 import 'package:nori/data/username_repository.dart';
 import 'package:nori/screens/onboarding/choose_username_screen.dart';
+import 'package:nori/utils/account_setup.dart';
 import 'package:nori/screens/onboarding/name_pet_screen.dart';
 import 'package:nori/theme/app_theme.dart';
-import 'package:nori/widgets/loading_overlay.dart';
-import 'package:nori/widgets/nori_card.dart';
+import 'package:nori/widgets/auth_card_screen.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -55,11 +56,21 @@ class _LoginScreenState extends State<LoginScreen> {
       // Point AppData.user (etc.) at this uid's real Firestore data before
       // touching it below — see AppData.bindToUser.
       AppData.bindToUser(user.id);
-      // Keeps the stored email in sync with the login email, in case a
-      // confirmed email change happened since the last sign-in. Name and
-      // username are left alone: Edit Profile owns them in Firestore, and
-      // the Auth display name this would copy is only set at sign-up, so
-      // writing it here reverted every name edit on the next login.
+      // Sync the login email after confirmed email changes.
+      // Preserve Firestore's edited name/username; Auth's displayName was set at sign-up.
+      // A sign-up that was cut off before the username was claimed, or before
+      // the profile was saved, resumes here instead of opening Home with an
+      // empty identity.
+      final complete = await isSignUpComplete(user.id);
+      if (!complete) {
+        if (!mounted) return;
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/finish-signup',
+          (route) => false,
+        );
+        return;
+      }
       await AppData.user.updateProfile(email: user.email);
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
@@ -67,7 +78,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
       _showMessage(e.message);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      // Anything that isn't an AuthException: most often the Firestore
+      // lookup/update that runs right after a successful sign-in.
+      logError('login', error, stackTrace);
       if (!mounted) return;
       setState(() => _loading = false);
       _showMessage('Unable to sign in. Please try again.');
@@ -91,13 +105,8 @@ class _LoginScreenState extends State<LoginScreen> {
       // A canceled picker isn't worth a scary error message.
       if (e.message != 'Sign-in was canceled.') _showMessage(e.message);
     } catch (error, stackTrace) {
-      // Anything here is *not* a FirebaseAuthException (those are already
-      // turned into AuthException with a real message above) — most
-      // likely Firestore rejecting/failing the needsUsername lookup
-      // (not enabled yet, or rules not deployed — see firestore.rules).
-      // Logged instead of silently swallowed so that case is diagnosable
-      // from the terminal/DevTools console instead of just this generic
-      // snackbar.
+      // Auth errors are already translated above; log other failures for diagnosis,
+      // such as a rejected Firestore needsUsername lookup.
       debugPrint('Google sign-in failed: $error');
       debugPrint('$stackTrace');
       if (!mounted) return;
@@ -106,11 +115,8 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /// Finishes a Google sign-in/sign-up once we have a [GoogleSignInResult]
-  /// — either straight from [AppData.auth.logInWithGoogle], or after
-  /// [_resolveAccountLinking] connects an existing password account.
-  /// Routes through [ChooseUsernameScreen] first when the account doesn't
-  /// have a username claimed yet.
+  /// Finishes Google auth or account linking from [GoogleSignInResult].
+  /// Routes accounts without a claimed username through [ChooseUsernameScreen].
   Future<void> _completeGoogleSignIn(GoogleSignInResult result) async {
     // Point AppData.user (etc.) at this uid's real Firestore data before
     // touching it anywhere below — see AppData.bindToUser.
@@ -208,7 +214,8 @@ class _LoginScreenState extends State<LoginScreen> {
     } on AuthException catch (e) {
       if (!mounted) return;
       _showMessage(e.message);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      logError('sendPasswordResetEmail', error, stackTrace);
       if (!mounted) return;
       _showMessage('Unable to send the reset email. Please try again.');
     }
@@ -216,95 +223,53 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.containerPaddingMobile,
-                    vertical: AppSpacing.stackMd,
-                  ),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight:
-                          (constraints.maxHeight - (AppSpacing.stackMd * 2))
-                              .clamp(0.0, double.infinity),
-                    ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 420),
-                        child: NoriCard(
-                          padding: const EdgeInsets.all(AppSpacing.stackMd),
-                          radius: AppRadius.lg,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const _LoginHeader(),
-                              const SizedBox(height: AppSpacing.stackMd),
-                              _socialButton(
-                                label: 'Continue with Google',
-                                icon: Icons.g_mobiledata,
-                                onPressed: _loading
-                                    ? null
-                                    : _handleGoogleSignIn,
-                              ),
-                              const SizedBox(height: AppSpacing.stackMd),
-                              const _Divider(),
-                              const SizedBox(height: AppSpacing.stackMd),
-                              _buildEmailField(),
-                              const SizedBox(height: AppSpacing.gutter),
-                              _buildPasswordField(),
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                  onPressed: _loading ? null : _forgotPassword,
-                                  child: const Text('Forgot Password?'),
-                                ),
-                              ),
-                              const SizedBox(height: AppSpacing.unit),
-                              TactileButton(
-                                label: 'Sign In',
-                                icon: Icons.arrow_forward,
-                                onPressed: _loading ? null : _submit,
-                              ),
-                              const SizedBox(height: AppSpacing.stackLg),
-                              Wrap(
-                                alignment: WrapAlignment.center,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  Text(
-                                    "Don't have an account?",
-                                    style: AppTextStyles.bodyMd.copyWith(
-                                      color: AppColors.inkMuted,
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: _loading
-                                        ? null
-                                        : () => Navigator.pushReplacementNamed(
-                                            context,
-                                            '/signup',
-                                          ),
-                                    child: const Text('Sign Up'),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
+    return AuthCardScreen(
+      loading: _loading,
+      children: [
+        const _LoginHeader(),
+        const SizedBox(height: AppSpacing.stackMd),
+        _socialButton(
+          label: 'Continue with Google',
+          icon: Icons.g_mobiledata,
+          onPressed: _loading ? null : _handleGoogleSignIn,
+        ),
+        const SizedBox(height: AppSpacing.stackMd),
+        const _Divider(),
+        const SizedBox(height: AppSpacing.stackMd),
+        _buildEmailField(),
+        const SizedBox(height: AppSpacing.gutter),
+        _buildPasswordField(),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: _loading ? null : _forgotPassword,
+            child: const Text('Forgot password?'),
           ),
-          if (_loading) const LoadingOverlay(),
-        ],
-      ),
+        ),
+        const SizedBox(height: AppSpacing.unit),
+        TactileButton(
+          label: 'Log in',
+          icon: Icons.arrow_forward,
+          onPressed: _loading ? null : _submit,
+        ),
+        const SizedBox(height: AppSpacing.stackLg),
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              "Don't have an account?",
+              style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
+            ),
+            TextButton(
+              onPressed: _loading
+                  ? null
+                  : () => Navigator.pushReplacementNamed(context, '/signup'),
+              child: const Text('Sign up'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -347,7 +312,7 @@ class _LoginScreenState extends State<LoginScreen> {
       textInputAction: TextInputAction.next,
       autofillHints: const [AutofillHints.email],
       style: AppTextStyles.bodyMd,
-      decoration: _inputDecoration(hint: 'Email Address', icon: Icons.mail),
+      decoration: _inputDecoration(hint: 'Email address', icon: Icons.mail),
     );
   }
 
@@ -448,7 +413,7 @@ class _LinkPasswordDialogState extends State<_LinkPasswordDialog> {
         children: [
           Text(
             '${widget.email} already has a Nori account with a password. '
-            'Enter that password to connect it to Google Sign-In.',
+            'Enter that password to connect it to Google sign-in.',
           ),
           const SizedBox(height: AppSpacing.gutter),
           TextField(
@@ -544,7 +509,7 @@ class _LoginHeader extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.gutter),
         Text(
-          'Welcome Back',
+          'Welcome back',
           style: AppTextStyles.headlineLgMobile.copyWith(
             color: AppColors.mossDark,
           ),

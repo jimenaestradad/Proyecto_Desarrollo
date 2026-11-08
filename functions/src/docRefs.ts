@@ -1,9 +1,7 @@
 import { Firestore } from "firebase-admin/firestore";
 
-// The one place the per-user Firestore paths are spelled out (the schema is
-// in ../docs/BACKEND.md, "Firestore schema"). Everything a user owns lives
-// under /users/{uid}; pet/main and inventory/main are single documents in
-// collections of their own so more pets can be added later.
+// Centralizes paths under /users/{uid}.
+// pet/main and inventory/main use separate collections to allow more pets later.
 export function userDocRefs(db: Firestore, uid: string) {
   const user = db.collection("users").doc(uid);
   return {

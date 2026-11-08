@@ -15,7 +15,6 @@ import 'package:nori/utils/relative_time.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/nori_card.dart';
-import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/section_header.dart';
@@ -217,14 +216,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen>
                       ],
                     ),
                     const SizedBox(height: AppSpacing.stackMd),
-                    const Center(
-                      child: NoriIconBadge(
-                        icon: Icons.pets,
-                        background: AppColors.linenAlt,
-                        size: AppSpacing.stackLg * 3,
-                        iconSize: AppSpacing.stackLg * 2,
-                      ),
-                    ),
+                    Center(child: FriendPetPicture(stage: user.petStage)),
                     const SizedBox(height: AppSpacing.stackMd),
                     Text(
                       '${user.petName} is happy to see you.',

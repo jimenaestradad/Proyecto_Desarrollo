@@ -35,9 +35,9 @@ class _NoriPlusScreenState extends State<NoriPlusScreen> {
       appBar: AppBar(
         automaticallyImplyLeading: false,
         leading: IconButton(
-          tooltip: 'Close',
+          tooltip: 'Back',
           onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.close),
+          icon: const Icon(Icons.arrow_back),
         ),
       ),
       body: SingleChildScrollView(
@@ -75,7 +75,7 @@ class _NoriPlusScreenState extends State<NoriPlusScreen> {
                 ),
                 const SizedBox(height: AppSpacing.stackLg),
                 TactileButton(
-                  label: 'Upgrade Now',
+                  label: 'Upgrade now',
                   icon: Icons.rocket_launch,
                   onPressed: _openPaymentMethod,
                 ),
@@ -83,7 +83,7 @@ class _NoriPlusScreenState extends State<NoriPlusScreen> {
                 Align(
                   child: TextButton(
                     onPressed: _showUnavailable,
-                    child: const Text('Restore Purchases'),
+                    child: const Text('Restore purchases'),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.stackSm),
@@ -163,23 +163,23 @@ class _FeatureComparisonCard extends StatelessWidget {
             isHeader: true,
           ),
           _ComparisonRow(
-            label: 'Active Habits',
+            label: 'Active habits',
             free: Text('Up to 3'),
             plus: Text('Unlimited'),
           ),
           _ComparisonRow(
-            label: 'Exclusive Pets',
+            label: 'Exclusive pets',
             free: Icon(Icons.close),
             plus: Icon(Icons.check_circle),
             alternate: true,
           ),
           _ComparisonRow(
-            label: 'Advanced Analytics',
+            label: 'Advanced analytics',
             free: Icon(Icons.close),
             plus: Icon(Icons.check_circle),
           ),
           _ComparisonRow(
-            label: 'Custom Widgets',
+            label: 'Custom widgets',
             free: Icon(Icons.close),
             plus: Icon(Icons.check_circle),
             alternate: true,

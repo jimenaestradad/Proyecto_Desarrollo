@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/celebration_card.dart';
 
-/// Full-screen celebration shown when the user's level increases —
-/// [EvolutionScreen]'s sibling for the other half of the core loop
-/// (complete habits → earn XP → level up → pet grows). Both share
-/// [CelebrationScreen]'s shell and differ only in words and the badge.
-/// Push with [showLevelUpCelebration] rather than a bare `Navigator.push`.
+/// Celebrates a level increase using the shared [CelebrationScreen] shell.
+/// Use [showLevelUpCelebration] to present it.
 class LevelUpScreen extends StatelessWidget {
   const LevelUpScreen({super.key, required this.level, required this.petName});
 
@@ -31,7 +28,7 @@ class LevelUpScreen extends StatelessWidget {
           ],
         ),
       ),
-      title: 'You Leveled Up!',
+      title: 'You leveled up!',
       message: '$petName is proud of you — keep those habits up!',
     );
   }

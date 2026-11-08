@@ -7,11 +7,8 @@ class Inventory {
     this.equippedAccessoryId,
   });
 
-  /// Uses left per care item id (see `care_item_catalog.dart`) — an id
-  /// absent from the map means zero, same as an id mapped to 0. Was three
-  /// flat `snacks`/`soap`/`toys` counters before care items grew a second
-  /// tier per stat and needed picking one to use rather than one generic
-  /// counter per vital.
+  /// Remaining uses per care item id; missing ids count as zero.
+  /// Individual items support multiple tiers per vital.
   final Map<String, int> careItemCounts;
 
   final Set<String> ownedAccessoryIds;

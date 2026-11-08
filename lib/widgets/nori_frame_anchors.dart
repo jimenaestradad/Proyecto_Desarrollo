@@ -1,30 +1,15 @@
 import 'package:flutter/material.dart';
 
-/// Pixel size of the source canvas every `nori_breathing/frame_NN.png` was
-/// exported at (see nori_breathing_sprite.dart) — all coordinates below are
-/// in this same pixel space. Because every frame shares one canvas size,
-/// converting an anchor to on-screen pixels only needs a single uniform
-/// scale factor (`spriteWidth / kNoriFrameCanvasSize.width`), applied to
-/// both axes, rather than separate x/y fractions.
+/// Source canvas pixel size shared by all breathing frames and anchor coordinates.
+/// Scale both axes uniformly by `spriteWidth / kNoriFrameCanvasSize.width`.
 const kNoriFrameCanvasSize = Size(223, 238);
 
-/// Horizontal center of Nori's face/head, in the same canvas-pixel space —
-/// the average eye-midpoint x across all 67 frames (118.1–118.7px, i.e.
-/// essentially constant; breathing shifts him vertically, not sideways).
-/// Not the same as the canvas's own horizontal center (223/2 = 111.5px) —
-/// his tail sticks out on the left, which drags the *alpha bounding box*'s
-/// center left of where his face actually is. Eye/head-anchored accessories
-/// position off of this instead of relying on Stack-alignment auto-centering,
-/// which was centering on the wrong axis by about 3% of his width.
+/// Average face center across 67 frames, in canvas pixels (118.1–118.7px).
+/// Use this for head accessories; the tail shifts the canvas center left of the face.
 const kNoriFaceCenterX = 118.3;
 
-/// Where Nori's key features sit, in canvas-pixel coordinates, for one
-/// frame of the breathing loop. Detected automatically (see the anchor
-/// extraction script referenced in docs/KNOWN_ISSUES.md) by finding the
-/// filled dark blobs that are his eyes and tail against each frame's alpha
-/// mask — not hand-eyeballed, so it stays accurate across all 67 frames
-/// including the blink frames, where the eyes are thin closed lines rather
-/// than round pupils.
+/// Per-frame breathing-loop features in canvas pixels.
+/// Extracted from dark eye/tail blobs against alpha masks, including closed-eye frames.
 class NoriFrameAnchors {
   const NoriFrameAnchors({
     required this.eyeMidY,
@@ -46,18 +31,9 @@ class NoriFrameAnchors {
   final Offset tail;
 }
 
-/// One entry per frame of [NoriBreathingSprite]'s loop (frame_00..frame_66),
-/// extracted by thresholding each frame's alpha-cutout for dark, filled
-/// interior blobs — his two eyes are the two largest such blobs inside a
-/// face-sized region (excludes the tail and the horn-shading marks, which
-/// are dark too but sit outside that region), and his tail is the largest
-/// dark blob left of/below his face. Verified by compositing crosshairs at
-/// the detected points back onto sample frames (including blink frames)
-/// and checking them by eye.
-///
-/// This is what lets an equipped accessory track Nori's real per-frame
-/// motion instead of sitting at one fixed offset (see docs/KNOWN_ISSUES.md
-/// — "Accessories use one fixed position across the whole breathing loop").
+/// Anchors for breathing frames 00–66, extracted from dark interior eye/tail blobs.
+/// Verified with composited crosshairs, including blink frames;
+/// accessories use them to follow the animation.
 const List<NoriFrameAnchors> kNoriFrameAnchors = [
   NoriFrameAnchors(
     eyeMidY: 92.9,

@@ -16,11 +16,8 @@ class UsernameTakenException implements Exception {
 /// (sign_up_screen.dart) and the Google Sign-In username picker
 /// (choose_username_screen.dart).
 abstract class UsernameRepository {
-  /// Case-insensitive availability check for live "is this taken" UI as
-  /// someone types. This is advisory only, not a reservation — the
-  /// username can be taken by someone else between this check and a later
-  /// [claim] call, so callers must still handle [UsernameTakenException]
-  /// from claim itself rather than trusting this alone.
+  /// Checks case-insensitive availability without reserving the username.
+  /// Callers must still handle [UsernameTakenException] from [claim].
   Future<bool> isAvailable(String username);
 
   /// Atomically claims [username] for [uid]. Throws
@@ -35,15 +32,9 @@ abstract class UsernameRepository {
   /// username picker.
   Future<String?> usernameForUid(String uid);
 
-  /// Atomically moves [uid]'s claim from [oldUsername] to [newUsername] --
-  /// create-new + delete-old in one transaction, per firestore.rules's own
-  /// note that a username change is spec'd that way (delete is only
-  /// allowed for the owning uid so this is the one flow that can do it).
-  /// Also writes `users/{uid}.username` in that same transaction.
-  /// Throws [UsernameTakenException] if [newUsername] is already held by
-  /// someone else. A no-op when [newUsername] equals [oldUsername]
-  /// case-insensitively (nothing to move in this collection -- the
-  /// human-typed display casing lives on users/{uid}.username, not here).
+  /// Atomically moves [uid]'s claim and updates the user's username.
+  /// Throws [UsernameTakenException] when taken; case-insensitive equality is a no-op
+  /// because display casing lives on the user document.
   Future<void> changeUsername({
     required String uid,
     required String oldUsername,
@@ -51,11 +42,8 @@ abstract class UsernameRepository {
   });
 }
 
-/// Turns an email address into a starting suggestion for the username
-/// picker — the part before '@', lowercased and stripped down to
-/// letters/digits/underscore (real email local-parts can contain '+',
-/// '.', etc. that aren't a username this app wants to allow). Falls back
-/// to a generic suggestion if that leaves nothing usable.
+/// Suggests a username from the email local part, lowercased and stripped to
+/// letters, digits and underscores; uses a generic fallback if nothing remains.
 String suggestUsernameFromEmail(String email) {
   final localPart = email.split('@').first;
   final cleaned = localPart.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), '');
@@ -120,11 +108,8 @@ class FirestoreUsernameRepository implements UsernameRepository {
     if (newKey == oldKey) return;
     final oldRef = _usernames.doc(oldKey);
     final newRef = _usernames.doc(newKey);
-    // Checked up front as well as inside the transaction: an exception thrown
-    // from a transaction handler can come back wrapped, so Edit Profile never
-    // saw UsernameTakenException and showed "Unable to save changes" for a
-    // plainly taken name. The in-transaction check stays as the atomic guard
-    // against two people claiming it at once.
+    // Check before the transaction to surface UsernameTakenException without wrapping.
+    // Keep the transaction check as the atomic guard against competing claims.
     final existing = await newRef.get();
     if (existing.exists && existing.data()?['uid'] != uid) {
       throw UsernameTakenException(newUsername);
@@ -132,15 +117,22 @@ class FirestoreUsernameRepository implements UsernameRepository {
     await _firestore.runTransaction((transaction) async {
       // All reads before writes -- Firestore transaction rule.
       final newSnapshot = await transaction.get(newRef);
-      if (newSnapshot.exists) {
+      final oldSnapshot = await transaction.get(oldRef);
+      // Already ours: a retry after the profile save failed once, when this
+      // transaction had committed. Finish the move instead of reporting "taken".
+      final newIsMine = newSnapshot.data()?['uid'] == uid;
+      if (newSnapshot.exists && !newIsMine) {
         throw UsernameTakenException(newUsername);
       }
-      transaction.set(newRef, {
-        'uid': uid,
-        'username': newUsername.trim(),
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-      transaction.delete(oldRef);
+      if (!newIsMine) {
+        transaction.set(newRef, {
+          'uid': uid,
+          'username': newUsername.trim(),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+      // The rules only allow deleting a doc that exists and is ours.
+      if (oldSnapshot.data()?['uid'] == uid) transaction.delete(oldRef);
       // Same transaction, so the index and the profile can't disagree if
       // the later profile save fails.
       transaction.update(_firestore.collection('users').doc(uid), {

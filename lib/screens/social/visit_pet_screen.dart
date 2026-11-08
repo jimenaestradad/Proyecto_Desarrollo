@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/models/pet.dart';
 import 'package:nori/models/social_content.dart';
 import 'package:nori/models/social_people.dart';
 import 'package:nori/screens/social/friend_profile_screen.dart';
@@ -11,6 +12,7 @@ import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_empty_state.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
+import 'package:nori/widgets/nori_room_stage.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/section_header.dart';
@@ -113,11 +115,26 @@ class _VisitPetScreenState extends State<VisitPetScreen>
                     ],
                   ),
                   const SizedBox(height: AppSpacing.stackLg),
-                  const NoriIconBadge(
-                    icon: Icons.pets,
-                    background: AppColors.linenAlt,
-                    size: AppSpacing.stackLg * 4,
-                    iconSize: AppSpacing.stackLg * 2,
+                  Container(
+                    // The pet sprites are sized for Home's tall stage; shorter
+                    // than this the winged form's wings and head get cropped.
+                    height: 400,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      border: Border.all(
+                        color: AppColors.ink,
+                        width: AppBorder.thin,
+                      ),
+                    ),
+                    // Nobody is "tapping Nori" here; it is the same room scene
+                    // as Home, showing the friend's pet form.
+                    child: NoriRoomStage(
+                      onTapNori: () {},
+                      stage: owner.petStage == 0
+                          ? PetEvolutionStage.baby
+                          : PetEvolutionStage.evolution1,
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.stackMd),
                   Text(owner.petName, style: AppTextStyles.headlineLg),

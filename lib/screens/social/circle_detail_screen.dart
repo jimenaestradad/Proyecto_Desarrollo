@@ -181,6 +181,10 @@ class _CircleDetailScreenState extends State<CircleDetailScreen>
                 Icons.groups_outlined,
               )
             else ...[
+              if (circle.coverAsset != null) ...[
+                CoverPhoto(asset: circle.coverAsset!),
+                const SizedBox(height: AppSpacing.stackSm),
+              ],
               NoriCard(
                 color: circle.color,
                 child: Column(

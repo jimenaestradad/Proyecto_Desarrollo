@@ -1,18 +1,8 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
-/// Thin, shared "call a callable Cloud Function, catch, surface a plain
-/// error" helper -- see docs/BACKEND.md, "Online only -- no offline mode":
-/// "One shared helper for 'call, catch, show error' is enough -- this
-/// shouldn't become a per-screen pattern." Every Jimena-owned currency-
-/// affecting action (shop purchases, bucket-list completion) goes through
-/// this instead of each screen writing its own try/catch.
-///
-/// Kept deliberately dumb: no retry queue, no optimistic update to roll
-/// back (per the same doc section, offline support is out of scope) --
-/// just "call it, and turn whatever comes back into one plain message."
-/// The one generic "something went wrong talking to the backend" message,
-/// shared by this file and lib/utils/remote_errors.dart.
+/// Shared callable-function failure message for currency actions and remote errors.
+/// This layer never retries; screens apply optimistic updates and roll back on failure.
 const serverUnreachableMessage = "Couldn't reach the server — try again.";
 
 class CloudFunctionFailure implements Exception {
@@ -24,11 +14,8 @@ class CloudFunctionFailure implements Exception {
   String toString() => message;
 }
 
-/// Invokes the callable Cloud Function [name] with [data] and returns its
-/// response payload as a map (empty if the function returned nothing/
-/// something else). Throws [CloudFunctionFailure] with a plain, user-
-/// facing message on any failure -- network, timeout, or a rejection the
-/// function itself raised (e.g. "Not enough coins.") via `HttpsError`.
+/// Calls [name] with [data], returning a response map or an empty map.
+/// Throws [CloudFunctionFailure] with a user-facing message on failure.
 Future<Map<String, dynamic>> callCloudFunction(
   String name,
   Map<String, dynamic> data, {
@@ -50,11 +37,8 @@ Future<Map<String, dynamic>> callCloudFunction(
     // blocked CORS preflight or a missing IAM binding otherwise shows up
     // only as "Couldn't reach the server", with nothing in the console.
     debugPrint('$name failed: ${e.code} ${e.message} ${e.details ?? ''}');
-    // `e.message` is whatever the function passed to `HttpsError` for an
-    // expected, user-facing rejection (e.g. "Not enough coins.",
-    // "You already own this accessory.") -- surface that as-is. Anything
-    // else (deadline-exceeded, unavailable, internal, ...) gets the
-    // generic offline-friendly message from docs/BACKEND.md.
+    // Surface expected HttpsError rejection messages as-is.
+    // Use the generic server message for unexpected or connectivity failures.
     final message = switch (e.code) {
       'failed-precondition' ||
       'invalid-argument' ||

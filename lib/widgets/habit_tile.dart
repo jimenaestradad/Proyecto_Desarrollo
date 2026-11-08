@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../models/habit.dart';
 import '../theme/app_theme.dart';
 import 'nori_icon_badge.dart';
+import 'progress_bar_pill.dart';
+import 'reward_pill.dart';
+import '../data/habit_local_edits.dart';
 
 /// A single habit row: checkbox, icon badge, name/subtitle, XP reward.
 /// Used by the Habits List screen and the Home dashboard's daily goal card.
@@ -12,11 +15,16 @@ class HabitTile extends StatelessWidget {
     required this.onToggle,
     required this.onEdit,
     this.onQuickLog,
+    this.detailed = false,
   });
 
   final Habit habit;
   final ValueChanged<bool> onToggle;
   final VoidCallback onEdit;
+
+  /// Adds the reward chip and a progress bar (empty or full, for a binary
+  /// habit) so the tile lines up with the other cards on the Habits tab.
+  final bool detailed;
 
   /// Partial-progress quick-log, e.g. "+250 ml" for a water habit. Only
   /// rendered (as a pill button replacing the XP badge) when non-null and
@@ -30,11 +38,8 @@ class HabitTile extends StatelessWidget {
         habit.isCompletedToday) {
       return false;
     }
-    // Limit habits' "target met" means "currently under the cap" — true
-    // almost the whole time, not "done logging" — so unlike every other
-    // type, hitting it shouldn't hide the quick-log button. It stays
-    // available until claimed (mirrors _LimitCard's onLogProgress gate in
-    // habit_progress_card.dart).
+    // Limit habits remain loggable until claimed: being under the cap is not done logging.
+    // Matches the limit card's progress gate.
     if (habit.type == HabitType.limit) return true;
     return !habit.isTargetMet;
   }
@@ -59,61 +64,89 @@ class HabitTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadius.sm),
           border: Border.all(color: AppColors.ink, width: AppBorder.thin),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _Checkbox(checked: completed),
-            const SizedBox(width: 12),
-            NoriIconBadge(
-              icon: habit.icon,
-              background: habit.color,
-              size: 40,
-              iconSize: 20,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    habit.name,
-                    style: AppTextStyles.bodyMd.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: completed ? AppColors.inkFaint : AppColors.ink,
-                      decoration: completed ? TextDecoration.lineThrough : null,
-                    ),
+            Row(
+              children: [
+                _Checkbox(checked: completed),
+                const SizedBox(width: 12),
+                NoriIconBadge(
+                  icon: habit.icon,
+                  background: habit.color,
+                  size: 40,
+                  iconSize: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        habit.name,
+                        style: AppTextStyles.bodyMd.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: completed ? AppColors.inkFaint : AppColors.ink,
+                          decoration: completed
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        habit.subtitle,
+                        style: AppTextStyles.labelLg.copyWith(
+                          color: AppColors.inkFaint,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    habit.subtitle,
-                    style: AppTextStyles.labelSm.copyWith(
-                      color: AppColors.inkFaint,
-                    ),
+                ),
+                const SizedBox(width: 12),
+                // No XP badge fallback when there's no quick-log button to show
+                // (binary habits, or a non-binary one that's just claimed) —
+                // leave the space empty rather than filling it with a number
+                // that isn't actionable here.
+                if (_showQuickLog)
+                  _QuickLogChip(
+                    label: habit.quickLogLabel,
+                    onTap: () => onQuickLog!(habit.quickLogStep),
+                  ),
+                if (detailed) ...[
+                  Builder(
+                    builder: (context) {
+                      final reward = habit.claimedLocally();
+                      return RewardPill(
+                        xp: reward.lastAwardedXp,
+                        coins: reward.lastAwardedCoins,
+                      );
+                    },
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            // No XP badge fallback when there's no quick-log button to show
-            // (binary habits, or a non-binary one that's just claimed) —
-            // leave the space empty rather than filling it with a number
-            // that isn't actionable here.
-            if (_showQuickLog)
-              _QuickLogChip(
-                label: habit.quickLogLabel,
-                onTap: () => onQuickLog!(habit.quickLogStep),
-              ),
-            PopupMenuButton<void>(
-              tooltip: 'More options for ${habit.name}',
-              padding: EdgeInsets.zero,
-              icon: const Icon(
-                Icons.more_vert,
-                size: 18,
-                color: AppColors.inkFaint,
-              ),
-              itemBuilder: (context) => [
-                PopupMenuItem(onTap: onEdit, child: const Text('Edit Habit')),
+                PopupMenuButton<void>(
+                  tooltip: 'More options for ${habit.name}',
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(
+                    Icons.more_vert,
+                    size: 18,
+                    color: AppColors.inkFaint,
+                  ),
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      onTap: onEdit,
+                      child: const Text('Edit habit'),
+                    ),
+                  ],
+                ),
               ],
             ),
+            if (detailed) ...[
+              const SizedBox(height: 10),
+              ProgressBarPill(
+                progress: habit.progressFraction,
+                color: AppColors.moss,
+              ),
+            ],
           ],
         ),
       ),
@@ -121,22 +154,8 @@ class HabitTile extends StatelessWidget {
   }
 }
 
-/// Partial-progress button replacing the XP badge for non-binary habits,
-/// e.g. "+250" for a water habit — see [Habit.quickLogStep] for how the
-/// amount is chosen and how a user can override it (Add/Edit Habit screen).
-/// A dedicated tap target nested inside the tile's own InkWell, so tapping
-/// it logs progress instead of toggling claim state.
-///
-/// A true pill (rounded-rect, not [CircleBorder]) — [CircleBorder] inscribes
-/// an ellipse in whatever rect it's given, so a longer label like "+15
-/// mins" got clipped into a flattened oval that crowded the text on both
-/// sides. This stays a clean circle for short labels (min 40x40) and
-/// widens gracefully for longer ones instead.
-///
-/// Moss green, matching the Complete/claim button's color on the Habits
-/// screen — not mustard, which is the streak chip's color right next to
-/// this on Home and made the two unreadable as "one's a stat, one's a
-/// button" at a glance.
+/// Dedicated non-binary progress tap target; amounts follow [Habit.quickLogStep].
+/// Uses a rounded pill to fit long labels and moss green to distinguish actions from streaks.
 class _QuickLogChip extends StatelessWidget {
   const _QuickLogChip({required this.label, required this.onTap});
 
@@ -173,27 +192,75 @@ class _QuickLogChip extends StatelessWidget {
   }
 }
 
-class _Checkbox extends StatelessWidget {
+class _Checkbox extends StatefulWidget {
   const _Checkbox({required this.checked});
 
   final bool checked;
 
   @override
+  State<_Checkbox> createState() => _CheckboxState();
+}
+
+class _CheckboxState extends State<_Checkbox>
+    with SingleTickerProviderStateMixin {
+  // A quick pop when the box gets checked, the "that counted" half of the
+  // reward cue (the other half is RewardBurst).
+  late final AnimationController _pop = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 350),
+  );
+
+  @override
+  void didUpdateWidget(_Checkbox oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.checked &&
+        widget.checked &&
+        !MediaQuery.disableAnimationsOf(context)) {
+      _pop.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pop.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final checked = widget.checked;
     return Semantics(
       checked: checked,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        width: 22,
-        height: 22,
-        decoration: BoxDecoration(
-          color: checked ? AppColors.moss : AppColors.white,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+      child: ScaleTransition(
+        scale: TweenSequence<double>([
+          TweenSequenceItem(
+            tween: Tween(
+              begin: 1.0,
+              end: 1.28,
+            ).chain(CurveTween(curve: Curves.easeOut)),
+            weight: 45,
+          ),
+          TweenSequenceItem(
+            tween: Tween(
+              begin: 1.28,
+              end: 1.0,
+            ).chain(CurveTween(curve: Curves.easeIn)),
+            weight: 55,
+          ),
+        ]).animate(_pop),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: checked ? AppColors.moss : AppColors.white,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+          ),
+          child: checked
+              ? const Icon(Icons.check, size: 15, color: AppColors.ink)
+              : null,
         ),
-        child: checked
-            ? const Icon(Icons.check, size: 15, color: AppColors.ink)
-            : null,
       ),
     );
   }

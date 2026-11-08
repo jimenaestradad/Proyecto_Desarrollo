@@ -36,11 +36,9 @@ import 'package:nori/widgets/nori_bottom_nav.dart';
 
 class _StubUserRepository implements UserRepository {
   @override
+  NoriUser? get lastKnownUser => kDemoUser;
+  @override
   Future<NoriUser> getCurrentUser() async => kDemoUser;
-  @override
-  Future<void> addXp(int amount) async {}
-  @override
-  Future<void> addCoins(int amount) async {}
   @override
   Future<void> setVacationMode(bool enabled) async {}
   @override
@@ -49,6 +47,8 @@ class _StubUserRepository implements UserRepository {
     String? username,
     String? email,
   }) async {}
+  @override
+  Future<bool> hasProfile() async => true;
 }
 
 Future<void> main() async {
@@ -71,6 +71,9 @@ Future<void> main() async {
   );
 }
 
+/// `?uid=alexh` picks the friend for the profile and pet screens.
+String get _uid => Uri.base.queryParameters['uid'] ?? 'jimena';
+
 /// `?screen=name` opens a screen directly (default: the hub) so each one can
 /// be screenshotted without click-navigating to it.
 Widget _screenFor(String? name) => switch (name) {
@@ -78,8 +81,8 @@ Widget _screenFor(String? name) => switch (name) {
   'requests' => const FriendsScreen(initialTab: 1),
   'add' => const AddFriendScreen(),
   'invite' => const InviteFriendsScreen(),
-  'profile' => const FriendProfileScreen(userId: 'jimena'),
-  'pet' => const VisitPetScreen(userId: 'jimena'),
+  'profile' => FriendProfileScreen(userId: _uid),
+  'pet' => VisitPetScreen(userId: _uid),
   'privacy' => const SocialPrivacyScreen(),
   'feed' => const FeedScreen(),
   'post' => const PostDetailScreen(postId: 'p1'),
@@ -103,5 +106,5 @@ Widget _screenFor(String? name) => switch (name) {
       child: SocialIntroView(onFindFriends: () {}, onInvite: () {}),
     ),
   ),
-  _ => const SocialScreen(active: true),
+  _ => SocialScreen(active: true, onOpenHome: () {}),
 };

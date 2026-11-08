@@ -46,17 +46,8 @@ class MockHabitCategoryRepository implements HabitCategoryRepository {
   }
 }
 
-/// Real Firestore-backed [HabitCategoryRepository]. Per docs/BACKEND.md,
-/// `habitCategories` lives as a plain string array on the *same*
-/// `/users/{uid}` document [FirestoreUserRepository] reads/writes — there's
-/// no separate collection — so this takes just a uid, not a whole user doc
-/// dependency, to keep the two independently constructible the way
-/// [MockHabitCategoryRepository] and [MockUserRepository] are today.
-///
-/// NOT WIRED INTO [AppData] yet, for the same reason as
-/// FirestoreUserRepository: the `/users/{uid}` doc this reads/writes isn't
-/// created by anything until `onUserCreate` (a still-unbuilt Cloud
-/// Function) exists. See firestore_user_repository.dart's doc comment.
+/// Stores habit categories as an array on `/users/{uid}`.
+/// Takes a uid so it can be constructed independently of the user repository.
 class FirestoreHabitCategoryRepository implements HabitCategoryRepository {
   FirestoreHabitCategoryRepository({
     required String uid,
@@ -74,11 +65,8 @@ class FirestoreHabitCategoryRepository implements HabitCategoryRepository {
   Future<List<String>> getCategories() async {
     final snapshot = await _doc.get();
     final raw = snapshot.data()?['habitCategories'] as List<dynamic>?;
-    // Empty rather than throwing on a missing field, unlike
-    // FirestoreUserRepository.getCurrentUser() -- onUserCreate's exact
-    // provisioning values are still being worked out (docs/BACKEND.md
-    // doesn't list a habitCategories default in its provisioning table),
-    // so treat "field not there yet" as "no categories yet", not an error.
+    // Treat an absent habitCategories field as no categories;
+    // provisioning may not have supplied a default.
     return List.unmodifiable(raw?.cast<String>() ?? const <String>[]);
   }
 
@@ -117,12 +105,20 @@ class FirestoreHabitCategoryRepository implements HabitCategoryRepository {
 
   @override
   Future<void> deleteCategory(String name) async {
-    // Matches the mock's "keep at least one category" guard -- read first
-    // rather than blindly arrayRemove-ing down to zero.
-    final categories = await getCategories();
-    if (categories.length <= 1) return;
-    await _doc.update({
-      'habitCategories': FieldValue.arrayRemove([name]),
+    // Matches the mock's "keep at least one category" guard. Read and write
+    // in one transaction so two devices can't each see two categories and
+    // delete down to zero.
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(_doc);
+      final categories = List<String>.from(
+        (snapshot.data()?['habitCategories'] as List<dynamic>?)
+                ?.cast<String>() ??
+            const <String>[],
+      );
+      if (categories.length <= 1 || !categories.contains(name)) return;
+      transaction.update(_doc, {
+        'habitCategories': FieldValue.arrayRemove([name]),
+      });
     });
   }
 }

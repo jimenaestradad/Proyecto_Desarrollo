@@ -32,7 +32,10 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen>
     with RemoteLoadState<CalendarScreen> {
   NoriUser? _user;
-  CalendarMonthStats? _stats;
+
+  /// Every month read so far, so stepping back to one shows it at once and
+  /// refreshes it behind the scenes.
+  final Map<int, CalendarMonthStats> _months = {};
   late int _year;
   late int _month;
 
@@ -48,18 +51,34 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   void didUpdateWidget(covariant CalendarScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.active && widget.active) _loadData();
+    if (!oldWidget.active && widget.active) {
+      // Show the newest XP/coins at once; the reload below still has the last word.
+      _user = AppData.user.lastKnownUser ?? _user;
+      _loadData();
+    }
   }
 
-  Future<void> _loadData() => guardedLoad(_fetchData, hasData: _stats != null);
+  static int _monthKey(int year, int month) => year * 100 + month;
+
+  /// The viewed month, or null while it is still being read.
+  CalendarMonthStats? get _stats => _months[_monthKey(_year, _month)];
+
+  Future<void> _loadData() =>
+      guardedLoad(_fetchData, hasData: _user != null && _stats != null);
 
   Future<void> _fetchData() async {
-    final user = await AppData.user.getCurrentUser();
-    final stats = await AppData.calendar.getMonth(_year, _month);
+    // Captured because the viewer may step to another month mid-fetch; this
+    // result still belongs to the month it was asked for.
+    final year = _year;
+    final month = _month;
+    final (user, stats) = await (
+      AppData.user.getCurrentUser(),
+      AppData.calendar.getMonth(year, month),
+    ).wait;
     if (!mounted) return;
     setState(() {
       _user = user;
-      _stats = stats;
+      _months[_monthKey(year, month)] = stats;
     });
   }
 
@@ -85,7 +104,6 @@ class _CalendarScreenState extends State<CalendarScreen>
     setState(() {
       _year = year;
       _month = month;
-      _stats = null;
     });
     _loadData();
   }
@@ -110,7 +128,7 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     return Scaffold(
       body: SafeArea(
-        child: user == null || stats == null
+        child: user == null
             ? error != null
                   ? LoadErrorView(error: error, onRetry: _loadData)
                   : const Center(child: CircularProgressIndicator())
@@ -131,7 +149,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                       ),
                       Expanded(
                         child: Text(
-                          '${stats.monthLabel} ${stats.year}',
+                          '${monthFull(_month)} $_year',
                           textAlign: TextAlign.center,
                           style: AppTextStyles.headlineLgMobile,
                         ),
@@ -164,45 +182,73 @@ class _CalendarScreenState extends State<CalendarScreen>
                     icon: Icons.edit_calendar,
                     message: 'Tap a past day to log or edit its habits.',
                   ),
-                  GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    crossAxisSpacing: AppSpacing.gutter,
-                    mainAxisSpacing: AppSpacing.gutter,
-                    childAspectRatio: 1.7,
-                    children: [
-                      _CalendarStatCard(
-                        icon: Icons.local_fire_department,
-                        iconColor: AppColors.terracottaDark,
-                        value: '${stats.currentStreak}',
-                        label: 'Current Streak',
-                      ),
-                      _CalendarStatCard(
-                        icon: Icons.star,
-                        iconColor: AppColors.mustardDark,
-                        value: '${stats.perfectDays}',
-                        label: 'Perfect Days',
-                      ),
-                      _CalendarStatCard(
-                        icon: Icons.check_circle,
-                        iconColor: AppColors.mossDark,
-                        value: '${stats.habitsDone}',
-                        label: 'Habits Done',
-                      ),
-                      _CalendarStatCard(
-                        icon: Icons.sentiment_dissatisfied,
-                        iconColor: AppColors.inkMuted,
-                        value: '${stats.missedDays}',
-                        label: 'Missed Days',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.stackMd),
-                  _CalendarCard(days: stats.days, onDayTap: _openDayDetail),
+                  if (stats == null)
+                    _MonthLoading(error: error, onRetry: _loadData)
+                  else ...[
+                    GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: 2,
+                      crossAxisSpacing: AppSpacing.gutter,
+                      mainAxisSpacing: AppSpacing.gutter,
+                      childAspectRatio: 1.7,
+                      children: [
+                        _CalendarStatCard(
+                          icon: Icons.local_fire_department,
+                          iconColor: AppColors.terracottaDark,
+                          value: '${stats.currentStreak}',
+                          label: 'Current streak',
+                        ),
+                        _CalendarStatCard(
+                          icon: Icons.star,
+                          iconColor: AppColors.mustardDark,
+                          value: '${stats.perfectDays}',
+                          label: 'Perfect days',
+                        ),
+                        _CalendarStatCard(
+                          icon: Icons.check_circle,
+                          iconColor: AppColors.mossDark,
+                          value: '${stats.habitsDone}',
+                          label: 'Habits done',
+                        ),
+                        _CalendarStatCard(
+                          icon: Icons.event_busy,
+                          iconColor: AppColors.inkMuted,
+                          value: '${stats.missedDays}',
+                          label: 'Missed days',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.stackMd),
+                    _CalendarCard(days: stats.days, onDayTap: _openDayDetail),
+                  ],
                 ],
               ),
       ),
+    );
+  }
+}
+
+/// Stands in for a month's stats and grid while it is being read, so the
+/// month title and arrows stay put and respond to the tap.
+class _MonthLoading extends StatelessWidget {
+  const _MonthLoading({required this.error, required this.onRetry});
+
+  /// Set when reading this month failed; shows a retry instead of spinning.
+  final Object? error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (error != null) {
+      return SizedBox(
+        height: 320,
+        child: LoadErrorView(error: error!, onRetry: onRetry),
+      );
+    }
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: AppSpacing.stackLg * 2),
+      child: Center(child: CircularProgressIndicator()),
     );
   }
 }
@@ -512,7 +558,10 @@ class _DayDetailSheet extends StatefulWidget {
 }
 
 class _DayDetailSheetState extends State<_DayDetailSheet>
-    with RemoteLoadState<_DayDetailSheet>, HabitDayActions<_DayDetailSheet> {
+    with
+        RemoteLoadState<_DayDetailSheet>,
+        OptimisticHabits<_DayDetailSheet>,
+        HabitDayActions<_DayDetailSheet> {
   List<Habit>? _habits;
 
   @override
@@ -524,8 +573,9 @@ class _DayDetailSheetState extends State<_DayDetailSheet>
   Future<void> _load() => guardedLoad(_reload, hasData: _habits != null);
 
   Future<void> _reload() async {
+    final stamp = editStamp;
     final habits = await AppData.habits.getHabitsForDate(widget.date);
-    if (!mounted) return;
+    if (!mounted || stamp != editStamp) return;
     setState(() => _habits = habits);
   }
 
@@ -534,6 +584,22 @@ class _DayDetailSheetState extends State<_DayDetailSheet>
 
   @override
   Future<void> reloadActionHabits() => _reload();
+
+  @override
+  Object? snapshotHabits() => _habits;
+
+  @override
+  void restoreHabitSnapshot(Object snapshot) =>
+      _habits = snapshot as List<Habit>;
+
+  @override
+  void applyHabitChange(String habitId, Habit Function(Habit) change) {
+    final habits = _habits;
+    if (habits == null) return;
+    setState(() {
+      _habits = [for (final h in habits) h.id == habitId ? change(h) : h];
+    });
+  }
 
   Future<void> _editHabitDefinition(Habit habit) async {
     await Navigator.of(context).push<bool>(

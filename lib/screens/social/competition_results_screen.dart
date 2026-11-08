@@ -54,7 +54,9 @@ class _CompetitionResultsScreenState extends State<CompetitionResultsScreen>
 
   void _rematch() => Navigator.push(
     context,
-    MaterialPageRoute(builder: (_) => const CreateCompetitionScreen()),
+    MaterialPageRoute(
+      builder: (_) => CreateCompetitionScreen(rematchOf: _competition),
+    ),
   );
   @override
   Widget build(BuildContext context) => Scaffold(

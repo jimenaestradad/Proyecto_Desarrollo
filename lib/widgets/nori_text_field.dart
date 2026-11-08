@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 
 /// Labeled, pill-bordered text field — the shape [SignUpScreen] originally
@@ -15,6 +16,7 @@ class NoriTextField extends StatelessWidget {
     this.keyboardType,
     this.textInputAction,
     this.autofillHints,
+    this.inputFormatters,
     this.onSubmitted,
     this.onChanged,
     this.suffixIcon,
@@ -31,6 +33,7 @@ class NoriTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
   final Iterable<String>? autofillHints;
+  final List<TextInputFormatter>? inputFormatters;
   final ValueChanged<String>? onSubmitted;
 
   /// Fires on every keystroke — used for live validation (e.g. the sign-up
@@ -78,6 +81,7 @@ class NoriTextField extends StatelessWidget {
             keyboardType: keyboardType,
             textInputAction: textInputAction,
             autofillHints: autofillHints,
+            inputFormatters: inputFormatters,
             onSubmitted: onSubmitted,
             onChanged: onChanged,
             style: AppTextStyles.bodyMd,

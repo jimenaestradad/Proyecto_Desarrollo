@@ -43,10 +43,14 @@ class Competition {
     this.circleId,
     this.submittedToday = false,
     this.invitedById,
+    this.coverAsset,
   });
 
   final String id;
   final String title;
+
+  /// Bundled cover photo for the showcase competitions; null means no banner.
+  final String? coverAsset;
   final String description;
   final CompetitionType type;
   final String habitName;
@@ -119,6 +123,7 @@ class Competition {
       circleId: circleId,
       submittedToday: submittedToday ?? this.submittedToday,
       invitedById: invitedById,
+      coverAsset: coverAsset,
     );
   }
 }

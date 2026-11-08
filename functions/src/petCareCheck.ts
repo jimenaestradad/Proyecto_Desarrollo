@@ -1,46 +1,56 @@
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { logger } from "firebase-functions/v2";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { PET_CARE_COOLDOWN_MS, notificationRefs, petCareMessage } from "./notifications";
+import { PET_CARE_COOLDOWN_MS, isPetCareDormant, notificationRefs, petCareMessage } from "./notifications";
 
-/**
- * Hourly: notifies each user whose pet has a vital below LOW_VITAL, at most
- * once per PET_CARE_COOLDOWN_MS. Time-based, so no user action triggers
- * it. Pet decay is lazy (applied when the app reads the pet), so this
- * computes the decayed values itself and never writes the pet doc.
- *
- * Reads every pet once an hour: 24 reads/user/day, fine at this scale. A
- * much bigger user base would want a query on a stored "low since" field.
- */
+// Hourly low-vital notifications respect PET_CARE_COOLDOWN_MS.
+// Computes lazy pet decay locally without writing the pet document.
 export const petCareCheck = onSchedule("every 60 minutes", async () => {
   const db = getFirestore();
   const now = Date.now();
   const pets = await db.collectionGroup("pet").get();
   let sent = 0;
+  let dormant = 0;
+  let failed = 0;
 
   for (const petSnap of pets.docs) {
     const userRef = petSnap.ref.parent.parent;
     if (petSnap.id !== "main" || !userRef) continue;
-    const message = petCareMessage(petSnap.data(), now);
-    if (!message) continue;
+    // Abandoned accounts stop getting reminders (the notifications collection is append-only).
+    if (isPetCareDormant(petSnap.data(), now)) {
+      dormant++;
+      continue;
+    }
+    if (!petCareMessage(petSnap.data(), now)) continue;
 
     const refs = notificationRefs(userRef);
-    const wrote = await db.runTransaction(async (tx) => {
-      const last = (await tx.get(refs.state)).get("petCareAt");
-      if (last instanceof Timestamp && now - last.toMillis() < PET_CARE_COOLDOWN_MS) {
-        return false;
-      }
-      tx.set(refs.collection.doc(), {
-        kind: "petCare",
-        message,
-        createdAt: FieldValue.serverTimestamp(),
-        isRead: false,
+    try {
+      const wrote = await db.runTransaction(async (tx) => {
+        // Re-read here: the user may have cared for the pet since the scan above.
+        const [freshPet, state] = await Promise.all([tx.get(petSnap.ref), tx.get(refs.state)]);
+        const message = petCareMessage(freshPet.data() ?? {}, now);
+        const last = state.get("petCareAt");
+        if (!message || (last instanceof Timestamp && now - last.toMillis() < PET_CARE_COOLDOWN_MS)) {
+          return false;
+        }
+        tx.set(refs.collection.doc(), {
+          kind: "petCare",
+          message,
+          createdAt: FieldValue.serverTimestamp(),
+          isRead: false,
+        });
+        tx.set(refs.state, { petCareAt: FieldValue.serverTimestamp() }, { merge: true });
+        return true;
       });
-      tx.set(refs.state, { petCareAt: FieldValue.serverTimestamp() }, { merge: true });
-      return true;
-    });
-    if (wrote) sent++;
+      if (wrote) sent++;
+    } catch (error) {
+      // One user's bad data or failed write must not stop everyone after them.
+      failed++;
+      logger.error(`petCareCheck: skipped ${userRef.id}`, error);
+    }
   }
 
-  logger.info(`petCareCheck: ${pets.size} pets checked, ${sent} notified.`);
+  logger.info(
+    `petCareCheck: ${pets.size} pets checked, ${dormant} dormant, ${sent} notified, ${failed} failed.`,
+  );
 });

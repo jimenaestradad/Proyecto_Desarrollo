@@ -5,9 +5,7 @@ import { userDocRefs } from "./docRefs";
 import { parseHabitId, requireAuth } from "./requestArgs";
 import { asNumber, coinsAfterReversal, levelFields, rewardPaid, readLevelState, syncPetStage } from "./habitTransaction";
 
-// A habit can only be fully deleted while it has almost no history — at most
-// this many days with any logged progress or a claim. Anything with more has
-// to be archived instead (docs/BACKEND.md, "Deleting vs. archiving a habit").
+// Maximum days with progress or a claim before a habit must be archived instead.
 // Keep in sync with kMaxDeletableActiveDays in lib/data/habit_repository.dart.
 export const MAX_DELETABLE_ACTIVE_DAYS = 2;
 
@@ -16,11 +14,9 @@ export interface DeleteHabitResult {
   coinsDelta: number;
 }
 
-// Deletes the habit doc and every one of its habitLogs, taking back whatever
-// those logs paid (their stored awardedXp/awardedCoins, rejected if the coins
-// were already spent) and re-syncing pet.stage, all in one transaction.
-// Unlike unclaim, this does reverse: otherwise create → claim → delete would
-// mint. Rejects a habit with real history. The sunglasses gift stays.
+// Deletes a habit and its logs, reverses stored payouts, and syncs pet.stage atomically.
+// Rejects real history or spent coins to prevent create → claim → delete minting.
+// The sunglasses gift stays.
 export async function runDeleteHabit(uid: string, habitId: string): Promise<DeleteHabitResult> {
   const db = getFirestore();
   const { user: userRef, habits, pet: petRef, habitLogs } = userDocRefs(db, uid);

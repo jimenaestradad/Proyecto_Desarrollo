@@ -25,13 +25,14 @@ import 'package:nori/screens/social/post_detail_screen.dart';
 import 'package:nori/screens/social/post_proof_screen.dart';
 import 'package:nori/screens/social/social_intro_view.dart';
 import 'package:nori/screens/social/social_load_state.dart';
-import 'package:nori/screens/social/social_notifications_screen.dart';
+import 'package:nori/screens/notifications/notifications_bell.dart';
+import 'package:nori/screens/notifications/notifications_screen.dart'
+    show NotificationFilter;
 import 'package:nori/screens/social/social_privacy_screen.dart';
 import 'package:nori/screens/social/widgets/social_widgets.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/formatting.dart';
 import 'package:nori/utils/remote_errors.dart';
-import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/nori_avatar.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_choice_chip.dart';
@@ -44,9 +45,17 @@ import 'package:nori/widgets/section_header.dart';
 import 'package:nori/widgets/streak_chip.dart';
 import 'package:nori/widgets/tactile_button.dart';
 import 'package:nori/widgets/xp_pill.dart';
+import '../../widgets/scroll_edge_fade.dart';
 
 class SocialScreen extends StatefulWidget {
-  const SocialScreen({super.key, required this.active});
+  const SocialScreen({
+    super.key,
+    required this.active,
+    required this.onOpenHome,
+  });
+
+  /// A "Take care" button in the shared inbox was tapped: go to Home.
+  final VoidCallback onOpenHome;
 
   /// See [HomeScreen.active] — same [IndexedStack] staleness fix. Without it
   /// the header kept the XP from the first visit after claims on other tabs.
@@ -67,7 +76,6 @@ class _SocialScreenState extends State<SocialScreen>
   List<LeaderboardEntry> _leaderboard = [];
   List<Competition> _competitions = [];
   List<SocialCircle> _circles = [];
-  int _unread = 0;
   final Set<String> _nudged = {};
   final Set<String> _nudging = {};
   bool _resetting = false;
@@ -75,7 +83,11 @@ class _SocialScreenState extends State<SocialScreen>
   @override
   void didUpdateWidget(covariant SocialScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.active && widget.active) reload();
+    if (!oldWidget.active && widget.active) {
+      // Show the newest XP at once; the reload below still has the last word.
+      if (hasLoaded) _user = AppData.user.lastKnownUser ?? _user;
+      reload();
+    }
   }
 
   @override
@@ -93,7 +105,6 @@ class _SocialScreenState extends State<SocialScreen>
         AppData.social.getLeaderboard(),
         AppData.social.getCompetitions(),
         AppData.social.getCircles(),
-        AppData.social.getUnreadNotificationCount(),
       ).wait,
     ).wait;
     if (!mounted) return;
@@ -109,7 +120,6 @@ class _SocialScreenState extends State<SocialScreen>
       _leaderboard = activity.$1;
       _competitions = activity.$2;
       _circles = activity.$3;
-      _unread = activity.$4;
     });
   }
 
@@ -174,13 +184,9 @@ class _SocialScreenState extends State<SocialScreen>
       children: [
         XpPill(xp: _user.totalXp, compact: true),
         const SizedBox(width: AppSpacing.unit),
-        CircularIconButton(
-          icon: Icons.notifications_none,
-          tooltip: _unread > 0
-              ? 'Notifications, $_unread unread'
-              : 'Notifications',
-          showDot: _unread > 0,
-          onPressed: () => _open(const SocialNotificationsScreen()),
+        NotificationsBell(
+          onCarePet: widget.onOpenHome,
+          initialFilter: NotificationFilter.social,
         ),
         PopupMenuButton<_HubAction>(
           tooltip: 'Social options',
@@ -257,51 +263,53 @@ class _SocialScreenState extends State<SocialScreen>
           (request) => request.direction == FriendRequestDirection.incoming,
         )
         .length;
-    return SingleChildScrollView(
-      clipBehavior: Clip.none,
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              NoriChoiceChip(
-                label: 'Friends (${_friends.length})',
-                selected: false,
-                icon: Icons.people_outline,
-                onTap: () => _open(const FriendsScreen()),
-              ),
-              if (pending > 0)
-                Positioned(
-                  top: -AppSpacing.unit,
-                  right: 0,
-                  child: NoriCard(
-                    color: AppColors.mustard,
-                    radius: AppRadius.full,
-                    borderWidth: AppBorder.thin,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.unit,
-                    ),
-                    child: Text('$pending', style: AppTextStyles.labelSm),
-                  ),
+    return ScrollEdgeFade(
+      child: SingleChildScrollView(
+        clipBehavior: Clip.none,
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                NoriChoiceChip(
+                  label: 'Friends (${_friends.length})',
+                  selected: false,
+                  icon: Icons.people_outline,
+                  onTap: () => _open(const FriendsScreen()),
                 ),
-            ],
-          ),
-          const SizedBox(width: AppSpacing.unit),
-          NoriChoiceChip(
-            label: 'Add',
-            selected: false,
-            icon: Icons.person_add_outlined,
-            onTap: () => _open(const AddFriendScreen()),
-          ),
-          const SizedBox(width: AppSpacing.unit),
-          NoriChoiceChip(
-            label: 'Post proof',
-            selected: false,
-            icon: Icons.add_a_photo_outlined,
-            onTap: () => _open(const PostProofScreen()),
-          ),
-        ],
+                if (pending > 0)
+                  Positioned(
+                    top: -AppSpacing.unit,
+                    right: 0,
+                    child: NoriCard(
+                      color: AppColors.mustard,
+                      radius: AppRadius.full,
+                      borderWidth: AppBorder.thin,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.unit,
+                      ),
+                      child: Text('$pending', style: AppTextStyles.labelSm),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: AppSpacing.unit),
+            NoriChoiceChip(
+              label: 'Add',
+              selected: false,
+              icon: Icons.person_add_outlined,
+              onTap: () => _open(const AddFriendScreen()),
+            ),
+            const SizedBox(width: AppSpacing.unit),
+            NoriChoiceChip(
+              label: 'Post proof',
+              selected: false,
+              icon: Icons.add_a_photo_outlined,
+              onTap: () => _open(const PostProofScreen()),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -330,133 +338,138 @@ class _SocialScreenState extends State<SocialScreen>
     final leader = leaders.isEmpty ? null : leaders.first;
     return SizedBox(
       height: 190,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: [
-          if (streak != null && friend != null) ...[
-            _highlight(
-              color: AppColors.mossLight,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Best friend streak',
-                        style: AppTextStyles.labelLg,
-                      ),
-                    ),
-                    StreakChip(streak: streak.current),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.unit),
-                InkWell(
-                  onTap: () => _openProfile(friend),
-                  child: Row(
+      child: ScrollEdgeFade(
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          children: [
+            if (streak != null && friend != null) ...[
+              _highlight(
+                color: AppColors.mossLight,
+                children: [
+                  Row(
                     children: [
-                      SocialAvatar(user: friend, size: 48),
-                      const SizedBox(width: AppSpacing.stackSm),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              friend.shortName,
-                              style: AppTextStyles.headlineLgMobile,
-                            ),
-                            Text(
-                              friend.statusLine,
-                              style: AppTextStyles.bodyMd,
-                            ),
-                          ],
+                        child: Text(
+                          'Best friend streak',
+                          style: AppTextStyles.labelLg,
                         ),
+                      ),
+                      StreakChip(streak: streak.current),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.unit),
+                  InkWell(
+                    onTap: () => _openProfile(friend),
+                    child: Row(
+                      children: [
+                        SocialAvatar(user: friend, size: 48),
+                        const SizedBox(width: AppSpacing.stackSm),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                friend.shortName,
+                                style: AppTextStyles.headlineLgMobile,
+                              ),
+                              Text(
+                                friend.statusLine,
+                                style: AppTextStyles.bodyMd,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.unit),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TactileButton(
+                          label: _nudged.contains(friend.id)
+                              ? 'Nudged'
+                              : 'Nudge',
+                          backgroundColor: AppColors.white,
+                          onPressed:
+                              _nudged.contains(friend.id) ||
+                                  _nudging.contains(friend.id)
+                              ? null
+                              : () => _nudge(friend),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _open(
+                          FriendStreakDetailScreen(friendId: friend.id),
+                        ),
+                        child: Text('Details', style: AppTextStyles.labelLg),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: AppSpacing.unit),
+                ],
+              ),
+              const SizedBox(width: AppSpacing.stackSm),
+            ],
+            _highlight(
+              color: AppColors.mustardLight,
+              children: [
+                Text('Leaderboard', style: AppTextStyles.labelLg),
+                const SizedBox(height: AppSpacing.stackSm),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
                   children: [
-                    Expanded(
-                      child: TactileButton(
-                        label: _nudged.contains(friend.id) ? 'Nudged' : 'Nudge',
-                        backgroundColor: AppColors.white,
-                        onPressed:
-                            _nudged.contains(friend.id) ||
-                                _nudging.contains(friend.id)
-                            ? null
-                            : () => _nudge(friend),
-                      ),
+                    Text(
+                      mine == null ? 'Join in' : '#${mine.rank}',
+                      style: AppTextStyles.headlineLg,
                     ),
-                    TextButton(
-                      onPressed: () =>
-                          _open(FriendStreakDetailScreen(friendId: friend.id)),
-                      child: Text('Details', style: AppTextStyles.labelLg),
-                    ),
+                    const SizedBox(width: AppSpacing.unit),
+                    Text('this week', style: AppTextStyles.bodyMd),
                   ],
+                ),
+                Text(
+                  mine == null
+                      ? 'Build habits with friends to find your place.'
+                      : mine.rank == 1
+                      ? "${formatThousands(mine.xp)} XP · You're #1"
+                      : '${formatThousands(mine.xp)} XP${leader == null ? '' : ' · ${formatThousands((leader.xp - mine.xp).clamp(0, leader.xp))} behind #1 ${leader.user.firstName}'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.bodyMd,
+                ),
+                SectionLink(
+                  label: 'View standings',
+                  onTap: () => _open(const LeaderboardScreen()),
                 ),
               ],
             ),
             const SizedBox(width: AppSpacing.stackSm),
+            _highlight(
+              color: AppColors.sky,
+              children: [
+                Text('Competitions', style: AppTextStyles.labelLg),
+                const SizedBox(height: AppSpacing.stackSm),
+                Text(
+                  '${active.length} in progress',
+                  style: AppTextStyles.headlineLgMobile,
+                ),
+                const SizedBox(height: AppSpacing.stackSm),
+                Text(
+                  active.isEmpty
+                      ? 'Start a little friendly competition.'
+                      : '${active.first.title} · ${active.first.timeLeftLabel}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.bodyMd,
+                ),
+                SectionLink(
+                  label: 'Check ranks',
+                  onTap: () => _open(const CompetitionsScreen()),
+                ),
+              ],
+            ),
           ],
-          _highlight(
-            color: AppColors.mustardLight,
-            children: [
-              Text('Leaderboard', style: AppTextStyles.labelLg),
-              const SizedBox(height: AppSpacing.stackSm),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    mine == null ? 'Join in' : '#${mine.rank}',
-                    style: AppTextStyles.headlineLg,
-                  ),
-                  const SizedBox(width: AppSpacing.unit),
-                  Text('this week', style: AppTextStyles.bodyMd),
-                ],
-              ),
-              Text(
-                mine == null
-                    ? 'Build habits with friends to find your place.'
-                    : mine.rank == 1
-                    ? "${formatThousands(mine.xp)} XP · You're #1"
-                    : '${formatThousands(mine.xp)} XP${leader == null ? '' : ' · ${formatThousands((leader.xp - mine.xp).clamp(0, leader.xp))} behind #1 ${leader.user.firstName}'}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.bodyMd,
-              ),
-              SectionLink(
-                label: 'View standings',
-                onTap: () => _open(const LeaderboardScreen()),
-              ),
-            ],
-          ),
-          const SizedBox(width: AppSpacing.stackSm),
-          _highlight(
-            color: AppColors.sky,
-            children: [
-              Text('Competitions', style: AppTextStyles.labelLg),
-              const SizedBox(height: AppSpacing.stackSm),
-              Text(
-                '${active.length} in progress',
-                style: AppTextStyles.headlineLgMobile,
-              ),
-              const SizedBox(height: AppSpacing.stackSm),
-              Text(
-                active.isEmpty
-                    ? 'Start a little friendly competition.'
-                    : '${active.first.title} · ${active.first.timeLeftLabel}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.bodyMd,
-              ),
-              SectionLink(
-                label: 'Check ranks',
-                onTap: () => _open(const CompetitionsScreen()),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -492,60 +505,62 @@ class _SocialScreenState extends State<SocialScreen>
 
   Widget _streakStrip() => SizedBox(
     height: 180,
-    child: ListView.separated(
-      scrollDirection: Axis.horizontal,
-      itemCount: _streaks.length,
-      separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.stackSm),
-      itemBuilder: (context, index) {
-        final streak = _streaks[index];
-        final friend = _directory[streak.friendId];
-        if (friend == null) return const SizedBox.shrink();
-        return SizedBox(
-          width: 128,
-          child: NoriCard(
-            padding: const EdgeInsets.all(AppSpacing.stackSm),
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  InkWell(
-                    onTap: () => _openProfile(friend),
-                    child: Column(
-                      children: [
-                        SocialAvatar(user: friend),
-                        const SizedBox(height: AppSpacing.unit),
-                        Text(friend.firstName, style: AppTextStyles.labelLg),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.unit),
-                  InkWell(
-                    onTap: () =>
-                        _open(FriendStreakDetailScreen(friendId: friend.id)),
-                    child: StreakChip(streak: streak.current),
-                  ),
-                  if (streak.days.isNotEmpty && streak.atRisk) ...[
-                    const SizedBox(height: AppSpacing.unit),
-                    NoriCard(
-                      color: AppColors.terracotta,
-                      radius: AppRadius.full,
-                      borderWidth: AppBorder.thin,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.unit,
+    child: ScrollEdgeFade(
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _streaks.length,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.stackSm),
+        itemBuilder: (context, index) {
+          final streak = _streaks[index];
+          final friend = _directory[streak.friendId];
+          if (friend == null) return const SizedBox.shrink();
+          return SizedBox(
+            width: 128,
+            child: NoriCard(
+              padding: const EdgeInsets.all(AppSpacing.stackSm),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    InkWell(
+                      onTap: () => _openProfile(friend),
+                      child: Column(
+                        children: [
+                          SocialAvatar(user: friend),
+                          const SizedBox(height: AppSpacing.unit),
+                          Text(friend.firstName, style: AppTextStyles.labelLg),
+                        ],
                       ),
-                      child: Text(
-                        'At risk',
-                        style: AppTextStyles.labelSm.copyWith(
-                          color: AppColors.ink,
+                    ),
+                    const SizedBox(height: AppSpacing.unit),
+                    InkWell(
+                      onTap: () =>
+                          _open(FriendStreakDetailScreen(friendId: friend.id)),
+                      child: StreakChip(streak: streak.current),
+                    ),
+                    if (streak.days.isNotEmpty && streak.atRisk) ...[
+                      const SizedBox(height: AppSpacing.unit),
+                      NoriCard(
+                        color: AppColors.terracotta,
+                        radius: AppRadius.full,
+                        borderWidth: AppBorder.thin,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.unit,
+                        ),
+                        child: Text(
+                          'At risk',
+                          style: AppTextStyles.labelSm.copyWith(
+                            color: AppColors.ink,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     ),
   );
 
@@ -625,43 +640,75 @@ class _SocialScreenState extends State<SocialScreen>
 
   Widget _circleStrip() => SizedBox(
     height: 76,
-    child: ListView(
-      scrollDirection: Axis.horizontal,
-      children: [
-        for (final circle in _circles) ...[
+    child: ScrollEdgeFade(
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          for (final circle in _circles) ...[
+            SizedBox(
+              width: 188,
+              child: InkWell(
+                onTap: () => _open(CircleDetailScreen(circleId: circle.id)),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                child: NoriCard(
+                  color: circle.color,
+                  padding: const EdgeInsets.all(AppSpacing.stackSm),
+                  child: Row(
+                    children: [
+                      NoriIconBadge(
+                        icon: circle.icon,
+                        background: AppColors.white,
+                        size: 40,
+                        iconSize: 20,
+                      ),
+                      const SizedBox(width: AppSpacing.stackSm),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              circle.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.labelLg,
+                            ),
+                            Text(
+                              '${circle.friendCount} friends',
+                              style: AppTextStyles.labelSm,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.stackSm),
+          ],
           SizedBox(
-            width: 188,
+            width: 148,
             child: InkWell(
-              onTap: () => _open(CircleDetailScreen(circleId: circle.id)),
+              onTap: () => _open(const CircleEditorScreen()),
               borderRadius: BorderRadius.circular(AppRadius.sm),
               child: NoriCard(
-                color: circle.color,
+                color: AppColors.linenAlt,
+                borderColor: AppColors.inkFaint,
+                borderWidth: AppBorder.thin,
                 padding: const EdgeInsets.all(AppSpacing.stackSm),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    NoriIconBadge(
-                      icon: circle.icon,
-                      background: AppColors.white,
-                      size: 40,
-                      iconSize: 20,
+                    const Icon(
+                      Icons.add_circle_outline,
+                      color: AppColors.inkFaint,
                     ),
-                    const SizedBox(width: AppSpacing.stackSm),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            circle.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.labelLg,
-                          ),
-                          Text(
-                            '${circle.friendCount} friends',
-                            style: AppTextStyles.labelSm,
-                          ),
-                        ],
+                    const SizedBox(width: AppSpacing.unit),
+                    Text(
+                      'New circle',
+                      style: AppTextStyles.labelLg.copyWith(
+                        color: AppColors.inkFaint,
                       ),
                     ),
                   ],
@@ -669,38 +716,8 @@ class _SocialScreenState extends State<SocialScreen>
               ),
             ),
           ),
-          const SizedBox(width: AppSpacing.stackSm),
         ],
-        SizedBox(
-          width: 148,
-          child: InkWell(
-            onTap: () => _open(const CircleEditorScreen()),
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-            child: NoriCard(
-              color: AppColors.linenAlt,
-              borderColor: AppColors.inkFaint,
-              borderWidth: AppBorder.thin,
-              padding: const EdgeInsets.all(AppSpacing.stackSm),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.add_circle_outline,
-                    color: AppColors.inkFaint,
-                  ),
-                  const SizedBox(width: AppSpacing.unit),
-                  Text(
-                    'New circle',
-                    style: AppTextStyles.labelLg.copyWith(
-                      color: AppColors.inkFaint,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
+      ),
     ),
   );
 
@@ -720,7 +737,7 @@ class _SocialScreenState extends State<SocialScreen>
       _quickActions(),
       const SizedBox(height: AppSpacing.stackMd),
       _highlights(active),
-      _section('Recent Proofs', Icons.rss_feed, const FeedScreen()),
+      _section('Recent proofs', Icons.rss_feed, const FeedScreen()),
       if (posts.isEmpty)
         NoriEmptyState(
           icon: Icons.add_a_photo_outlined,
@@ -740,7 +757,7 @@ class _SocialScreenState extends State<SocialScreen>
         _streakStrip(),
       ],
       _section(
-        'Active Competitions',
+        'Active competitions',
         Icons.emoji_events_outlined,
         const CompetitionsScreen(),
       ),
@@ -755,7 +772,7 @@ class _SocialScreenState extends State<SocialScreen>
       else
         ...active.take(2).map(_competitionCard),
       _section(
-        'My Circles',
+        'My circles',
         Icons.groups_outlined,
         const CirclesScreen(),
         link: 'Manage',

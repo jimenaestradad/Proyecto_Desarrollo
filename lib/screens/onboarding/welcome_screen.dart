@@ -72,7 +72,7 @@ class WelcomeScreen extends StatelessWidget {
                               TextSpan(
                                 style: AppTextStyles.display,
                                 children: [
-                                  const TextSpan(text: 'Meet Your\n'),
+                                  const TextSpan(text: 'Meet your\n'),
                                   TextSpan(
                                     text: 'Nori',
                                     style: AppTextStyles.display.copyWith(
@@ -104,7 +104,7 @@ class WelcomeScreen extends StatelessWidget {
                           child: FractionallySizedBox(
                             widthFactor: 0.8,
                             child: TactileButton(
-                              label: 'Get Started',
+                              label: 'Get started',
                               icon: Icons.arrow_forward,
                               onPressed: () =>
                                   Navigator.pushNamed(context, '/signup'),
@@ -128,7 +128,7 @@ class WelcomeScreen extends StatelessWidget {
                             TextButton(
                               onPressed: () =>
                                   Navigator.pushNamed(context, '/login'),
-                              child: const Text('Log In'),
+                              child: const Text('Log in'),
                             ),
                           ],
                         ),

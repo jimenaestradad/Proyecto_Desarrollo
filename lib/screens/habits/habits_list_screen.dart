@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/habit_history_store.dart' show addDays, dateOnly;
 import 'package:nori/data/habit_repository.dart';
-import 'package:nori/models/app_notification.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/bucket_list/bucket_list_screen.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
-import 'package:nori/screens/habits/archived_habits_screen.dart';
 import 'package:nori/screens/habits/habit_day_actions.dart';
-import 'package:nori/screens/notifications/notifications_screen.dart';
+import 'package:nori/screens/notifications/notifications_bell.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/data/tips_store.dart';
 import 'package:nori/utils/date_labels.dart';
@@ -21,8 +19,8 @@ import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/one_time_hint.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
+import 'package:nori/widgets/skeleton.dart';
 import 'package:nori/widgets/streak_chip.dart';
-import 'package:nori/widgets/tactile_button.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
 class HabitsListScreen extends StatefulWidget {
@@ -45,10 +43,10 @@ class HabitsListScreen extends StatefulWidget {
 }
 
 class _HabitsListScreenState extends State<HabitsListScreen>
-    with RemoteLoadState<HabitsListScreen>, HabitDayActions<HabitsListScreen> {
-  // Created once: a new stream per build would resubscribe every rebuild.
-  late final Stream<bool> _hasUnreadNotifications = AppData.notifications
-      .watchHasUnread();
+    with
+        RemoteLoadState<HabitsListScreen>,
+        OptimisticHabits<HabitsListScreen>,
+        HabitDayActions<HabitsListScreen> {
   NoriUser? _user;
   List<Habit>? _habits;
 
@@ -80,7 +78,11 @@ class _HabitsListScreenState extends State<HabitsListScreen>
   @override
   void didUpdateWidget(covariant HabitsListScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.active && widget.active) _loadData();
+    if (!oldWidget.active && widget.active) {
+      // Show the newest XP/coins at once; the reload below still has the last word.
+      _user = AppData.user.lastKnownUser ?? _user;
+      _loadData();
+    }
   }
 
   Future<void> _loadData() => guardedLoad(_fetchData, hasData: _habits != null);
@@ -123,8 +125,9 @@ class _HabitsListScreenState extends State<HabitsListScreen>
 
   Future<void> _reloadHabits() async {
     final date = _selectedDate;
+    final stamp = editStamp;
     final day = await _loadDay(date);
-    if (!mounted || date != _selectedDate) return;
+    if (!mounted || date != _selectedDate || stamp != editStamp) return;
     setState(() {
       _habits = day.$1;
       _notDueToday = day.$2;
@@ -146,11 +149,45 @@ class _HabitsListScreenState extends State<HabitsListScreen>
     guardedLoad(_reloadHabits, hasData: false);
   }
 
+  /// Clears the old day's cards like [_changeDate], so a tap before the reload
+  /// can't land on today through yesterday's card.
+  void _jumpToToday() {
+    setState(() {
+      _selectedDate = dateOnly(DateTime.now());
+      _habits = null;
+      _notDueToday = const [];
+    });
+    guardedLoad(_reloadHabits, hasData: false);
+  }
+
   @override
   DateTime get actionDate => _selectedDate;
 
   @override
   Future<void> reloadActionHabits() => _reloadHabits();
+
+  @override
+  Object? snapshotHabits() {
+    final habits = _habits;
+    return habits == null ? null : (_selectedDate, habits);
+  }
+
+  /// Skipped when the viewer has since moved to another day, whose list this
+  /// snapshot isn't.
+  @override
+  void restoreHabitSnapshot(Object snapshot) {
+    final (date, habits) = snapshot as (DateTime, List<Habit>);
+    if (date == _selectedDate) _habits = habits;
+  }
+
+  @override
+  void applyHabitChange(String habitId, Habit Function(Habit) change) {
+    final habits = _habits;
+    if (habits == null) return;
+    setState(() {
+      _habits = [for (final h in habits) h.id == habitId ? change(h) : h];
+    });
+  }
 
   /// The user badge (level, XP, coins) changes with a paying claim.
   @override
@@ -161,12 +198,27 @@ class _HabitsListScreenState extends State<HabitsListScreen>
     return user;
   }
 
+  Future<void> _refreshUser() async {
+    final user = await AppData.user.getCurrentUser();
+    if (!mounted) return;
+    setState(() => _user = user);
+  }
+
+  @override
+  Future<void> onStreakMayHaveChanged() => _refreshUser();
+
+  /// Re-reads the list and the user badge after returning from a screen that
+  /// added, edited, deleted or archived a habit: a delete reverses the XP and
+  /// coins it paid, and a schedule change can move the streak.
+  Future<void> _reloadAfterHabitChange() =>
+      guardedAction(() => Future.wait([_reloadHabits(), _refreshUser()]));
+
   Future<void> _openAddHabit() async {
     final added = await Navigator.of(
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => const AddHabitScreen()));
     if (!mounted) return;
-    if (added == true) await guardedAction(_reloadHabits);
+    if (added == true) await _reloadAfterHabitChange();
   }
 
   Future<void> _openEditHabit(Habit habit) async {
@@ -174,7 +226,7 @@ class _HabitsListScreenState extends State<HabitsListScreen>
       MaterialPageRoute(builder: (_) => AddHabitScreen(habit: habit)),
     );
     if (!mounted) return;
-    if (edited == true) await guardedAction(_reloadHabits);
+    if (edited == true) await _reloadAfterHabitChange();
   }
 
   Future<void> _onReorder(int oldIndex, int newIndex) async {
@@ -189,28 +241,20 @@ class _HabitsListScreenState extends State<HabitsListScreen>
       () => AppData.habits.reorderHabits([for (final h in habits) h.id]),
     );
     if (!ok || !mounted) return;
-    setState(() => _habits = habits);
-  }
-
-  Future<void> _openNotifications() async {
-    final action = await Navigator.of(context).push<NotificationAction>(
-      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+    // Applied to the list as it is now, not the pre-request copy: a claim or
+    // reload that landed during the write must not be rolled back.
+    final current = _habits;
+    if (current == null || !_isToday) return;
+    final byId = {for (final h in current) h.id: h};
+    final order = [for (final h in habits) h.id];
+    setState(
+      () => _habits = [
+        for (final id in order)
+          if (byId[id] != null) byId[id]!,
+        for (final h in current)
+          if (!order.contains(h.id)) h,
+      ],
     );
-    if (!mounted) return;
-    switch (action) {
-      case NotificationAction.carePet:
-        widget.onOpenHome();
-      case null:
-        break;
-    }
-  }
-
-  Future<void> _openArchived() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const ArchivedHabitsScreen()),
-    );
-    if (!mounted) return;
-    if (changed == true) await guardedAction(_reloadHabits);
   }
 
   void _openBucketList() {
@@ -236,11 +280,29 @@ class _HabitsListScreenState extends State<HabitsListScreen>
     final error = loadError;
 
     return Scaffold(
+      // A new habit belongs to today, so past days have no add button.
+      floatingActionButton: user != null && habits != null && _isToday
+          ? FloatingActionButton(
+              onPressed: _openAddHabit,
+              tooltip: 'Add habit',
+              backgroundColor: AppColors.terracotta,
+              foregroundColor: AppColors.ink,
+              elevation: 0,
+              highlightElevation: 0,
+              shape: const CircleBorder(
+                side: BorderSide(
+                  color: AppColors.ink,
+                  width: AppBorder.standard,
+                ),
+              ),
+              child: const Icon(Icons.add, size: 28),
+            )
+          : null,
       body: SafeArea(
         child: user == null || habits == null
             ? error != null
                   ? LoadErrorView(error: error, onRetry: _loadData)
-                  : const Center(child: CircularProgressIndicator())
+                  : const HabitListSkeleton()
             : _buildContent(user, habits),
       ),
     );
@@ -262,53 +324,39 @@ class _HabitsListScreenState extends State<HabitsListScreen>
     return NoriScrollScaffold(
       maxWidth: 1200,
       children: [
+        // Stats on the left, actions on the right, then the title on its own
+        // line. 48dp action buttons need the gap between them to be tappable
+        // without hitting the neighbour.
         Row(
           children: [
-            Expanded(child: Text('Habits', style: AppTextStyles.headlineMd)),
-            CircularIconButton(
-              icon: Icons.inventory_2_outlined,
-              tooltip: 'Archived Habits',
-              onPressed: _openArchived,
-            ),
-            const SizedBox(width: 6),
+            XpPill(xp: user.totalXp, syncing: rewardSyncing),
+            if (user.currentStreak > 0) ...[
+              const SizedBox(width: AppSpacing.unit),
+              StreakChip(streak: user.currentStreak),
+            ],
+            const Spacer(),
             CircularIconButton(
               icon: Icons.flag,
-              tooltip: 'Bucket List',
+              tooltip: 'Bucket list',
               onPressed: _openBucketList,
+              largeTapTarget: true,
             ),
-            const SizedBox(width: 6),
-            StreamBuilder<bool>(
-              stream: _hasUnreadNotifications,
-              builder: (context, snapshot) {
-                final hasUnread = snapshot.data ?? false;
-                return CircularIconButton(
-                  icon: Icons.notifications,
-                  tooltip: hasUnread
-                      ? 'Notifications (unread)'
-                      : 'Notifications',
-                  onPressed: _openNotifications,
-                  showDot: hasUnread,
-                );
-              },
+            const SizedBox(width: AppSpacing.stackSm),
+            NotificationsBell(
+              onCarePet: widget.onOpenHome,
+              largeTapTarget: true,
             ),
-            const SizedBox(width: 8),
-            if (user.currentStreak > 0) ...[
-              StreakChip(streak: user.currentStreak),
-              const SizedBox(width: 4),
-            ],
-            XpPill(xp: user.totalXp),
           ],
         ),
-        const SizedBox(height: AppSpacing.stackLg),
+        const SizedBox(height: AppSpacing.unit),
+        Text('Habits', style: AppTextStyles.headlineMd),
+        const SizedBox(height: AppSpacing.stackMd),
         _DateNavRow(
           date: _selectedDate,
           canGoForward: !_isToday,
           onBack: () => _changeDate(-1),
           onForward: () => _changeDate(1),
-          onJumpToToday: () {
-            setState(() => _selectedDate = dateOnly(DateTime.now()));
-            _loadData();
-          },
+          onJumpToToday: _jumpToToday,
         ),
         const SizedBox(height: AppSpacing.unit),
         Text(
@@ -320,21 +368,18 @@ class _HabitsListScreenState extends State<HabitsListScreen>
         const SizedBox(height: AppSpacing.stackMd),
         Row(
           children: [
+            Switch(
+              value: _completedToBottom,
+              onChanged: (value) => setState(() => _completedToBottom = value),
+            ),
+            const SizedBox(width: AppSpacing.unit),
             Text(
               'Completed to bottom',
               style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
             ),
-            Switch(
-              value: _completedToBottom,
-              onChanged: (value) => setState(() => _completedToBottom = value),
-              activeThumbColor: AppColors.white,
-              activeTrackColor: AppColors.moss,
-              inactiveThumbColor: AppColors.white,
-              inactiveTrackColor: AppColors.linenAlt,
-            ),
             const Spacer(),
             Text(
-              '$completedCount / ${habits.length} Completed',
+              '$completedCount / ${habits.length} completed',
               style: AppTextStyles.labelLg.copyWith(
                 color: AppColors.terracottaDark,
               ),
@@ -357,7 +402,7 @@ class _HabitsListScreenState extends State<HabitsListScreen>
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.stackMd),
             child: Text(
               _isToday
-                  ? 'No habits scheduled for today.'
+                  ? 'No habits scheduled for today. Tap + to add one.'
                   : 'No habits were scheduled that day.',
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkFaint),
@@ -365,6 +410,18 @@ class _HabitsListScreenState extends State<HabitsListScreen>
           )
         else if (!(_reordering && canReorder && !_completedToBottom))
           for (final habit in displayHabits) ...[
+            // Above the first limit habit only: the button on these cards
+            // ("I stayed under") is the one control a first-timer can't guess.
+            if (habit.type == HabitType.limit &&
+                habit ==
+                    displayHabits.firstWhere((h) => h.type == HabitType.limit))
+              const OneTimeHint(
+                tip: Tip.limitHabits,
+                icon: Icons.speed,
+                message:
+                    'Stay under your limit all day, then tap I stayed under '
+                    'to count the day.',
+              ),
             GestureDetector(
               onLongPress: (canReorder && !_completedToBottom)
                   ? () => setState(() => _reordering = true)
@@ -451,22 +508,8 @@ class _HabitsListScreenState extends State<HabitsListScreen>
           const SizedBox(height: AppSpacing.stackLg),
           _NotDueTodaySection(habits: _notDueToday, onEdit: _openEditHabit),
         ],
-        const SizedBox(height: AppSpacing.stackMd),
-        TactileButton(
-          label: 'Add New Habit',
-          icon: Icons.add,
-          // A new habit belongs to today, not whatever past day is on
-          // screen — jump back to add one.
-          onPressed: _isToday ? _openAddHabit : null,
-        ),
-        if (!_isToday) ...[
-          const SizedBox(height: AppSpacing.unit),
-          Text(
-            'Jump to Today to add a new habit.',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.labelSm.copyWith(color: AppColors.inkFaint),
-          ),
-        ],
+        // Room so the floating add button never covers the last card.
+        const SizedBox(height: 72),
       ],
     );
   }
@@ -487,11 +530,6 @@ class _NotDueTodaySection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Not due today', style: AppTextStyles.labelLg),
-        const SizedBox(height: 2),
-        Text(
-          'Scheduled for other days, so they don\'t count toward today.',
-          style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkFaint),
-        ),
         const SizedBox(height: AppSpacing.stackSm),
         for (final habit in habits) ...[
           NoriCard(
@@ -556,8 +594,8 @@ class _DateNavRow extends StatelessWidget {
   String get _label {
     final today = dateOnly(DateTime.now());
     final diff = today.difference(date).inDays;
-    if (diff == 0) return "Today's Goals";
-    if (diff == 1) return "Yesterday's Goals";
+    if (diff == 0) return "Today's goals";
+    if (diff == 1) return "Yesterday's goals";
     return '${weekdayAbbr(date.weekday)}, ${monthAbbr(date.month)} ${date.day}';
   }
 

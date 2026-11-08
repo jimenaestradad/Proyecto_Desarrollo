@@ -1,10 +1,8 @@
 import { DocumentData, DocumentReference, Firestore, Transaction } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
-import { PetStage, petStageForLevel } from "./rewards";
+import { EVOLUTION_LEVEL, PetStage, petStageForLevel } from "./rewards";
 import { LevelState, xpForLevel } from "./xpCurve";
 import { userDocRefs, habitLogId } from "./docRefs";
-
-const DEFAULT_EVOLUTION_THRESHOLD = 7;
 
 export interface HabitRewardResult {
   changed: boolean;
@@ -101,8 +99,7 @@ export function syncPetStage(
 ): PetStage | null {
   const previous = currentPetStage(petData);
   if (!petData || !previous) return previous;
-  const threshold = asNumber(petData.evolutionLevelThreshold, DEFAULT_EVOLUTION_THRESHOLD);
-  const next = petStageForLevel(previous, level, threshold);
+  const next = petStageForLevel(previous, level, EVOLUTION_LEVEL);
   if (next !== previous) tx.update(petRef, { stage: next });
   return next;
 }

@@ -5,19 +5,13 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../models/nori_user.dart';
 import 'auth_repository.dart';
 import 'cloud_functions_client.dart';
+import 'session_watch.dart';
 import 'username_repository.dart';
+import '../utils/app_log.dart';
+import '../utils/validators.dart' show passwordMinLength;
 
-/// Real Firebase Authentication-backed [AuthRepository]: email/password and
-/// Google Sign-In, plus the username-uniqueness/account-linking pieces of
-/// Google Sign-In that live in [UsernameRepository].
-///
-/// This only proves *who* is signed in. The rest of that person's profile
-/// (level, XP, coins, streak, ...) still comes from [UserRepository]'s mock
-/// today — connecting that to real per-user data in Firestore is a
-/// separate, bigger task (see docs/OPEN_DECISIONS.md), not part of "auth
-/// simple". On sign-up/login this hands back a fresh starter [NoriUser]
-/// shell so the rest of the app (which expects a NoriUser back from auth)
-/// keeps working unchanged.
+/// Firebase email/password and Google authentication with [UsernameRepository] linking.
+/// Returns a starter [NoriUser] shell; authentication establishes identity.
 class FirebaseAuthRepository implements AuthRepository {
   FirebaseAuthRepository({
     FirebaseAuth? auth,
@@ -34,9 +28,14 @@ class FirebaseAuthRepository implements AuthRepository {
   final FirebaseAuth _auth;
   final GoogleSignIn? _googleSignIn;
   final UsernameRepository _usernames;
+  final SessionWatch _session = SessionWatch();
 
   @override
   String? get currentUserId => _auth.currentUser?.uid;
+
+  @override
+  Stream<void> get sessionLost =>
+      _session.lost(_auth.authStateChanges().map((user) => user != null));
 
   @override
   Future<NoriUser> signUp({
@@ -70,6 +69,7 @@ class FirebaseAuthRepository implements AuthRepository {
         email: email,
       );
     } on FirebaseAuthException catch (e) {
+      logError('signUp', e);
       throw AuthException(_signUpMessage(e.code));
     }
   }
@@ -86,14 +86,18 @@ class FirebaseAuthRepository implements AuthRepository {
       );
       final user = credential.user!;
       final fallbackName = email.contains('@') ? email.split('@').first : email;
-      // The real claimed username lives in /usernames, not on the Firebase
-      // Auth record (only displayName/email do) -- looking it up here
-      // mirrors _resultFor's Google-sign-in path below. Without this,
-      // updateProfile(username: ...) back in login_screen.dart would
-      // overwrite the real /users/{uid}.username with the display name on
-      // every single login (this was a real bug: username got clobbered
-      // back to the person's full name each time they signed back in).
-      final existingUsername = await _usernames.usernameForUid(user.uid);
+      // Read the claimed username from /usernames, rather than Auth's displayName,
+      // so login does not overwrite /users/{uid}.username with the person's full name.
+      // Only fills the returned shell, which the callers use for the id and
+      // email. If the lookup fails the person IS signed in, so a failure here
+      // must not read as "Unable to sign in"; the login screen runs its own
+      // sign-up-complete check right after and handles an unreachable server.
+      String? existingUsername;
+      try {
+        existingUsername = await _usernames.usernameForUid(user.uid);
+      } catch (error, stackTrace) {
+        logError('logIn username lookup', error, stackTrace);
+      }
       return _starterUser(
         id: user.uid,
         name: user.displayName ?? fallbackName,
@@ -101,6 +105,7 @@ class FirebaseAuthRepository implements AuthRepository {
         email: email,
       );
     } on FirebaseAuthException catch (e) {
+      logError('logIn', e);
       throw AuthException(_logInMessage(e.code));
     }
   }
@@ -111,6 +116,7 @@ class FirebaseAuthRepository implements AuthRepository {
       final userCredential = await _signInWithGoogle();
       return _resultFor(userCredential);
     } on FirebaseAuthException catch (e) {
+      logError('logInWithGoogle', e);
       throw AuthException(_logInMessage(e.code));
     }
   }
@@ -130,31 +136,18 @@ class FirebaseAuthRepository implements AuthRepository {
           .linkWithCredential(pendingCredential);
       return _resultFor(linkedCredential);
     } on FirebaseAuthException catch (e) {
+      logError('linkGoogleAccount', e);
       throw AuthException(_logInMessage(e.code));
     }
   }
 
-  /// Runs the platform-appropriate Google Sign-In popup/picker and returns
-  /// the resulting [UserCredential], translating the one error case the
-  /// callers above need to handle specially (a password-based account
-  /// already exists for that email) into [GoogleAccountLinkingRequired]
-  /// rather than letting it fall through as a generic sign-in failure.
+  /// Runs the platform Google picker and returns its [UserCredential].
+  /// Translates existing password-account conflicts to [GoogleAccountLinkingRequired].
   Future<UserCredential> _signInWithGoogle() async {
     try {
       if (kIsWeb) {
-        // On web, Firebase's own popup flow needs no native setup at all —
-        // no SHA-1, no Android SDK — which is what this machine can
-        // actually test today (`flutter run -d chrome`). This is the path
-        // exercised during dev; see the else-branch below for the native
-        // Android flow that ships to production (needs the SHA-1
-        // fingerprint registered in Firebase console — see
-        // docs/OPEN_DECISIONS.md).
-        //
-        // 'prompt': 'select_account' forces Google's account chooser to
-        // show every time, even when the browser only has one Google
-        // session signed in — without it, signInWithPopup silently
-        // re-authenticates whichever account was used last instead of
-        // letting the person pick (or switch accounts).
+        // Firebase's web popup needs no native setup.
+        // Force select_account so each sign-in lets the person choose an account.
         final provider = GoogleAuthProvider()
           ..setCustomParameters({'prompt': 'select_account'});
         return await _auth.signInWithPopup(provider);
@@ -162,11 +155,8 @@ class FirebaseAuthRepository implements AuthRepository {
       return await _auth.signInWithCredential(await _nativeGoogleCredential());
     } on FirebaseAuthException catch (e) {
       if (e.code == 'account-exists-with-different-credential') {
-        // The only other sign-in method this app supports is
-        // email/password, so a conflict here can only mean that: the
-        // caller (login_screen.dart) catches this specific type and
-        // prompts for that account's password instead of showing a plain
-        // error.
+        // Email/password is the only other supported provider.
+        // Login catches this conflict to request the existing account's password.
         throw GoogleAccountLinkingRequired(
           email: e.email ?? '',
           pendingCredential: e.credential!,
@@ -179,11 +169,8 @@ class FirebaseAuthRepository implements AuthRepository {
   /// Shows the native Google account picker and returns the chosen
   /// account's credential, for a sign-in or a re-authentication.
   Future<AuthCredential> _nativeGoogleCredential() async {
-    // Forget any cached account selection first so the native picker is
-    // always shown too — GoogleSignIn.signIn() otherwise silently
-    // re-authenticates the last-used account without prompting. This
-    // only clears the local selection, it doesn't revoke access, so
-    // re-picking the same account below won't ask for consent again.
+    // Clear the cached native selection to show the account picker each time.
+    // This does not revoke access or require consent again for the same account.
     await _googleSignIn!.signOut();
     final googleUser = await _googleSignIn.signIn();
     if (googleUser == null) {
@@ -223,14 +210,9 @@ class FirebaseAuthRepository implements AuthRepository {
 
   @override
   Future<void> logOut() async {
-    // On web, Google sign-in goes through Firebase's own popup
-    // (_auth.signInWithPopup, see _signInWithGoogle) rather than the
-    // google_sign_in plugin, so _googleSignIn was never actually used to
-    // sign in there. Calling it here anyway throws on web (no web client
-    // ID is configured for that plugin, since it's never otherwise
-    // needed) -- and since nothing caught that, it silently broke this
-    // entire method, logout included. Only exercise it on the platforms
-    // that actually use it (see the native branch of _signInWithGoogle).
+    if (_auth.currentUser != null) _session.expectEnd();
+    // Only sign out of google_sign_in on native platforms that use it.
+    // Web uses Firebase's popup; the plugin has no web client ID configured.
     if (!kIsWeb && await _googleSignIn!.isSignedIn()) {
       await _googleSignIn.signOut();
     }
@@ -273,6 +255,7 @@ class FirebaseAuthRepository implements AuthRepository {
     try {
       await _auth.currentUser?.sendEmailVerification();
     } on FirebaseAuthException catch (e) {
+      logError('sendEmailVerification', e);
       throw AuthException(_verificationMessage(e.code));
     }
   }
@@ -296,6 +279,12 @@ class FirebaseAuthRepository implements AuthRepository {
     );
   }
 
+  /// Firebase's own floor is 6, so this only appears if the app's check was
+  /// bypassed; it must still state the app's rule, not Firebase's.
+  static const _weakPasswordMessage =
+      'Choose a password with at least $passwordMinLength characters, '
+      'including a letter and a number.';
+
   String _signUpMessage(String code) {
     switch (code) {
       case 'email-already-in-use':
@@ -303,7 +292,7 @@ class FirebaseAuthRepository implements AuthRepository {
       case 'invalid-email':
         return 'That email address looks invalid.';
       case 'weak-password':
-        return 'Choose a password with at least 6 characters.';
+        return _weakPasswordMessage;
       case 'operation-not-allowed':
         return 'Email/password sign-up isn\'t enabled for this project yet.';
       case 'network-request-failed':
@@ -378,6 +367,7 @@ class FirebaseAuthRepository implements AuthRepository {
         EmailAuthProvider.credential(email: email, password: password),
       );
     } on FirebaseAuthException catch (e) {
+      logError('addPassword', e);
       throw AuthException(_addPasswordMessage(e.code));
     }
   }
@@ -385,7 +375,7 @@ class FirebaseAuthRepository implements AuthRepository {
   String _addPasswordMessage(String code) {
     switch (code) {
       case 'weak-password':
-        return 'Choose a password with at least 6 characters.';
+        return _weakPasswordMessage;
       case 'provider-already-linked':
       case 'credential-already-in-use':
       case 'email-already-in-use':
@@ -424,6 +414,7 @@ class FirebaseAuthRepository implements AuthRepository {
       );
       await user.verifyBeforeUpdateEmail(newEmail);
     } on FirebaseAuthException catch (e) {
+      logError('changeEmail', e);
       throw AuthException(_changeEmailMessage(e.code));
     }
   }
@@ -443,6 +434,45 @@ class FirebaseAuthRepository implements AuthRepository {
         return 'No internet connection. Please try again.';
       default:
         return 'Unable to change your email. Please try again.';
+    }
+  }
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = _auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null || email.isEmpty) {
+      throw const AuthException('You need to be signed in to do that.');
+    }
+    try {
+      // Checking the current password also satisfies Firebase's
+      // requires-recent-login rule for updatePassword.
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: currentPassword),
+      );
+      await user.updatePassword(newPassword);
+    } on FirebaseAuthException catch (e) {
+      logError('changePassword', e);
+      throw AuthException(_changePasswordMessage(e.code));
+    }
+  }
+
+  String _changePasswordMessage(String code) {
+    switch (code) {
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Your current password is incorrect.';
+      case 'weak-password':
+        return _weakPasswordMessage;
+      case 'too-many-requests':
+        return 'Too many attempts — please wait a moment and try again.';
+      case 'network-request-failed':
+        return 'No internet connection. Please try again.';
+      default:
+        return 'Unable to change your password. Please try again.';
     }
   }
 
@@ -498,8 +528,12 @@ class FirebaseAuthRepository implements AuthRepository {
     try {
       await _reauthenticate(user, password);
     } on FirebaseAuthException catch (e) {
+      logError('deleteAccount (re-authenticate)', e);
       throw AuthException(_reauthMessage(e.code));
     }
+    // The server removes the Auth user, which can sign this device out
+    // before logOut below runs; that is not a lost session.
+    _session.expectEnd();
     try {
       // Generous timeout: it deletes every doc the account owns.
       await callCloudFunction(
@@ -508,7 +542,11 @@ class FirebaseAuthRepository implements AuthRepository {
         timeout: const Duration(seconds: 60),
       );
     } on CloudFunctionFailure catch (e) {
+      _session.cancelExpectedEnd();
       throw AuthException(e.message);
+    } catch (_) {
+      _session.cancelExpectedEnd();
+      rethrow;
     }
     // The Auth user is gone server-side; this just clears the local session.
     await logOut();

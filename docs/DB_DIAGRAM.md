@@ -23,7 +23,7 @@ erDiagram
         string name
         string username "display casing"
         string email
-        string avatarUrl
+        string avatarUrl "null today, photos are session-only"
         timestamp createdAt
         int level "Cloud Function only"
         int totalXp "Cloud Function only"
@@ -126,6 +126,8 @@ erDiagram
     USERNAMES {
         string usernameLower PK "lowercased username"
         string uid FK
+        string username "display casing"
+        timestamp createdAt
     }
 ```
 

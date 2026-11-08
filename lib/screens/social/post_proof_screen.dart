@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:nori/utils/photo_picker.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/competition.dart';
 import 'package:nori/models/social_content.dart';
@@ -33,6 +36,7 @@ class _PostProofScreenState extends State<PostProofScreen>
   String? _circleId;
   bool _initialized = false;
   bool _withPhoto = false;
+  Uint8List? _photo;
   bool _publishing = false;
   final _caption = TextEditingController();
 
@@ -87,6 +91,15 @@ class _PostProofScreenState extends State<PostProofScreen>
     super.dispose();
   }
 
+  Future<void> _pickProof() async {
+    final bytes = await pickPhoto(context);
+    if (bytes == null || !mounted) return;
+    setState(() {
+      _photo = bytes;
+      _withPhoto = true;
+    });
+  }
+
   Future<void> _publish() async {
     final habit = _habit;
     final competition = _competition;
@@ -106,12 +119,14 @@ class _PostProofScreenState extends State<PostProofScreen>
           competition.id,
           caption: _caption.text.trim(),
           withPhoto: _withPhoto,
+          photo: _photo,
         );
       } else {
         await AppData.social.createPost(
           habit: habit,
           caption: _caption.text.trim(),
           withPhoto: _withPhoto,
+          photo: _photo,
           visibility: _visibility,
           circleId: _visibility == PostVisibility.circle ? _circleId : null,
         );
@@ -241,13 +256,17 @@ class _PostProofScreenState extends State<PostProofScreen>
                   icon: habit.icon,
                   color: habit.color,
                   label: 'Proof attached',
+                  bytes: _photo,
                 ),
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
                     onPressed: _publishing
                         ? null
-                        : () => setState(() => _withPhoto = false),
+                        : () => setState(() {
+                            _withPhoto = false;
+                            _photo = null;
+                          }),
                     icon: const Icon(Icons.close),
                     label: Text('Remove', style: AppTextStyles.labelLg),
                   ),
@@ -257,9 +276,7 @@ class _PostProofScreenState extends State<PostProofScreen>
                   button: true,
                   label: 'Capture or upload proof',
                   child: InkWell(
-                    onTap: _publishing
-                        ? null
-                        : () => setState(() => _withPhoto = true),
+                    onTap: _publishing ? null : _pickProof,
                     borderRadius: BorderRadius.circular(AppRadius.sm),
                     child: NoriCard(
                       color: AppColors.linenAlt,

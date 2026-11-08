@@ -5,31 +5,8 @@ import '../utils/provisioning_retry.dart';
 import 'care_item_catalog.dart';
 import 'pet_repository.dart';
 
-/// Real Firestore-backed [PetRepository] for `/users/{uid}/pet/main` -- see
-/// docs/BACKEND.md, "Firestore schema" and the Architecture table.
-///
-/// [useCareItem] is a direct, rules-guarded client write (Architecture
-/// table: "Feed / groom / play (+ stat decay)" -- spends an already-owned
-/// consumable for a pet stat, not currency). [getPet] only reads: decay is
-/// a pure function of the stored stats and `lastDecayAt`, so it's applied
-/// on read and persisted only by the next care action. [useCareItem]
-/// decrements `inventory/main`'s count and applies decay + restore to
-/// `pet/main` in one transaction across both docs, so an item is never
-/// spent without the pet getting its restore (or the reverse).
-///
-/// [syncEvolution] is deliberately a no-op here. `stage` is
-/// Cloud-Function-only (docs/BACKEND.md, "Security rules":
-/// "`stage` and `evolutionLevelThreshold` are denied to client writes...
-/// Only claimHabit's transaction (Admin SDK) touches them") -- the one
-/// seam into this vertical's data is inside Valeria's claimHabit/
-/// unclaimHabit transaction (docs/BACKEND.md, "Division of labor"), not a
-/// direct write from here. `home_screen.dart`, `calendar_screen.dart` and
-/// `habits_list_screen.dart` still call `AppData.pet.syncEvolution(...)`
-/// after a (still-mock) habit claim -- see docs/BACKEND.md, "Gaps/risks
-/// found while planning this" #1: that call site is expected to go away
-/// once `claimHabit` becomes a real Cloud Function doing the sync itself.
-/// Until then this silently does nothing rather than attempt a write the
-/// deployed rules would reject anyway.
+/// Firestore pet reads apply decay; care atomically consumes inventory and restores stats.
+/// The stage is Cloud-Function-only: claims and deletes sync it server-side.
 class FirestorePetRepository implements PetRepository {
   FirestorePetRepository({required String uid, FirebaseFirestore? firestore})
     : _uid = uid,
@@ -61,8 +38,8 @@ class FirestorePetRepository implements PetRepository {
       id: 'main',
       name: data['name'] as String? ?? 'Nori',
       stage: stage,
-      evolutionLevelThreshold:
-          (data['evolutionLevelThreshold'] as num?)?.toInt() ?? 7,
+      // The stored value (7 on older accounts) is ignored; see kEvolutionLevel.
+      evolutionLevelThreshold: kEvolutionLevel,
       hunger: (data['hunger'] as num?)?.toDouble() ?? 100,
       hygiene: (data['hygiene'] as num?)?.toDouble() ?? 100,
       happiness: (data['happiness'] as num?)?.toDouble() ?? 100,
@@ -121,18 +98,9 @@ class FirestorePetRepository implements PetRepository {
   }
 
   @override
-  Future<void> syncEvolution(int userLevel) async {
-    // See class doc comment -- `stage` is Cloud-Function-only; this is a
-    // deliberate no-op, not a missing feature.
-  }
-
-  @override
   Future<void> renamePet(String name) async {
-    // `name` is a direct-client-write field on pet/main (firestore.rules'
-    // /pet/main update rule already allows it alongside the stat fields) --
-    // see PetRepository.renamePet's doc comment. Retried because this fires
-    // right after sign-up, when pet/main might not exist yet (see
-    // retryWhileProvisioning).
+    // Pet names allow direct client writes.
+    // Retry while provisioning because pet/main may not exist immediately after sign-up.
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
     await retryWhileProvisioning(() => _doc.update({'name': trimmed}));

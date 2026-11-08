@@ -11,11 +11,18 @@ class NoriInfoBanner extends StatelessWidget {
     required this.message,
     required this.icon,
     this.onDismiss,
+    this.actionLabel,
+    this.onAction,
   });
 
   final String message;
   final IconData icon;
   final VoidCallback? onDismiss;
+
+  /// An optional text button at the end ("Add one"): the hint says what to
+  /// do and the button does it. Both must be set to show it.
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +48,8 @@ class NoriInfoBanner extends StatelessWidget {
               style: AppTextStyles.labelLg.copyWith(color: AppColors.ink),
             ),
           ),
+          if (actionLabel != null && onAction != null)
+            TextButton(onPressed: onAction, child: Text(actionLabel!)),
           if (onDismiss != null)
             IconButton(
               tooltip: 'Dismiss',

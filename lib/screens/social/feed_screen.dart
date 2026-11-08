@@ -16,6 +16,7 @@ import 'package:nori/widgets/nori_choice_chip.dart';
 import 'package:nori/widgets/nori_empty_state.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
+import '../../widgets/scroll_edge_fade.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key, this.initialCircleId});
@@ -98,25 +99,27 @@ class _FeedScreenState extends State<FeedScreen>
               ),
             ),
             const SizedBox(height: AppSpacing.stackMd),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  NoriChoiceChip(
-                    label: 'All',
-                    selected: _circleId == null,
-                    onTap: () => _selectCircle(null),
-                  ),
-                  for (final circle in _circles) ...[
-                    const SizedBox(width: AppSpacing.unit),
+            ScrollEdgeFade(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
                     NoriChoiceChip(
-                      label: circle.name,
-                      icon: circle.icon,
-                      selected: _circleId == circle.id,
-                      onTap: () => _selectCircle(circle.id),
+                      label: 'All',
+                      selected: _circleId == null,
+                      onTap: () => _selectCircle(null),
                     ),
+                    for (final circle in _circles) ...[
+                      const SizedBox(width: AppSpacing.unit),
+                      NoriChoiceChip(
+                        label: circle.name,
+                        icon: circle.icon,
+                        selected: _circleId == circle.id,
+                        onTap: () => _selectCircle(circle.id),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             const SizedBox(height: AppSpacing.stackMd),

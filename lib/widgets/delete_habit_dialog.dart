@@ -26,6 +26,7 @@ Future<bool> confirmDeleteHabit(BuildContext context, Habit habit) async {
           child: const Text('Cancel'),
         ),
         FilledButton(
+          style: AppTheme.destructiveFilledButton,
           onPressed: () => Navigator.pop(dialogContext, true),
           child: const Text('Delete'),
         ),

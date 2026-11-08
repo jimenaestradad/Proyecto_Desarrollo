@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../data/color_registry.dart';
 import '../data/habit_history_store.dart' show dayKey;
 import '../data/icon_registry.dart';
+import '../utils/date_labels.dart';
 import '../utils/firestore_date.dart';
 import 'habit_day_state.dart';
 
@@ -16,13 +17,8 @@ extension HabitRepeatLabel on HabitRepeat {
   };
 }
 
-/// How a habit's progress is measured. See docs/FEATURES.md §2.
-///
-/// [quantity] covers both a single running amount (e.g. 250→1000ml water)
-/// and a sum of entries logged across a period (e.g. 45 min creative work/
-/// week, logged in pieces) — those two behaved identically everywhere in
-/// this codebase (same progress/claim/quick-log logic), so they were merged
-/// into one type instead of staying as `quantity` + `cumulative`.
+/// How habit progress is measured; see docs/FEATURES.md §2.
+/// [quantity] covers both running amounts and accumulated entries.
 enum HabitType { binary, quantity, duration, multipleCompletion, limit }
 
 extension HabitTypeLabel on HabitType {
@@ -31,7 +27,7 @@ extension HabitTypeLabel on HabitType {
     HabitType.quantity => 'Quantity',
     HabitType.duration => 'Duration',
     HabitType.multipleCompletion => 'Multiple',
-    HabitType.limit => 'Limit / Negative',
+    HabitType.limit => 'Limit / negative',
   };
 
   String get description => switch (this) {
@@ -75,11 +71,9 @@ extension HabitRewardTierFraction on HabitRewardTier {
   };
 }
 
-/// One stretch of time a habit was archived. [start]/[end] are device-local
-/// `dayKey`s (the same convention as `habitLogs`, see docs/BACKEND.md);
-/// [end] is exclusive — the day it was restored counts as active again —
-/// and null while it's still archived. The `isArchivedOn` helper in
-/// functions/src/habitTransaction.ts applies the identical rule server-side.
+/// An archived stretch using device-local dayKeys, matching habitLogs.
+/// [end] is exclusive (restored days are active), or null while still archived;
+/// the server applies the same rule.
 class ArchivedRange {
   const ArchivedRange({required this.start, this.end});
 
@@ -176,44 +170,33 @@ class Habit {
 
   /// Optional habit lifespan (the "Set End Date" control). Outside this
   /// window a habit acts archived (FEATURES.md §2) — see [isActiveOn] — by
-  /// date check, not by flipping [archived]; no archived-habit view exists yet.
+  /// date check, not by flipping [archived].
   final DateTime? startDate;
   final DateTime? endDate;
 
   final bool isCompletedToday;
 
-  /// Persisted list position — Firestore documents have no inherent order,
-  /// unlike the mock's in-memory `List`, so [reorderHabits] needs a real
-  /// field to write to. New habits default to insertion order (see
-  /// `FirestoreHabitRepository.addHabit`); manual drag-reorder overwrites it
-  /// with plain 0..n indices.
+  /// Persisted list position for Firestore ordering.
+  /// New habits use insertion order; drag-reordering assigns 0..n indices.
   final int order;
 
-  /// Whether the habit is archived right now — hidden from today onward, its
-  /// `habitLogs` (streak/calendar history) kept. Only used to list archived
-  /// habits; which *days* count is [archivedRanges]' job, so restoring a
-  /// habit later doesn't retroactively turn the archived stretch into
-  /// missed days. See docs/BACKEND.md, "Deleting vs. archiving a habit".
+  /// Current archive flag used to list archived habits; logs remain intact.
+  /// [archivedRanges] determines historical activity so restoration preserves frozen gaps.
   final bool archived;
 
   /// Every stretch this habit spent archived — see [ArchivedRange] and
   /// [isActiveOn].
   final List<ArchivedRange> archivedRanges;
 
-  /// When this habit was created. Null for the mock's seed habits (which
-  /// have always "existed"); always set for a real, Firestore-created
-  /// habit — see [isScheduledOn], which uses it as an implicit lower bound
-  /// so a brand-new habit doesn't retroactively count as "missed" on days
-  /// before it existed.
+  /// Creation date, null for mock seeds and set for Firestore habits.
+  /// [isScheduledOn] uses it to avoid counting days before creation as missed.
   final DateTime? createdAt;
 
   bool get hasProgressTracking => type != HabitType.binary;
 
-  /// The amount a single quick-log tap adds. [quickLogAmount] if the user
-  /// set one; otherwise a heuristic default: 5 minutes for [HabitType.
-  /// duration], 1 completion for [HabitType.multipleCompletion], or 25% of
-  /// [targetValue] (minimum 1) for every other progress-tracked type. Not
-  /// meaningful for binary habits.
+  /// Per-tap increment: [quickLogAmount], or a default of 5 minutes for duration,
+  /// 1 for multiple completion, or 25% of [targetValue] (minimum 1) otherwise.
+  /// Not meaningful for binary habits.
   double get quickLogStep {
     final override = quickLogAmount;
     if (override != null) return override;
@@ -223,8 +206,7 @@ class Habit {
       case HabitType.multipleCompletion:
         return 1;
       default:
-        final target = targetValue ?? 0;
-        return (target * 0.25).clamp(1, double.infinity).roundToDouble();
+        return defaultQuickLogStep(targetValue ?? 0);
     }
   }
 
@@ -242,15 +224,8 @@ class Habit {
     }
   }
 
-  /// Whether this habit is due on [date], per its [repeat] schedule and
-  /// optional [startDate]/[endDate] window. Drives both today's list and any
-  /// past day's list, so history never shows a habit on a day it was never
-  /// scheduled (e.g. an M/W/F gym habit on a Tuesday).
-  ///
-  /// Note this is calendar-day scheduling only. FEATURES.md §5 also describes
-  /// X-times-per-period habits ("5x any day this week"), which have no
-  /// calendar-day answer — that scheduling style is still open, see
-  /// docs/OPEN_DECISIONS.md.
+  /// Whether [date] is due under [repeat] and the optional start/end window.
+  /// Calendar-day scheduling only; X-times-per-period scheduling remains open.
   bool isScheduledOn(DateTime date) {
     final day = DateTime(date.year, date.month, date.day);
 
@@ -273,7 +248,6 @@ class Habit {
   /// Short human description of [repeat] for lists: "Every day", "Weekdays",
   /// "Weekends" or the chosen days ("Mon · Wed · Fri").
   String get scheduleLabel {
-    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return switch (repeat) {
       HabitRepeat.daily => 'Every day',
       HabitRepeat.weekdays => 'Weekdays',
@@ -283,16 +257,13 @@ class Habit {
             ? 'Every day'
             : (customDays!.toList()..sort())
                   .where((day) => day >= 1 && day <= 7)
-                  .map((day) => names[day - 1])
+                  .map(weekdayAbbr)
                   .join(' · '),
     };
   }
 
-  /// Whether [date] falls inside the optional [startDate]/[endDate] window
-  /// and outside every [archivedRanges] stretch. Unlike [isScheduledOn] this
-  /// ignores the repeat schedule, so today's list can hide an ended or
-  /// archived habit while still showing unscheduled ones. The claimHabit
-  /// Cloud Function enforces the same rules.
+  /// Whether [date] is within the start/end window and outside [archivedRanges].
+  /// Ignores repeat scheduling; the claimHabit function enforces the same rules.
   bool isActiveOn(DateTime date) {
     final day = DateTime(date.year, date.month, date.day);
     if (archivedRanges.isNotEmpty) {
@@ -337,11 +308,8 @@ class Habit {
   bool get isMinMet =>
       !isInverted && minThreshold != null && currentValue >= minThreshold!;
 
-  /// Whether this day counts toward streaks: claimed, or — even unclaimed —
-  /// logged up to [minThreshold]. Reaching the minimum pays nothing (Complete
-  /// always snaps to the full target, see MockHabitRepository._claimValue),
-  /// so this is its whole job: "didn't finish, but showed up" keeps the
-  /// streak, per FEATURES.md §3. Limit habits have no minimum.
+  /// A claimed day or progress reaching [minThreshold] keeps the streak.
+  /// The minimum pays no reward; limit habits have no minimum.
   bool get keptStreak => isCompletedToday || isMinMet;
 
   HabitRewardTier get rewardTier {
@@ -361,12 +329,8 @@ class Habit {
     );
   }
 
-  /// Applies a specific day's logged progress/claim state onto this
-  /// definition — the shape every screen expects a [Habit] in (see
-  /// [MockHabitRepository]'s own private version of this, which this
-  /// mirrors for the real Firestore-backed repositories in
-  /// `habit_repository.dart` and `calendar_repository.dart`, so both share
-  /// one implementation instead of three copies).
+  /// Applies a day's progress and claim state to this habit definition.
+  /// Shared by the Firestore habit and calendar repositories.
   Habit hydrate(HabitDayState state) => copyWith(
     currentValue: state.value,
     isCompletedToday: state.claimed,
@@ -492,12 +456,8 @@ class Habit {
   );
 }
 
-/// Matches [value] against an enum's `.name` (see docs/BACKEND.md
-/// "Conventions" — enums are stored as `.name`, never index ints, since
-/// index order silently changes if someone adds a value later). Falls back
-/// to [fallback] instead of throwing on a value this build doesn't
-/// recognize — e.g. an older client reading a `HabitType` a newer client
-/// added — rather than crashing the whole habit list over one bad field.
+/// Reads enums by `.name` so enum ordering changes cannot reinterpret stored data.
+/// Unknown values use [fallback] instead of failing the whole habit list.
 T _enumFromName<T extends Enum>(List<T> values, dynamic value, T fallback) {
   if (value is! String) return fallback;
   for (final entry in values) {
@@ -505,3 +465,8 @@ T _enumFromName<T extends Enum>(List<T> values, dynamic value, T fallback) {
   }
   return fallback;
 }
+
+/// The default per-tap amount for target-based habits: 25% of [target], at
+/// least 1. Shared with the Add Habit form's hint.
+double defaultQuickLogStep(double target) =>
+    (target * 0.25).clamp(1, double.infinity).roundToDouble();

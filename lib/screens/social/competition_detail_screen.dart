@@ -132,38 +132,30 @@ class _CompetitionDetailScreenState extends State<CompetitionDetailScreen>
     final progress = c.progress[id] ?? 0;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.stackSm),
-      child: Column(
-        children: [
-          PersonRow(
-            user: user,
-            highlighted: user.isMe,
-            onTap: user.isMe ? null : () => _profile(user),
-            subtitle: '#$rank${user.isMe ? ' · You' : ''}',
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (rank == 1) ...[
-                  const Icon(
-                    Icons.workspace_premium,
-                    color: AppColors.mustardDark,
-                    size: 20,
-                  ),
-                  const SizedBox(width: AppSpacing.unit),
-                ],
-                Text(
-                  '$progress / ${c.targetCount}',
-                  style: AppTextStyles.labelLg,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppSpacing.unit),
-          ProgressBarPill(
-            progress: c.targetCount == 0 ? 0 : progress / c.targetCount,
-            semanticLabel:
-                '${user.isMe ? 'Your' : "${user.firstName}’s"} progress',
-          ),
-        ],
+      child: PersonRow(
+        user: user,
+        highlighted: user.isMe,
+        onTap: user.isMe ? null : () => _profile(user),
+        subtitle: '#$rank${user.isMe ? ' · You' : ''}',
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (rank == 1) ...[
+              const Icon(
+                Icons.workspace_premium,
+                color: AppColors.mustardDark,
+                size: 20,
+              ),
+              const SizedBox(width: AppSpacing.unit),
+            ],
+            Text('$progress / ${c.targetCount}', style: AppTextStyles.labelLg),
+          ],
+        ),
+        footer: ProgressBarPill(
+          progress: c.targetCount == 0 ? 0 : progress / c.targetCount,
+          semanticLabel:
+              '${user.isMe ? 'Your' : "${user.firstName}’s"} progress',
+        ),
       ),
     );
   }
@@ -197,6 +189,10 @@ class _CompetitionDetailScreenState extends State<CompetitionDetailScreen>
                 message: 'This challenge is no longer in your competitions.',
               )
             else ...[
+              if (c.coverAsset != null) ...[
+                CoverPhoto(asset: c.coverAsset!),
+                const SizedBox(height: AppSpacing.stackSm),
+              ],
               NoriCard(
                 color: c.color,
                 child: Column(

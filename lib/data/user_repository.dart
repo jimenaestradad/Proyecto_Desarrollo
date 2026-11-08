@@ -7,11 +7,7 @@ const kDemoUser = NoriUser(
   name: 'Hannah Walker',
   username: 'hannah_habits',
   email: 'hannah@example.com',
-  // Level 5, not 1 or 18+: the breathing sprite (see nori_breathing_sprite.dart)
-  // reads visually as a toddler, not a newborn baby or an already-evolved
-  // pet — level 5 is the mock's best current guess at where that art
-  // actually belongs on the level curve. See docs/OPEN_DECISIONS.md "Pet
-  // mechanics" — evolution level thresholds are still otherwise undecided.
+  // Level 5 is the evolution level (kEvolutionLevel).
   level: 5,
   totalXp: 7220,
   xpIntoLevel: 620,
@@ -26,18 +22,20 @@ const kDemoUser = NoriUser(
 abstract class UserRepository {
   Future<NoriUser> getCurrentUser();
 
-  /// Adds (or, for un-claiming a habit, subtracts) XP, leveling up whenever
-  /// `xpIntoLevel` crosses `xpForNextLevel`. Uses a flat per-level curve —
-  /// docs/OPEN_DECISIONS.md defers "the full XP-per-level curve", so this
-  /// doesn't invent one.
-  Future<void> addXp(int amount);
-
-  /// May be negative (spending in the Shop or on Play).
-  Future<void> addCoins(int amount);
+  /// The newest user [getCurrentUser] has returned, or null before the first
+  /// read. Tabs show it the moment they become active, so the XP and coin
+  /// pills don't flash the value from their own last visit while their own
+  /// reload is still in flight.
+  NoriUser? get lastKnownUser;
 
   Future<void> setVacationMode(bool enabled);
 
   Future<void> updateProfile({String? name, String? username, String? email});
+
+  /// Whether the account's profile has a name and a username, which sign-up
+  /// writes last. False for one interrupted after the username was claimed but
+  /// before the profile was saved (see `isSignUpComplete`).
+  Future<bool> hasProfile();
 }
 
 class MockUserRepository implements UserRepository {
@@ -47,6 +45,10 @@ class MockUserRepository implements UserRepository {
   final VacationLog _vacationLog;
 
   NoriUser _user = kDemoUser;
+
+  // The mock only runs signed out, where no tab shows a user.
+  @override
+  NoriUser? get lastKnownUser => null;
 
   @override
   Future<NoriUser> getCurrentUser() async {
@@ -59,33 +61,6 @@ class MockUserRepository implements UserRepository {
       _user = _user.copyWith(currentStreak: streak);
     }
     return _user;
-  }
-
-  @override
-  Future<void> addXp(int amount) async {
-    var xpIntoLevel = _user.xpIntoLevel + amount;
-    var level = _user.level;
-
-    while (xpIntoLevel >= _user.xpForNextLevel) {
-      xpIntoLevel -= _user.xpForNextLevel;
-      level += 1;
-    }
-    while (xpIntoLevel < 0 && level > 1) {
-      level -= 1;
-      xpIntoLevel += _user.xpForNextLevel;
-    }
-    if (xpIntoLevel < 0) xpIntoLevel = 0;
-
-    _user = _user.copyWith(
-      totalXp: (_user.totalXp + amount).clamp(0, 1 << 30),
-      xpIntoLevel: xpIntoLevel,
-      level: level,
-    );
-  }
-
-  @override
-  Future<void> addCoins(int amount) async {
-    _user = _user.copyWith(coins: (_user.coins + amount).clamp(0, 1 << 30));
   }
 
   @override
@@ -107,4 +82,7 @@ class MockUserRepository implements UserRepository {
   }) async {
     _user = _user.copyWith(name: name, username: username, email: email);
   }
+
+  @override
+  Future<bool> hasProfile() async => true;
 }

@@ -16,6 +16,19 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Retroactive logging — **shipped default:** any past day since the habit was created can be logged
   and claimed from the calendar or the Habits date strip (`claimHabit` only rejects days before
   `createdAt`, outside start/end, or archived). Open: whether to cap how far back.
+- **Complete / Undo and what happens to XP and coins — reopened 2026-11-05, waiting on a decision.**
+  *Today:* a habit-day pays once. Undo (un-claim) clears the "completed" mark but keeps the XP/coins
+  and the first-habit accessory; re-completing the same day pays 0. Chosen 2026-10-26 because exact
+  reversal lets claim → spend → undo → re-claim mint coins (BACKEND.md, Cloud Functions #3). Since
+  2026-11-05 reaching a progress habit's target completes it automatically, and Undo puts progress
+  back to where it was before Complete (session-only), so a stray tap that hits the target now
+  pays at once and Undo does not take it back. *Options:* (A) keep as is, and say so on the Undo
+  button; (B) Undo claws back exactly what was paid, which is consistent with deleting a habit or
+  bucket item, but needs a rule for coins already spent (floor at 0, or allow a negative balance
+  that blocks purchases) and can drop a level or de-evolve the pet; (C) Undo only claws back within
+  a short window (e.g. the same day, or a few minutes), then locks in; (D) credit rewards at day's
+  end instead of on tap, so Undo is free until then (biggest change: streak, level-up
+  celebration and notifications all fire on claim today). Not decided; nothing changed in code.
 - Editing an active habit's schedule/target — effect on history/streak?
 - Negative/limit-habit implementation details
 
@@ -34,7 +47,8 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
   first draft's wider easy/medium spreads paid a 90%-consistent user slightly less than an 80%
   one). **XP only — coins stay flat** at the difficulty amount (5/10/15), so adaptation never
   shifts the shop economy.
-  - Effect on pacing to the first evolution (2,100 XP), 5 medium habits: at 50% completion
+  - *(Written for the old level-7 evolution, 2,100 XP; the first evolution is now level 5, 1,000
+    XP, see Pet mechanics.)* Effect on pacing to the first evolution, 5 medium habits: at 50% completion
     ~42 → ~38 days, at 70% ~30 → ~32, at 90% ~23 → ~29. It narrows the gap between struggling and
     consistent users rather than speeding everyone up; whether level 7 is the right evolution
     point is a separate open question (below).
@@ -57,10 +71,11 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Exact behavior for flexible/any-day-in-period schedules ("5x any day this week")
 
 ## Pet mechanics
-- **Open (raised 2026-10-06): is level 7 too late for the first evolution?** The 2026-09-16
-  pacing assumed ~100 XP/day; the seeded demo (6 habits, ~70% done) earned ~50 XP/day, putting
-  Evolution 1 at ~5–6 weeks instead of ~3. Suggested: move it to level 5 (1,000 XP) and keep the
-  curve, per FEATURES.md §6's "adjust the thresholds, not the curve". Not changed yet.
+- Resolved 2026-11-07 (valevasqc, from the economy simulation): **Evolution 1 moved to level 5**
+  (1,000 XP), curve unchanged, per FEATURES.md §6's "adjust the thresholds, not the curve". A
+  typical player (5 habits, 70% done) gets there on about day 15, a light one (3 habits, 50%) on
+  about day 32; at level 7 the light one never did within 60 days. Every pet uses the constant
+  (`EVOLUTION_LEVEL` / `kEvolutionLevel`); the 7 stored on older pet documents is ignored.
 - Resolved 2026-09-16: the XP curve is `100 × currentLevel` and evolution stages are Baby 1–6,
   Evolution 1 at **level 7**, Evolution 2 at **level 15** (MVP ships only the first evolution).
   See [FEATURES.md](FEATURES.md) §6. The level-7 threshold that was a placeholder in
@@ -72,26 +87,59 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Whether XP belongs to the user or to the currently active pet
 - Whether only one pet can progress at a time
 - How inactive pets' stats/needs behave
-- Pet-care stat decay rates — **shipped default:** 2 points/hour per stat, clamped 0–100
-  (`FirestorePetRepository`, mirrored in `functions/src/notifications.ts`)
+- Whether Vacation Mode should pause pet decay. FEATURES.md §2 says paused time shouldn't hurt
+  the pet, but only streaks and the calendar are frozen today: decay and the hourly `petCareCheck`
+  notification keep running (shipped default, 2026-09-15). Pausing would mean skipping the frozen
+  span in `applyPetDecay` and in `petCareCheck`.
+- Resolved 2026-11-07: pet-care stat decay is **1 point/hour** per stat, clamped 0–100
+  (`kPetDecayPerHour`, mirrored in `functions/src/notifications.ts`). From full, a vital takes
+  about 70 hours to reach the "Pet needs you" line (30). Was 2, the mock's demo value, which made
+  care cost more than anyone earns (see Economy).
 
 ## Economy
-- Resolved 2026-09-16: new accounts start with **0 coins** and the care items
-  `{food: 3, shampoo: 2, plushie: 1}`. The `sunglasses` accessory is unlocked on the user's
-  **first habit completion** and is the **only** free accessory ever granted — everything else
-  is bought with coins. See [BACKEND.md](BACKEND.md).
-- Coins earned per habit completion — **shipped default:** XP ÷ 2 at the base tier (5/10/15), not
-  adapted (see XP balancing above)
-- Shop item prices
+- **Economy pass, resolved 2026-11-07 (valevasqc approved the whole set).** Method: an hour-by-hour
+  simulation of four players (light: 3 habits at 50%; typical: 5 at 70%, twice a day; sporadic:
+  typical but skips 30% of days; heavy: 8 at 90%), 200 random runs each over 60 days
+  (`tool/economy_sim.py`). Before the pass, care cost about 106 coins a day against 14-78 earned, so
+  the pet sat at 0 for 60-96% of the time for everyone but the heaviest user, no accessory was ever
+  affordable, and a self-made bucket goal (typed reward, cap 250) paid 281 coins a day. Care cost is
+  a cliff: while it stays near one medium habit's daily coins (~10), even the light player's pet is
+  fine; slightly above that it is not. Shipped:
+
+  | Lever | Before | Now |
+  |---|---|---|
+  | Pet decay | 2 points/hour | **1** |
+  | Coins per habit (easy / medium / hard) | 5 / 10 / 15 | unchanged |
+  | XP per habit | 10 / 20 / 30 × adaptive | unchanged |
+  | Basic care items (food, shampoo, plushie), pack of 3 | 50 / 40 / 60 coins, restore 25 / 25 / 20 | **10 each, restore 25 each** |
+  | Better care items (cake, hair brush, blanket), pack of 3 | 90 / 70 / 100, restore 45 / 45 / 40 | **18 each, restore 50 each** |
+  | Accessories (sunglasses stay the free first-completion gift) | 120-180 | **Tail Charm Clasp 100, Horn Bow 180, Chef Hat 250, Steampunk Goggles 350, Flower Crown 500** (1,380 for the five). The clasp is cheapest because it is not drawn once Nori evolves |
+  | Bucket-list reward | typed, up to 500 XP / 250 coins, unlimited goals | **Small 75 XP / 25 coins, Medium 150 / 50, Big 300 / 100; at most 2 paid goals per rolling week** |
+  | First evolution | level 7 | **level 5** |
+  | Starting care items | food 3, shampoo 2, plushie 1 | **food 3, shampoo 3, plushie 3**; still 0 coins |
+
+  Result for the four players: pet healthy (every vital at 30 or more) 99-100% of the time; care
+  takes 13-75% of coins (the light player spends most of theirs on care, as intended); a typical
+  player buys the first accessory around day 5 and all five by day 60 (about every 10 days); a
+  sporadic one gets 3-4 of 5; a light one the first around day 30. Coming back with all three vitals
+  at 0 costs 60 coins to refill (about 1.6 typical days; before, 300). Accepted: a heavy player
+  (8 habits at 90%) finishes the shop in about 3 weeks and ends day 60 with ~2,600 coins; the real
+  fix is a bigger catalog (more accessories, room decor, eggs) when the game grows, not a daily cap.
+  Simulator limits: habit days are independent random draws, the simulated player always cares for
+  Nori first and then saves, and the Social +XP is not modelled.
+  - Still open here: the demo account's baseline and `resetDemoAccount` are unchanged (every care
+    item at 3+, 500 coins minimum); egg pricing for extra pets (FEATURES.md §7).
+  - Old decision, superseded in part: 2026-09-16 "0 coins and `{food: 3, shampoo: 2, plushie: 1}`";
+    coins stay 0, the items are now 3 / 3 / 3. The `sunglasses` accessory is unlocked on the user's
+    **first habit completion** and is the **only** free accessory ever granted. See
+    [BACKEND.md](BACKEND.md).
+- Coins earned per habit completion — **shipped default, kept in the 2026-11-07 pass:** XP ÷ 2 at the
+  base tier (5/10/15), not adapted (see XP balancing above)
 - Consumable vs. permanent items
 - Power-up design (e.g. cake's special effect)
 - Per-pet vs. shared inventory/accessories
-- Care item tiers/pricing (2026-09-14): valevasqc asked for a choice of which owned item to use
-  when caring for a stat, suggesting pricier items should restore more. Implemented as a
-  placeholder — two tiers per stat (`lib/data/care_item_catalog.dart`: Food/Cake,
-  Shampoo/Hair Brush, Plushie/Blanket), tier 2 priced and restoring roughly 1.7-2x tier 1 — but
-  the actual price-to-restore-amount curve, and whether all 15 reference-sheet consumables
-  (see `assets/source/accessories/README.md`) get wired in, are still undecided.
+- Whether all 15 reference-sheet consumables (see `assets/source/accessories/README.md`) get wired
+  in beyond the six care items and six accessories — undecided.
 - Cosmetic ownership rules
 
 ## Social (vision-only — still not MVP regardless of these answers)
@@ -135,8 +183,14 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
   events).
 
 ## Monetization
+- **Plans and pricing — listed as an important item in KNOWN_ISSUES.md (2026-11-07), needs a
+  decision.** Which model, what Free vs. Plus include, the real prices, and what to do with the
+  preview screens. The note below has the current contradiction.
 - End-user pricing model (free/premium/subscription/cosmetic purchases) — none chosen; don't
-  build billing/paywalls without this
+  build billing/paywalls without this. Note (external QA, 2026-11-05): the Nori Plus preview
+  already shows $4.99/month and $39.99/year, and the course homework compares Finch/Habitica
+  (freemium + subscription). Those are mockups, not a committed decision — confirm whether to
+  record freemium + subscription as chosen here so code and docs stop contradicting each other.
 
 ## User flows / screens
 All MVP screens are built (onboarding, habit creation, Home, logging, pet care, shop, profile —
@@ -172,7 +226,7 @@ evolution have one — KNOWN_ISSUES.md "No reward feedback on claim itself") and
   [BACKEND.md](BACKEND.md) for schema, security-rules approach, and the Cloud Functions list.
 - Resolved 2026-09-21, extended 2026-09-28: Auth is Firebase Auth with **email/password and
   Google Sign-In**, linkable in both directions — see `FirebaseAuthRepository` in
-  `lib/data/firebase_auth_repository.dart` and BACKEND.md, "Account linking, both directions".
+  `lib/data/firebase_auth_repository.dart` and BACKEND.md, "Auth" (account linking).
 - Resolved in practice (GCP sprint, 2026-10): no GCP services beyond what Firebase provisions
   (Cloud Functions/Run, Cloud Scheduler for `petCareCheck`, Artifact Registry, a $5 budget alert).
   Still open: whether CI/CD deploys automatically (ROADMAP.md, GCP row).

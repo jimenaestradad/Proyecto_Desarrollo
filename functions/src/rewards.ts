@@ -1,13 +1,15 @@
-// Pure habit-reward and progression math, ported from the Dart mocks:
-// Habit.computeReward/rewardTier (lib/models/habit.dart),
-// MockHabitRepository._claimValue (lib/data/habit_repository.dart),
-// PetRepository.syncEvolution (lib/data/pet_repository.dart).
-// No Firestore here, so it can be unit-tested directly.
+// Pure habit-reward and progression math ported from the Dart mocks.
+// No Firestore dependency, so it can be unit-tested directly.
 
 export type HabitType = "binary" | "quantity" | "duration" | "multipleCompletion" | "limit";
 export type HabitDifficulty = "easy" | "medium" | "hard";
 export type RewardTier = "none" | "full";
 export type PetStage = "baby" | "evolution1";
+
+// The level at which Nori first evolves (1,000 XP in total). Mirrors kEvolutionLevel in
+// lib/data/pet_repository.dart. Every pet uses it: the evolutionLevelThreshold stored on older
+// pet docs (7) is ignored, so existing accounts follow the new level on their next XP change.
+export const EVOLUTION_LEVEL = 5;
 
 const HABIT_TYPES: readonly HabitType[] = [
   "binary", "quantity", "duration", "multipleCompletion", "limit",
@@ -27,7 +29,7 @@ export interface HabitDefinition {
   adaptiveMultiplier: number;
 }
 
-function numberOrNull(value: unknown): number | null {
+export function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 

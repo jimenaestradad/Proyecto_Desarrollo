@@ -3,10 +3,8 @@ import { onCall } from "firebase-functions/v2/https";
 import { DayArgs, parseDayArgs, parseHabitId, requireAuth } from "./requestArgs";
 import { HabitRewardResult, currentPetStage, habitDocRefs, readLevelState } from "./habitTransaction";
 
-// Un-marks the day as claimed but keeps what the claim paid: each day pays
-// once, so the reward stays and a re-claim pays nothing (claimHabit checks
-// the log's awardedXp/awardedCoins). Taking it back instead let claim →
-// spend → unclaim → re-claim mint coins (docs/RESOLVED_LOG.md, 2026-10-26).
+// Unmarks the claim but keeps its payout; re-claiming pays nothing.
+// Reversing it allowed claim → spend → unclaim → re-claim to mint coins.
 export async function runUnclaimHabit(
   uid: string,
   habitId: string,

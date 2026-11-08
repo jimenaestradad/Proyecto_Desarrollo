@@ -1,19 +1,6 @@
-// Demo-history seed script: fills an account's past days with believable
-// habitLogs, replacing HabitHistoryStore.seedHistory's in-memory mock data
-// (docs/BACKEND.md, "Seed script"). Uses the Admin SDK because firestore.rules
-// stop any client from writing claimed/awardedXp/awardedCoins.
-//
-// Not deployed as a function — run it locally (see "Seed script" in
-// docs/BACKEND.md for credentials):
-//   npm run build && node lib/seedHistory.js --uid <uid> [--days 30] [--off-days 0.12] [--apply]
-// Without --apply it only prints the plan. Day keys use this machine's time
-// zone, the same way the app uses the device's; override with TZ=… if needed.
-//
-// Seeds the account's existing habits only (create them in the app first),
-// skips today, vacation days, archived days and any day that already has a
-// log, leaves ~12% of days fully empty (--off-days) so the streak breaks
-// like a real user's would, and pays XP/coins/level/pet stage/the sunglasses gift exactly like
-// claimHabit would, in the same transactions as the logs.
+// Seeds past habit logs and matching rewards for existing habits through the Admin SDK.
+// Local script: without --apply it only prints the plan; day keys use this machine’s time zone.
+// Skips today, vacation, archived days, and existing logs; includes whole off days.
 
 import { initializeApp } from "firebase-admin/app";
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
@@ -21,6 +8,7 @@ import { habitLogId, userDocRefs } from "./docRefs";
 import { applyXpDelta } from "./xpCurve";
 import { FIRST_COMPLETION_GIFT } from "./rewards";
 import { asNumber, levelFields, readLevelState, syncPetStage } from "./habitTransaction";
+import { topUpCareItems, topUpCoins } from "./demoBaseline";
 import {
   DEFAULT_OFF_DAY_RATE, SeedHabit, SeedLog, localDayKey, localMidnight, pastDays, planSeed,
 } from "./seedPlan";
@@ -130,8 +118,24 @@ async function main() {
   for (let i = 0; i < plan.logs.length; i += LOGS_PER_TRANSACTION) {
     await writeChunk(args.uid, plan.logs.slice(i, i + LOGS_PER_TRANSACTION));
   }
+  await topUpBaseline(args.uid);
   const after = (await userRef.get()).data() ?? {};
   console.log(`Done. Now level ${after.level}, ${after.totalXp} XP, ${after.coins} coins.`);
+}
+
+// Leaves the seeded account stocked for testing: every care item x3 and a coin floor.
+async function topUpBaseline(uid: string) {
+  const db = getFirestore();
+  const { user, inventory } = userDocRefs(db, uid);
+  await db.runTransaction(async (tx) => {
+    const [userSnap, inventorySnap] = await Promise.all([tx.get(user), tx.get(inventory)]);
+    const userData = userSnap.data();
+    if (userData) tx.update(user, { coins: topUpCoins(asNumber(userData.coins, 0)) });
+    const inventoryData = inventorySnap.data();
+    if (inventoryData) {
+      tx.update(inventory, { careItemCounts: topUpCareItems(inventoryData.careItemCounts) });
+    }
+  });
 }
 
 async function writeChunk(uid: string, logs: SeedLog[]) {

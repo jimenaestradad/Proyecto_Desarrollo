@@ -3,6 +3,7 @@ import 'package:nori/data/accessory_catalog.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/models/pet.dart';
+import 'package:nori/screens/shop/shop_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/accessory_art.dart';
@@ -12,8 +13,13 @@ import 'package:nori/widgets/nori_evolved_sprite.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
+/// The Wardrobe: equip what you own. Buying lives in the Shop.
 class CustomizationScreen extends StatefulWidget {
-  const CustomizationScreen({super.key});
+  const CustomizationScreen({super.key, this.openedFromShop = false});
+
+  /// Opened from the Shop, so its "Shop" button goes back instead of
+  /// stacking a second Shop on top.
+  final bool openedFromShop;
 
   @override
   State<CustomizationScreen> createState() => _CustomizationScreenState();
@@ -24,7 +30,15 @@ class _CustomizationScreenState extends State<CustomizationScreen>
   Inventory? _inventory;
   PetEvolutionStage _stage = PetEvolutionStage.baby;
   String? _draftEquippedId;
+
+  /// What is stored right now: the look when the screen opened, then
+  /// whatever the last successful Save look wrote.
+  String? _savedEquippedId;
   bool _isSaving = false;
+
+  /// The preview differs from what is stored, so leaving would drop it.
+  bool get _hasUnsavedLook =>
+      _inventory != null && _draftEquippedId != _savedEquippedId;
 
   @override
   void initState() {
@@ -41,8 +55,58 @@ class _CustomizationScreenState extends State<CustomizationScreen>
         _inventory = inventory;
         _stage = pet.stage;
         _draftEquippedId = inventory.equippedAccessoryId;
+        _savedEquippedId = inventory.equippedAccessoryId;
       });
     });
+  }
+
+  /// Asks before dropping an unsaved look; true when it's fine to leave.
+  Future<bool> _confirmLeave() async {
+    if (!_hasUnsavedLook) return true;
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+        ),
+        title: const Text('Discard changes?'),
+        content: const Text("Your new look hasn't been saved."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    return discard ?? false;
+  }
+
+  /// Back arrow. `Navigator.pop` skips [PopScope], so it asks itself.
+  Future<void> _back() async {
+    if (await _confirmLeave() && mounted) Navigator.pop(context);
+  }
+
+  Future<void> _openShop() async {
+    if (!await _confirmLeave() || !mounted) return;
+    if (widget.openedFromShop) {
+      Navigator.pop(context);
+      return;
+    }
+    // Replace rather than push, so back from the Shop returns to where the
+    // Wardrobe was opened (Home), not to a stale Wardrobe.
+    await Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ShopScreen(startOnAccessories: true),
+      ),
+    );
   }
 
   void _selectOwned(String id) {
@@ -55,15 +119,28 @@ class _CustomizationScreenState extends State<CustomizationScreen>
 
   Future<void> _saveLook() async {
     if (_isSaving) return;
+    // Captured: the selection can change while the save is in flight, and the
+    // confirmation must describe what was actually saved.
+    final saving = _draftEquippedId;
     setState(() => _isSaving = true);
     final ok = await guardedAction(
-      () => AppData.inventory.setEquippedAccessory(_draftEquippedId),
+      () => AppData.inventory.setEquippedAccessory(saving),
     );
     if (mounted) setState(() => _isSaving = false);
     if (!ok || !mounted) return;
+    setState(() => _savedEquippedId = saving);
+    final changedMeanwhile = _draftEquippedId != saving;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Look saved!')));
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            changedMeanwhile
+                ? 'Look saved! Your newer pick still needs saving.'
+                : 'Look saved!',
+          ),
+        ),
+      );
   }
 
   @override
@@ -72,97 +149,107 @@ class _CustomizationScreenState extends State<CustomizationScreen>
     final draftEquippedId = _draftEquippedId;
     final error = loadError;
 
-    return Scaffold(
-      backgroundColor: AppColors.linen,
-      body: SafeArea(
-        child: inventory == null
-            ? error != null
-                  ? LoadErrorView(error: error, onRetry: _loadInventory)
-                  : const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 700;
-                  final horizontalPadding = isWide
-                      ? AppSpacing.containerPaddingDesktop
-                      : AppSpacing.containerPaddingMobile;
+    // System back and the back gesture: block while a look is unsaved and
+    // ask first.
+    return PopScope(
+      canPop: !_hasUnsavedLook,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (!didPop) _back();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.linen,
+        body: SafeArea(
+          child: inventory == null
+              ? error != null
+                    ? LoadErrorView(error: error, onRetry: _loadInventory)
+                    : const Center(child: CircularProgressIndicator())
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWide = constraints.maxWidth >= 700;
+                    final horizontalPadding = isWide
+                        ? AppSpacing.containerPaddingDesktop
+                        : AppSpacing.containerPaddingMobile;
 
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.only(bottom: AppSpacing.stackMd),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 800),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                horizontalPadding,
-                                AppSpacing.gutter,
-                                horizontalPadding,
-                                AppSpacing.stackSm,
+                    return SingleChildScrollView(
+                      padding: EdgeInsets.only(bottom: AppSpacing.stackMd),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 800),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Padding(
+                                padding: EdgeInsets.fromLTRB(
+                                  horizontalPadding,
+                                  AppSpacing.gutter,
+                                  horizontalPadding,
+                                  AppSpacing.stackSm,
+                                ),
+                                child: _CustomizationHeader(
+                                  onBack: _back,
+                                  onShop: _openShop,
+                                ),
                               ),
-                              child: const _CustomizationHeader(),
-                            ),
-                            const SizedBox(height: AppSpacing.stackSm),
-                            Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: horizontalPadding,
+                              const SizedBox(height: AppSpacing.stackSm),
+                              Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: horizontalPadding,
+                                ),
+                                child: _PetPreview(
+                                  height: isWide ? 340 : 280,
+                                  evolved: _stage != PetEvolutionStage.baby,
+                                  equippedItem: draftEquippedId == null
+                                      ? null
+                                      : accessoryById(draftEquippedId),
+                                ),
                               ),
-                              child: _PetPreview(
-                                height: isWide ? 340 : 280,
-                                evolved: _stage != PetEvolutionStage.baby,
-                                equippedItem: draftEquippedId == null
-                                    ? null
-                                    : accessoryById(draftEquippedId),
+                              const SizedBox(height: AppSpacing.stackMd),
+                              Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: horizontalPadding,
+                                ),
+                                child: _InventoryPanel(
+                                  inventory: inventory,
+                                  draftEquippedId: _draftEquippedId,
+                                  onSelectOwned: _selectOwned,
+                                  onClearEquipped: _clearEquipped,
+                                  onSave: _saveLook,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: AppSpacing.stackMd),
-                            Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: horizontalPadding,
-                              ),
-                              child: _InventoryPanel(
-                                inventory: inventory,
-                                draftEquippedId: _draftEquippedId,
-                                onSelectOwned: _selectOwned,
-                                onClearEquipped: _clearEquipped,
-                                onSave: _saveLook,
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
+                    );
+                  },
+                ),
+        ),
       ),
     );
   }
 }
 
 class _CustomizationHeader extends StatelessWidget {
-  const _CustomizationHeader();
+  const _CustomizationHeader({required this.onBack, required this.onShop});
+
+  final VoidCallback onBack;
+  final VoidCallback onShop;
 
   @override
   Widget build(BuildContext context) {
     return NoriScreenHeader(
-      leading: Material(
-        color: AppColors.white,
-        shape: const CircleBorder(
-          side: BorderSide(color: AppColors.ink, width: AppBorder.standard),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: IconButton(
-          tooltip: 'Back',
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back),
-        ),
+      leading: IconButton(
+        tooltip: 'Back',
+        onPressed: onBack,
+        icon: const Icon(Icons.arrow_back),
       ),
-      title: 'Style Pet',
+      title: 'Wardrobe',
       titleStyle: AppTextStyles.headlineLgMobile,
-      titleTextAlign: TextAlign.center,
-      trailing: const SizedBox(width: 48),
+      trailing: TextButton.icon(
+        onPressed: onShop,
+        icon: const Icon(Icons.shopping_bag_outlined),
+        label: const Text('Shop'),
+      ),
     );
   }
 }
@@ -320,7 +407,7 @@ class _InventoryPanel extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.all(AppSpacing.containerPaddingMobile),
-            child: TactileButton(label: 'Save Look', onPressed: onSave),
+            child: TactileButton(label: 'Save look', onPressed: onSave),
           ),
         ],
       ),

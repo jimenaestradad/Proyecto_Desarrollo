@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
-/// Maps the colors a habit or bucket-list item can have to stable string
-/// keys for Firestore storage (docs/BACKEND.md, "Colors: store the palette
-/// key, not an int" — a palette tweak shouldn't strand old rows on a stale
-/// hex value). The one registry for both features, like [IconRegistry].
-/// `AddHabitScreen`'s color picker offers every key here, and the bucket
-/// list's offers a subset, so a new key only needs adding here.
+/// Stable Firestore color keys shared by habit and bucket-list pickers.
+/// Palette changes then avoid stranding stored items on old hex values.
+///
+/// `linenAlt` (beige, too close to the page background) is retired: it is not
+/// registered, so items saved with that key load as [defaultColor] and are
+/// written back with its key the next time they are saved.
 class ColorRegistry {
   ColorRegistry._();
 
@@ -17,7 +17,6 @@ class ColorRegistry {
     'blushPink': AppColors.blushPink,
     'mustardLight': AppColors.mustardLight,
     'blush': AppColors.blush,
-    'linenAlt': AppColors.linenAlt,
   };
 
   static const Color defaultColor = AppColors.mossLight;

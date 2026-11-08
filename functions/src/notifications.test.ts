@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
-import { ProgressInput, petCareMessage, progressNotifications } from "./notifications";
+import { PET_CARE_DORMANT_AFTER_MS, ProgressInput, isPetCareDormant, petCareMessage, progressNotifications } from "./notifications";
 
 function input(overrides: Partial<ProgressInput>): ProgressInput {
   return {
@@ -59,12 +59,27 @@ test("pet care: healthy pet is quiet", () => {
 
 test("pet care: decay since lastDecayAt counts, lowest vital is named", () => {
   const now = Date.now();
-  // 20 hours at 2/h = -40: hunger 60 -> 20, hygiene 90 -> 50.
-  const pet = { name: "Mochi", hunger: 60, hygiene: 90, happiness: 80, lastDecayAt: Timestamp.fromMillis(now - 20 * HOUR) };
+  // 40 hours at 1/h = -40: hunger 60 -> 20, hygiene 90 -> 50.
+  const pet = { name: "Mochi", hunger: 60, hygiene: 90, happiness: 80, lastDecayAt: Timestamp.fromMillis(now - 40 * HOUR) };
   assert.match(petCareMessage(pet, now) ?? "", /^Mochi is hungry!/);
 });
 
 test("pet care: missing fields fall back to full and the default name", () => {
   assert.equal(petCareMessage({}, Date.now()), null);
   assert.match(petCareMessage({ hygiene: 10 }, Date.now()) ?? "", /^Nori needs a bath!/);
+});
+
+test("pet care: pets uncared-for past the dormancy window stop notifying", () => {
+  const now = Date.now();
+  const at = (agoMs: number) => ({ lastDecayAt: Timestamp.fromMillis(now - agoMs) });
+  assert.equal(isPetCareDormant(at(PET_CARE_DORMANT_AFTER_MS - HOUR), now), false);
+  assert.equal(isPetCareDormant(at(PET_CARE_DORMANT_AFTER_MS + HOUR), now), true);
+  // No timestamp: can't tell, so don't silence it.
+  assert.equal(isPetCareDormant({}, now), false);
+});
+
+test("pet care: a lastDecayAt that is not a Timestamp is ignored, not thrown on", () => {
+  const forged = { name: "Mochi", hunger: 10, hygiene: 90, happiness: 80, lastDecayAt: { toMillis: 1 } };
+  assert.equal(isPetCareDormant(forged, Date.now()), false);
+  assert.match(petCareMessage(forged, Date.now()) ?? "", /hungry/);
 });

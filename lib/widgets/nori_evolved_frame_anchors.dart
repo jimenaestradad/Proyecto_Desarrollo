@@ -4,13 +4,9 @@
 /// baby's [kNoriFrameCanvasSize].
 const kNoriEvolvedCanvasWidth = 480.0;
 
-/// Where the evolved Nori's eyes sit on one frame of [NoriEvolvedSprite]'s
-/// 64-frame loop. Unlike the baby, the evolved head is a rigid shape: across
-/// the whole loop the eye gap stays 40px and [eyeMidX] only wobbles within
-/// ~4px, while [eyeMidY] swings ~99-147px as he hops onto his hind legs and
-/// back down -- so the head just translates, and one eye-midpoint per frame is
-/// enough to pin every head accessory (the placement table in
-/// accessory_art.dart offsets from it).
+/// Eye midpoint for each frame of the evolved sprite's 64-frame loop.
+/// The rigid head translates without changing its 40px eye gap,
+/// so one anchor per frame tracks every head accessory.
 class NoriEvolvedFrameAnchors {
   const NoriEvolvedFrameAnchors({required this.eyeMidX, required this.eyeMidY});
 
@@ -18,11 +14,8 @@ class NoriEvolvedFrameAnchors {
   final double eyeMidY;
 }
 
-/// Extracted automatically from the frames' alpha cutouts: the head is the
-/// topmost skin-coloured blob, and the eyes are the two dark blobs inside it
-/// (filled pupils on open-eye frames; the closed-eye arcs on blink frames).
-/// Frames 54-55 are mid-blink and ambiguous, so they're interpolated between
-/// 53 and 56. Checked by compositing accessories onto frames across the loop.
+/// Automatically extracted head/eye anchors, checked by compositing accessories.
+/// Ambiguous mid-blink frames 54–55 interpolate between frames 53 and 56.
 const List<NoriEvolvedFrameAnchors> kNoriEvolvedFrameAnchors = [
   NoriEvolvedFrameAnchors(eyeMidX: 239.1, eyeMidY: 129.4), // frame 00
   NoriEvolvedFrameAnchors(eyeMidX: 239.1, eyeMidY: 129.4), // frame 01

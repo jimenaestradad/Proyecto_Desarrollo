@@ -6,19 +6,8 @@ import 'accessory_art.dart';
 import 'nori_breathing_sprite.dart';
 import 'nori_evolved_sprite.dart';
 
-/// Nori's room: the interior background with Nori standing on the rug,
-/// breathing gently in place. Purely visual — no data reads. Tapping Nori
-/// opens Customization; [onTapNori] is supplied by the caller so this
-/// widget doesn't need to know about navigation.
-///
-/// Full-bleed (no rounded corners) — this fills the whole screen behind the
-/// HUD and habit panel, not a padded/rounded card floating over a plain
-/// background.
-///
-/// The static front/side/back renders bundled under assets/images/ are for
-/// a later turn-around feature, not wired here (see docs/OPEN_DECISIONS.md;
-/// nothing about pet-facing direction is decided) — this stage uses the
-/// animated breathing sprite instead.
+/// Visual full-bleed room behind the HUD and habit panel, with animated Nori on the rug.
+/// The caller supplies [onTapNori] to open Customization; this widget reads no data.
 class NoriRoomStage extends StatelessWidget {
   const NoriRoomStage({
     super.key,
@@ -34,14 +23,8 @@ class NoriRoomStage extends StatelessWidget {
   /// shares that one form today — there's art for two forms only.
   final PetEvolutionStage stage;
 
-  /// The accessory equipped in Customization (see accessory_catalog.dart),
-  /// or null when nothing is equipped. Drawn near Nori's head via
-  /// accessory_art.dart's hand-drawn, flat-outlined illustrations, matching
-  /// his own art style rather than a generic UI icon.
-  ///
-  /// Both forms track their own per-frame head anchors. Items with no sensible
-  /// spot on the evolved form (the tail charm -- see [accessoryFitsEvolved])
-  /// are simply not drawn there.
+  /// Equipped accessory, or null; each pet form tracks its own per-frame head anchors.
+  /// Items without an evolved placement are hidden; see [accessoryFitsEvolved].
   final AccessoryItem? equippedAccessory;
 
   bool get _isEvolved => stage != PetEvolutionStage.baby;

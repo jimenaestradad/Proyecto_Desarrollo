@@ -3,7 +3,7 @@ enum PetEvolutionStage { baby, evolution1 }
 
 extension PetEvolutionStageLabel on PetEvolutionStage {
   String get label => switch (this) {
-    PetEvolutionStage.baby => 'Baby Stage',
+    PetEvolutionStage.baby => 'Baby stage',
     PetEvolutionStage.evolution1 => 'Evolution 1',
   };
 }
@@ -34,9 +34,6 @@ class Pet {
   final double hygiene;
   final double happiness;
   final DateTime lastDecayAt;
-
-  double progressToNextEvolution(int userLevel) =>
-      (userLevel / evolutionLevelThreshold).clamp(0, 1).toDouble();
 
   int levelsUntilNextEvolution(int userLevel) =>
       (evolutionLevelThreshold - userLevel).clamp(0, evolutionLevelThreshold);

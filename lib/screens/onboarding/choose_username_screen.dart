@@ -3,22 +3,18 @@ import 'package:nori/data/app_data.dart';
 import 'package:nori/data/username_repository.dart';
 import 'package:nori/screens/onboarding/username_availability.dart';
 import 'package:nori/theme/app_theme.dart';
-import 'package:nori/widgets/loading_overlay.dart';
-import 'package:nori/widgets/nori_card.dart';
+import 'package:nori/utils/app_log.dart';
+import 'package:nori/utils/validators.dart';
+import 'package:nori/widgets/auth_card_screen.dart';
 import 'package:nori/widgets/nori_text_field.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
-/// Second step of Google Sign-In (see docs/OPEN_DECISIONS.md): shown after
-/// Google auth succeeds for a uid that hasn't claimed a Nori username yet
-/// — either a brand-new sign-up, or a previous attempt that authenticated
-/// with Google and then got interrupted before finishing this step.
-///
-/// Pushed from login_screen.dart's _completeGoogleSignIn, which passes the
-/// already-authenticated uid/email and a suggested starting username. Pops
-/// with the claimed username string on success; this screen has no back
-/// button because canceling here would leave a signed-in Google account
-/// with no username and nowhere else in the app to resolve that — see
-/// docs/OPEN_DECISIONS.md if "abandon sign-up here" needs a real answer.
+/// Claims a username after Google auth for new or interrupted sign-ups.
+/// Receives the authenticated uid/email and suggestion; pops with the claimed name.
+/// No back button: cancellation would strand an account without a username.
+/// The one way out is [_useDifferentAccount]: it signs out, which leaves the
+/// account (and its empty profile) behind, harmless and picked up again if
+/// that account ever signs in.
 class ChooseUsernameScreen extends StatefulWidget {
   const ChooseUsernameScreen({
     super.key,
@@ -71,8 +67,9 @@ class _ChooseUsernameScreenState extends State<ChooseUsernameScreen>
     FocusScope.of(context).unfocus();
 
     final username = _usernameController.text.trim();
-    if (username.length < 3) {
-      _showMessage('Username must be at least 3 characters.');
+    final problem = validateUsername(username);
+    if (problem != null) {
+      _showMessage(problem);
       return;
     }
     if (usernameStatus == UsernameStatus.taken) {
@@ -92,11 +89,32 @@ class _ChooseUsernameScreenState extends State<ChooseUsernameScreen>
         usernameStatus = UsernameStatus.taken;
       });
       _showMessage('That username was just taken — please pick another.');
-    } catch (_) {
+    } catch (error, stackTrace) {
+      logError('claimUsername', error, stackTrace);
       if (!mounted) return;
       setState(() => _loading = false);
       _showMessage('Unable to claim that username. Please try again.');
     }
+  }
+
+  /// For someone who got here with the wrong account (the wrong Google
+  /// account in the picker, say): without this the only way out was to kill
+  /// the app, which reopened on this same screen because the session persists.
+  Future<void> _useDifferentAccount() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      await AppData.auth.logOut();
+    } catch (error, stackTrace) {
+      logError('logOut (username picker)', error, stackTrace);
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage("Couldn't sign out. Please try again.");
+      return;
+    }
+    AppData.unbindUser();
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false);
   }
 
   @override
@@ -107,98 +125,60 @@ class _ChooseUsernameScreenState extends State<ChooseUsernameScreen>
       // gesture/button is disabled the same way the missing AppBar back
       // button is.
       canPop: false,
-      child: Scaffold(
-        body: Stack(
-          children: [
-            SafeArea(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.containerPaddingMobile,
-                      vertical: AppSpacing.stackMd,
-                    ),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight:
-                            (constraints.maxHeight - (AppSpacing.stackMd * 2))
-                                .clamp(0.0, double.infinity),
-                      ),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 420),
-                          child: NoriCard(
-                            padding: const EdgeInsets.all(AppSpacing.stackMd),
-                            radius: AppRadius.lg,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 64,
-                                  height: 64,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: AppColors.ink,
-                                      width: AppBorder.thick,
-                                    ),
-                                  ),
-                                  child: ClipOval(
-                                    child: Image.asset(
-                                      'assets/images/nori_closeup.png',
-                                      width: 64,
-                                      height: 64,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: AppSpacing.stackSm),
-                                Text(
-                                  'Pick a username',
-                                  style: AppTextStyles.headlineLgMobile,
-                                ),
-                                const SizedBox(height: AppSpacing.unit),
-                                Text(
-                                  'Signed in as ${widget.email}. Choose a '
-                                  'username to finish setting up your Nori '
-                                  'account.',
-                                  style: AppTextStyles.bodyMd.copyWith(
-                                    color: AppColors.inkMuted,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: AppSpacing.stackMd),
-                                NoriTextField(
-                                  controller: _usernameController,
-                                  label: 'Username',
-                                  hint: 'alex_habits',
-                                  icon: Icons.alternate_email,
-                                  textInputAction: TextInputAction.done,
-                                  onChanged: onUsernameChanged,
-                                  onSubmitted: (_) => _submit(),
-                                  suffixIcon: usernameSuffixIcon,
-                                  helperText: usernameHelperText,
-                                  helperColor: usernameHelperColor,
-                                ),
-                                const SizedBox(height: AppSpacing.unit),
-                                TactileButton(
-                                  label: 'Continue',
-                                  icon: Icons.arrow_forward,
-                                  onPressed: _loading ? null : _submit,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
+      child: AuthCardScreen(
+        loading: _loading,
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.ink, width: AppBorder.thick),
+            ),
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/nori_closeup.png',
+                width: 64,
+                height: 64,
+                fit: BoxFit.cover,
               ),
             ),
-            if (_loading) const LoadingOverlay(),
-          ],
-        ),
+          ),
+          const SizedBox(height: AppSpacing.stackSm),
+          Text('Pick a username', style: AppTextStyles.headlineLgMobile),
+          const SizedBox(height: AppSpacing.unit),
+          Text(
+            'Signed in as ${widget.email}. Choose a '
+            'username to finish setting up your Nori '
+            'account.',
+            style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppSpacing.stackMd),
+          NoriTextField(
+            controller: _usernameController,
+            label: 'Username',
+            hint: 'alex_habits',
+            icon: Icons.alternate_email,
+            textInputAction: TextInputAction.done,
+            inputFormatters: usernameInputFormatters,
+            onChanged: onUsernameChanged,
+            onSubmitted: (_) => _submit(),
+            suffixIcon: usernameSuffixIcon,
+            helperText: usernameHelperText,
+            helperColor: usernameHelperColor,
+          ),
+          const SizedBox(height: AppSpacing.unit),
+          TactileButton(
+            label: 'Continue',
+            icon: Icons.arrow_forward,
+            onPressed: _loading ? null : _submit,
+          ),
+          TextButton(
+            onPressed: _loading ? null : _useDifferentAccount,
+            child: const Text('Not you? Use a different account'),
+          ),
+        ],
       ),
     );
   }

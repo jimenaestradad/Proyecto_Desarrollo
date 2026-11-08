@@ -4,9 +4,12 @@ import 'package:nori/data/auth_repository.dart';
 import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/data/tips_store.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/screens/habits/archived_habits_screen.dart';
 import 'package:nori/screens/onboarding/intro_screen.dart';
 import 'package:nori/screens/premium/nori_plus_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/app_log.dart';
+import 'package:nori/utils/validators.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
 import 'package:nori/widgets/load_error_view.dart';
@@ -15,6 +18,7 @@ import 'package:nori/widgets/nori_list_row.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/nori_text_prompt.dart';
+import 'package:nori/widgets/password_rules.dart';
 
 /// The one account that gets the dev-only reset row below; the
 /// `resetDemoAccount` Cloud Function enforces the same email server-side.
@@ -32,11 +36,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   NoriUser? _user;
   List<String>? _categories;
 
-  /// Null while loading. See docs/BACKEND.md, "Account linking, both
-  /// directions" -- a Google-only account can attach a password from
-  /// here (the Google->password direction; password->Google already
-  /// happens automatically on login_screen.dart's account-linking
-  /// prompt). Once true, the row that offers this hides itself.
+  /// Null while loading; false offers password linking for Google-only accounts.
+  /// The row hides once password authentication is available.
   bool? _hasPasswordProvider;
 
   @override
@@ -70,12 +71,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _addPassword() async {
-    final password = await showDialog<String>(
+    final result = await showDialog<_NewPassword>(
       context: context,
-      builder: (_) => _SetPasswordDialog(
-        onMismatch: () => _showMessage('Passwords do not match.'),
-      ),
+      builder: (_) => _SetPasswordDialog(onProblem: _showMessage),
     );
+    final password = result?.next;
     if (password == null || password.isEmpty || !mounted) return;
 
     try {
@@ -86,17 +86,40 @@ class _SettingsScreenState extends State<SettingsScreen>
     } on AuthException catch (e) {
       if (!mounted) return;
       _showMessage(e.message);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      logError('addPassword', error, stackTrace);
       if (!mounted) return;
       _showMessage('Unable to set a password. Please try again.');
     }
   }
 
-  /// Asks for the username typed back before deleting -- deletion is
-  /// permanent and wipes habits, pet and coins, so a single tap shouldn't
-  /// be able to do it -- and for the password (or, for a Google-only
-  /// account, a fresh Google sign-in) because the server refuses a session
-  /// that signed in a while ago.
+  Future<void> _changePassword() async {
+    final result = await showDialog<_NewPassword>(
+      context: context,
+      builder: (_) =>
+          _SetPasswordDialog(onProblem: _showMessage, askCurrent: true),
+    );
+    if (result == null || !mounted) return;
+
+    try {
+      await AppData.auth.changePassword(
+        currentPassword: result.current,
+        newPassword: result.next,
+      );
+      if (!mounted) return;
+      _showMessage('Password changed.');
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      _showMessage(e.message);
+    } catch (error, stackTrace) {
+      logError('changePassword', error, stackTrace);
+      if (!mounted) return;
+      _showMessage('Unable to change your password. Please try again.');
+    }
+  }
+
+  /// Require the typed username before permanent deletion of habits, pet and coins.
+  /// Request a password or fresh Google sign-in for the server's recent-auth requirement.
   Future<void> _deleteAccount() async {
     final user = _user;
     if (user == null) return;
@@ -128,7 +151,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     } on AuthException catch (e) {
       if (mounted) _showMessage(e.message);
       return;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      logError('deleteAccount', error, stackTrace);
       if (!mounted) return;
       _showMessage('Unable to delete your account. Please try again.');
       return;
@@ -145,15 +169,33 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// Dev-only: the `resetDemoAccount` function takes back every bucket-list
   /// payout (de-evolving Nori) so that flow can be tested again. The server
   /// refuses anyone but [kDemoAccountEmail]; this row just hides itself.
+  bool _resettingDemo = false;
+
   Future<void> _resetDemoAccount() async {
+    // The call takes a few seconds (cold start), and nothing else on the
+    // screen moves meanwhile: say it started, and ignore a second tap.
+    if (_resettingDemo) return;
+    _resettingDemo = true;
+    _showMessage('Resetting demo account…');
+    try {
+      await _runDemoReset();
+    } finally {
+      _resettingDemo = false;
+    }
+  }
+
+  Future<void> _runDemoReset() async {
     await guardedAction(() async {
       try {
         await callCloudFunction('resetDemoAccount', {});
       } on CloudFunctionFailure catch (e) {
-        _showMessage(e.message);
+        if (mounted) _showMessage(e.message);
         return;
       }
-      _showMessage('Demo account reset — bucket list items pay out again.');
+      if (!mounted) return;
+      _showMessage(
+        'Demo account reset — bucket list items pay out again, and care items and coins are topped up.',
+      );
     });
   }
 
@@ -161,6 +203,15 @@ class _SettingsScreenState extends State<SettingsScreen>
     final categories = await AppData.habitCategories.getCategories();
     if (!mounted) return;
     setState(() => _categories = categories);
+  }
+
+  // The Habits tab reloads itself when you switch back to it, so a restore
+  // needs no result handed back here.
+  void _openArchived() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ArchivedHabitsScreen()),
+    );
   }
 
   void _openNoriPlus() {
@@ -193,7 +244,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _addCategory() async {
     final name = await _promptForText(
-      title: 'New Category',
+      title: 'New category',
       hint: 'e.g. Finance',
     );
     if (name == null || name.trim().isEmpty) return;
@@ -205,7 +256,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _renameCategory(String category) async {
     final name = await _promptForText(
-      title: 'Rename Category',
+      title: 'Rename category',
       hint: category,
       initialValue: category,
     );
@@ -266,9 +317,15 @@ class _SettingsScreenState extends State<SettingsScreen>
                     enabled: user.vacationModeEnabled,
                     onToggle: _toggleVacationMode,
                   ),
+                  const SizedBox(height: AppSpacing.unit),
+                  NoriListRow(
+                    icon: Icons.inventory_2_outlined,
+                    label: 'Archived habits',
+                    onTap: _openArchived,
+                  ),
                   const SizedBox(height: AppSpacing.stackMd),
                   Text(
-                    'Habit Categories',
+                    'Habit categories',
                     style: AppTextStyles.labelLg.copyWith(
                       color: AppColors.inkMuted,
                     ),
@@ -309,27 +366,25 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                     const SizedBox(height: AppSpacing.stackMd),
                   ],
-                  Text(
-                    'Account',
-                    style: AppTextStyles.labelLg.copyWith(
-                      color: AppColors.inkMuted,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.unit),
-                  if (_hasPasswordProvider == false) ...[
-                    NoriListRow(
-                      icon: Icons.password,
-                      label: 'Set a Password',
-                      onTap: _addPassword,
+                  if (_hasPasswordProvider != null) ...[
+                    Text(
+                      'Account',
+                      style: AppTextStyles.labelLg.copyWith(
+                        color: AppColors.inkMuted,
+                      ),
                     ),
                     const SizedBox(height: AppSpacing.unit),
+                    NoriListRow(
+                      icon: Icons.password,
+                      label: _hasPasswordProvider == true
+                          ? 'Change password'
+                          : 'Set a password',
+                      onTap: _hasPasswordProvider == true
+                          ? _changePassword
+                          : _addPassword,
+                    ),
+                    const SizedBox(height: AppSpacing.stackMd),
                   ],
-                  NoriListRow(
-                    icon: Icons.delete_forever,
-                    label: 'Delete Account',
-                    onTap: _deleteAccount,
-                  ),
-                  const SizedBox(height: AppSpacing.stackMd),
                   Text(
                     'Plan',
                     style: AppTextStyles.labelLg.copyWith(
@@ -338,6 +393,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                   const SizedBox(height: AppSpacing.unit),
                   _PlanCard(onUpgrade: _openNoriPlus),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  NoriListRow(
+                    icon: Icons.delete_forever,
+                    label: 'Delete account',
+                    onTap: _deleteAccount,
+                    destructive: true,
+                  ),
                 ],
               ),
       ),
@@ -345,13 +407,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 }
 
-/// Moved here from the Habits tab — vacation mode is an account-level
-/// setting, not something that should compete for space on the daily list.
-/// Toggling this also logs the on/off transition to `VacationLog`
-/// (`lib/data/vacation_log.dart`), which `MockCalendarRepository` reads so
-/// days it was active on are treated as neutral (frozen) rather than missed
-/// in the streak walk and calendar grid — see FEATURES.md §2. Pet stat decay
-/// is not paused by this yet (a separate, smaller follow-up).
+/// Account-level Vacation Mode toggle that records transitions in VacationLog.
+/// Frozen days remain neutral in calendar/streak history; pet decay is not paused yet.
 class VacationModeCard extends StatelessWidget {
   const VacationModeCard({
     super.key,
@@ -392,7 +449,7 @@ class VacationModeCard extends StatelessWidget {
                   children: [
                     Flexible(
                       child: Text(
-                        'Vacation Mode',
+                        'Vacation mode',
                         overflow: TextOverflow.ellipsis,
                         style: AppTextStyles.labelLg,
                       ),
@@ -511,7 +568,7 @@ class _CategoriesCard extends StatelessWidget {
               foregroundColor: AppColors.ink,
             ),
             icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add Category'),
+            label: const Text('Add category'),
           ),
         ],
       ),
@@ -534,7 +591,7 @@ class _PlanCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Free Plan', style: AppTextStyles.labelLg),
+          Text('Free plan', style: AppTextStyles.labelLg),
           const SizedBox(height: 2),
           Text(
             'Upgrade for more customization and pet features.',
@@ -566,32 +623,56 @@ class DeleteAccountRequest {
 
 /// "Set a Password" for a Google-only account. Its own widget so it owns
 /// its text controllers, for the same reason as [DeleteAccountDialog].
-class _SetPasswordDialog extends StatefulWidget {
-  const _SetPasswordDialog({required this.onMismatch});
+/// What [_SetPasswordDialog] hands back; [current] is empty unless it asked.
+typedef _NewPassword = ({String current, String next});
 
-  final VoidCallback onMismatch;
+/// Sets a password (Google-only accounts) or, with [askCurrent], changes one.
+class _SetPasswordDialog extends StatefulWidget {
+  const _SetPasswordDialog({required this.onProblem, this.askCurrent = false});
+
+  final ValueChanged<String> onProblem;
+  final bool askCurrent;
 
   @override
   State<_SetPasswordDialog> createState() => _SetPasswordDialogState();
 }
 
 class _SetPasswordDialogState extends State<_SetPasswordDialog> {
+  final _currentController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
 
   @override
   void dispose() {
+    _currentController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();
   }
 
   void _submit() {
-    if (_passwordController.text != _confirmController.text) {
-      widget.onMismatch();
+    if (widget.askCurrent && _currentController.text.isEmpty) {
+      widget.onProblem('Enter your current password.');
       return;
     }
-    Navigator.pop(context, _passwordController.text);
+    final problem = validateNewPassword(_passwordController.text);
+    if (problem != null) {
+      widget.onProblem(problem);
+      return;
+    }
+    if (widget.askCurrent &&
+        _passwordController.text == _currentController.text) {
+      widget.onProblem('Choose a password different from your current one.');
+      return;
+    }
+    if (_passwordController.text != _confirmController.text) {
+      widget.onProblem('Passwords do not match.');
+      return;
+    }
+    Navigator.pop(context, (
+      current: _currentController.text,
+      next: _passwordController.text,
+    ));
   }
 
   @override
@@ -602,19 +683,30 @@ class _SetPasswordDialogState extends State<_SetPasswordDialog> {
         borderRadius: BorderRadius.circular(AppRadius.sm),
         side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
       ),
-      title: const Text('Set a Password'),
+      scrollable: true,
+      title: Text(widget.askCurrent ? 'Change password' : 'Set a password'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Add a password so you can also log in without Google.'),
+          if (widget.askCurrent) ...[
+            TextField(
+              controller: _currentController,
+              autofocus: true,
+              obscureText: true,
+              decoration: const InputDecoration(hintText: 'Current password'),
+            ),
+          ] else
+            const Text('Add a password so you can also log in without Google.'),
           const SizedBox(height: AppSpacing.gutter),
           TextField(
             controller: _passwordController,
-            autofocus: true,
+            autofocus: !widget.askCurrent,
             obscureText: true,
             decoration: const InputDecoration(hintText: 'New password'),
           ),
+          const SizedBox(height: AppSpacing.unit),
+          PasswordRules(controller: _passwordController),
           const SizedBox(height: AppSpacing.unit),
           TextField(
             controller: _confirmController,
@@ -677,7 +769,7 @@ class DeleteAccountDialogState extends State<DeleteAccountDialog> {
         borderRadius: BorderRadius.circular(AppRadius.sm),
         side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
       ),
-      title: const Text('Delete Account?'),
+      title: const Text('Delete account?'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -714,10 +806,7 @@ class DeleteAccountDialogState extends State<DeleteAccountDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.error,
-            foregroundColor: AppColors.onError,
-          ),
+          style: AppTheme.destructiveFilledButton,
           onPressed: () => Navigator.pop(
             context,
             DeleteAccountRequest(

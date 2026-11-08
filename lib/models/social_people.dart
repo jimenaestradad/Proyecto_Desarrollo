@@ -19,10 +19,15 @@ class SocialUser {
     this.statusLine = '',
     this.friendSince,
     this.mutualFriends = 0,
+    this.avatarAsset,
   });
 
   final String id;
   final String name;
+
+  /// Bundled profile picture for the showcase people; null falls back to the
+  /// initials circle (see NoriAvatar).
+  final String? avatarAsset;
 
   /// Without the leading "@".
   final String username;
@@ -79,12 +84,16 @@ class SocialCircle {
     required this.memberIds,
     required this.completionRate,
     this.activityLine = '',
+    this.coverAsset,
   });
 
   final String id;
   final String name;
   final IconData icon;
   final Color color;
+
+  /// Bundled cover photo for the showcase circles; null means no banner.
+  final String? coverAsset;
 
   /// Includes 'me'.
   final List<String> memberIds;
@@ -109,6 +118,7 @@ class SocialCircle {
       memberIds: memberIds ?? this.memberIds,
       completionRate: completionRate,
       activityLine: activityLine,
+      coverAsset: coverAsset,
     );
   }
 }

@@ -2,18 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-/// The ink-bordered card shell reused across nearly every screen: a padded
-/// box with a solid background, a rounded [Border.all], and a child. Screens
-/// previously reimplemented this exact `Container`+`BoxDecoration` shape
-/// locally with their own color/radius/border-width/padding — this just
-/// consolidates the shape; every call site still passes its own values, so
-/// nothing about how a given card actually looks changes.
-///
-/// Not a fit for a card that also needs `Material`/`InkWell` ink-splash
-/// feedback, an `AnimatedContainer` transition, or that already composes a
-/// richer local shell (see `_CardShell` in habit_progress_card.dart's
-/// content, or `_ItemCardShell`'s inner tile in shop_screen.dart) — those
-/// stay bespoke.
+/// Reusable padded, rounded, ink-bordered card with caller-supplied styling.
+/// Cards needing ink splashes, animated containers or richer shells remain bespoke.
 class NoriCard extends StatelessWidget {
   const NoriCard({
     super.key,

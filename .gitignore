@@ -1,6 +1,10 @@
 # Local-only notes, never committed (credentials, personal scratch notes, etc.)
 *.local.md
 
+# Local course reference PDFs
+/docs/Programa_Desarrollo_de_Productos_de_Software1.pdf
+/docs/RubricaProyectoFinal.pdf
+
 # Miscellaneous
 *.class
 *.log

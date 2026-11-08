@@ -19,11 +19,13 @@ import 'social_repository.dart';
 import 'user_repository.dart';
 import 'username_repository.dart';
 import 'vacation_log.dart';
+import 'session_photos.dart';
 
-/// Single place every screen gets its data from. Each field is backed by an
-/// in-memory mock today; wiring up a real backend later means replacing the
-/// initializer on the right (e.g. `AuthRepository auth = ApiAuthRepository()`)
-/// — screens depend only on the abstract interfaces, so nothing else changes.
+/// Single place every screen gets its data from; screens depend only on the
+/// abstract repository interfaces. Auth, usernames, habits, calendar and the
+/// vacation log are Firestore-backed from launch. The per-account repositories
+/// start as signed-out mocks and become Firestore ones in [bindToUser].
+/// Social stays a frontend-only mock.
 class AppData {
   AppData._();
 
@@ -78,32 +80,9 @@ class AppData {
         social,
       );
 
-  /// Points the per-account repositories at [uid]'s real Firestore data.
-  /// Called right after a sign-up/login/auto-login succeeds (main.dart,
-  /// sign_up_screen.dart, login_screen.dart) and before any screen reads
-  /// AppData.user et al., so nothing is ever left pointed at another
-  /// account's (or the Mock's demo) data.
-  ///
-  /// [habits], [calendar] and [vacationLog] are NOT rebuilt here — they
-  /// resolve the signed-in uid lazily on every call (see each class's own
-  /// `_uid` getter) rather than capturing one at construction, so the same
-  /// static instances already follow whoever's signed in. Everything else
-  /// has a real implementation: [user] / [habitCategories]
-  /// (firestore_user_repository.dart / habit_category_repository.dart's
-  /// FirestoreHabitCategoryRepository), and [pet] / [inventory] /
-  /// [bucketList] (firestore_pet_repository.dart /
-  /// firestore_inventory_repository.dart /
-  /// firestore_bucket_list_repository.dart). [achievements] is rebuilt
-  /// here too — it holds direct references to [bucketList]/[pet]/
-  /// [inventory] captured at construction time (see
-  /// achievement_repository.dart), so swapping those without also
-  /// rebuilding [achievements] would leave it silently reading the old
-  /// Mock instances. This depends on 'onUserCreate' (the Auth-trigger
-  /// Cloud Function in functions/src/onUserCreate.ts) having run for [uid] —
-  /// that's what creates the '/users/{uid}' doc (and its pet/inventory
-  /// subdocs) these repositories read; a signed-up account whose
-  /// onUserCreate call failed or hasn't landed yet will hit each
-  /// repository's own missing-document error instead.
+  /// Binds per-account repositories before screens read them after authentication.
+  /// Rebuilds [achievements] to follow the new dependencies; lazy-uid repositories persist.
+  /// Requires the user, pet and inventory documents provisioned by `onUserCreate`.
   static void bindToUser(String uid) {
     user = FirestoreUserRepository(
       uid: uid,
@@ -127,6 +106,7 @@ class AppData {
   /// the same app session (or a stale screen still holding a reference)
   /// can't read the previous account's repositories.
   static void unbindUser() {
+    SessionPhotos.clear();
     user = MockUserRepository(calendar, vacationLog);
     habitCategories = MockHabitCategoryRepository();
     inventory = MockInventoryRepository();

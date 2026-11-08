@@ -3,24 +3,23 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The one-time hint cards a screen can show (see `OneTimeHint`).
-enum Tip { habitsGestures, calendarDays }
+enum Tip { habitsGestures, calendarDays, limitHabits, adaptiveXp }
 
-/// Remembers which first-run help this account has already seen: the intro
-/// cards and each [Tip]. Device-local (`shared_preferences`: Android's own
-/// settings storage, the browser's localStorage on web), keyed by user id so
-/// a second account on the same phone still gets its own intro. A reinstall
-/// shows everything again, which is harmless; nothing here is worth a
-/// Firestore field or a rules deploy.
-///
-/// Storage can fail (private browser windows, cleared site data), and help
-/// text isn't worth an error, so every read falls back to "already seen" —
-/// better to miss a tip than to nag on every launch.
+/// Device-local, per-user record of intro cards and [Tip] visibility.
+/// Storage failures count as already seen to avoid repeated prompts.
 class TipsStore {
   const TipsStore(this.uid);
 
   /// The signed-in account, or a shared bucket if somehow signed out.
-  factory TipsStore.current() =>
-      TipsStore(FirebaseAuth.instance.currentUser?.uid ?? 'signed-out');
+  factory TipsStore.current() {
+    String? uid;
+    try {
+      uid = FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {
+      // Firebase isn't initialised (a widget test): use the shared bucket.
+    }
+    return TipsStore(uid ?? 'signed-out');
+  }
 
   final String uid;
 

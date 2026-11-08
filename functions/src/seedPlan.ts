@@ -1,14 +1,8 @@
-// Pure planning half of the demo-history seed script (seedHistory.ts). Ports
-// HabitHistoryStore.seedHistory (lib/data/habit_history_store.dart) to real
-// Firestore documents. No Firestore here, so it can be unit-tested directly.
-//
-// Payouts go through the same computeReward/claimValue as claimHabit, so a
-// seeded claim pays exactly what a live one would.
+// Pure planning for demo-history Firestore documents, ported from HabitHistoryStore.seedHistory.
+// Uses the same computeReward/claimValue as live claims.
 
-import { claimValue, computeReward, parseHabitDefinition } from "./rewards";
-import { isArchivedOn } from "./habitTransaction";
-
-export type HabitRepeat = "daily" | "weekdays" | "weekends" | "custom";
+import { claimValue, computeReward, numberOrNull, parseHabitDefinition } from "./rewards";
+import { isScheduledOnKey } from "./adaptiveXp";
 
 export interface SeedHabit {
   id: string;
@@ -60,25 +54,19 @@ export function pastDays(today: Date, days: number): Date[] {
 }
 
 // Habit.isScheduledOn minus the createdAt lower bound, which the seed
-// deliberately moves back. ISO weekday: 1 = Monday … 7 = Sunday.
+// deliberately moves back.
 export function isScheduledForSeed(habit: SeedHabit, day: Date): boolean {
-  if (isArchivedOn(habit.data.archivedRanges, localDayKey(day))) return false;
-  if (habit.startDate && day < localMidnight(habit.startDate)) return false;
-  if (habit.endDate && day > localMidnight(habit.endDate)) return false;
-
-  const weekday = day.getDay() === 0 ? 7 : day.getDay();
-  switch (habit.data.repeat as HabitRepeat) {
-    case "weekdays":
-      return weekday <= 5;
-    case "weekends":
-      return weekday >= 6;
-    case "custom": {
-      const custom = habit.data.customDays;
-      return Array.isArray(custom) ? custom.includes(weekday) : true;
-    }
-    default:
-      return true;
-  }
+  return isScheduledOnKey(
+    {
+      repeat: habit.data.repeat,
+      customDays: habit.data.customDays,
+      createdKey: null,
+      startKey: habit.startDate && localDayKey(habit.startDate),
+      endKey: habit.endDate && localDayKey(habit.endDate),
+      archivedRanges: habit.data.archivedRanges,
+    },
+    localDayKey(day),
+  );
 }
 
 // FNV-1a, same as _stableHash in habit_history_store.dart, so a re-run
@@ -104,14 +92,8 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-function numberOrNull(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-// Same odds as HabitHistoryStore._seedState. One difference: a progress habit
-// that only reached its minimum is logged unclaimed, because claiming snaps it
-// up to the target (claimValue) — the mock's "claimed at the minimum" state
-// can't happen through the real claim flow.
+// Uses HabitHistoryStore._seedState odds, but logs minimum-only progress as unclaimed.
+// Real claims snap progress to the target, so the mock’s claimed-at-minimum state cannot occur.
 export function seedDay(habit: SeedHabit, day: Date): Omit<SeedLog, "habitId" | "dayKey" | "date"> | null {
   const key = localDayKey(day);
   const random = seededRandom(stableHash(`${habit.id}#${key}`));
@@ -149,17 +131,12 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-// Share of days skipped entirely, as if the user never opened the app. With
-// several habits each logged ~70% of the time, almost every day has *something*
-// kept, and the calendar's streak only breaks on a day with nothing kept — so
-// without whole off days, any seed is one unbroken streak.
+// Skips whole days so seeded calendar streaks can break.
+// With several habits logged about 70% of the time, almost every day otherwise has activity.
 export const DEFAULT_OFF_DAY_RATE = 0.12;
 
-// Exactly one off day per block of round(1/rate) days, at a stable
-// pseudo-random position inside the block. Rolling each day independently
-// clumped badly (a whole month with none, then several together); blocks
-// keep the breaks spread out. dayKey is a real yyyy-mm-dd, so it's parsed as
-// UTC purely to number the days, not to interpret any time zone.
+// Places one off day per round(1/rate) block at a stable pseudo-random position.
+// Blocks spread breaks out; UTC parsing only numbers days, without interpreting a time zone.
 export function isOffDay(dayKey: string, rate: number): boolean {
   if (rate <= 0) return false;
   const blockSize = Math.max(2, Math.round(1 / rate));

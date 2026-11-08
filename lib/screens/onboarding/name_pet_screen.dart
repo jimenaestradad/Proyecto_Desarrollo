@@ -1,24 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/tips_store.dart';
 import 'package:nori/screens/onboarding/intro_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/app_log.dart';
+import 'package:nori/utils/validators.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_text_field.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
-/// Last onboarding step, shown once right after sign-up (email/password or
-/// a brand-new Google account) finishes claiming a username — see
-/// login_screen.dart's/sign_up_screen.dart's callers. Lets the person
-/// rename their starter pet away from the onUserCreate-provisioned default
-/// of 'Nori'; skipping just leaves it as 'Nori'
-/// (docs/BACKEND.md: "Onboarding writes the chosen pet name to pet/main
-/// ... skipping onboarding leaves it as 'Nori'").
-///
-/// Always pops back to its caller so the caller can decide what comes after
-/// — currently always straight to '/home' — regardless of whether the
-/// person typed a name or skipped. The one thing it does first is show
-/// [IntroScreen] if this account hasn't seen it yet.
+/// Names the starter pet after username setup; skipping keeps 'Nori'.
+/// Shows [IntroScreen] if unseen, then pops so the caller can navigate onward.
 class NamePetScreen extends StatefulWidget {
   const NamePetScreen({super.key});
 
@@ -45,10 +38,18 @@ class _NamePetScreenState extends State<NamePetScreen> {
       _skip();
       return;
     }
+    final problem = validatePetName(name);
+    if (problem != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(problem)));
+      return;
+    }
     setState(() => _saving = true);
     try {
       await AppData.pet.renamePet(name);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      logError('renamePet', error, stackTrace);
       // Best-effort: onboarding isn't worth blocking on this failing (no
       // network right at this instant, etc.) — the pet just keeps
       // whatever name it already has, same as skipping.
@@ -140,9 +141,14 @@ class _NamePetScreenState extends State<NamePetScreen> {
                           const SizedBox(height: AppSpacing.stackMd),
                           NoriTextField(
                             controller: _nameController,
-                            label: "Pet's Name",
+                            label: "Pet's name",
                             hint: 'Nori',
                             icon: Icons.pets,
+                            inputFormatters: [
+                              LengthLimitingTextInputFormatter(
+                                petNameMaxLength,
+                              ),
+                            ],
                             textInputAction: TextInputAction.done,
                             onSubmitted: (_) => _continue(),
                           ),

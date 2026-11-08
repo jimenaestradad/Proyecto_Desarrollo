@@ -1,12 +1,11 @@
-// In-app notifications written server-side, in the same transaction as the
-// event that caused them -- see ../docs/BACKEND.md, "In-app notifications".
-// The app writes the two kinds only it can compute (achievement, streak);
-// everything here is a kind the server sees happen.
+// Writes server-observed in-app notifications in the event’s transaction.
+// The client writes achievement and streak notifications.
 
 import {
   DocumentData,
   DocumentReference,
   FieldValue,
+  Timestamp,
   Transaction,
 } from "firebase-admin/firestore";
 import { PetStage } from "./rewards";
@@ -19,11 +18,15 @@ export interface PendingNotification {
 }
 
 // Mirrors kPetDecayPerHour (lib/data/pet_repository.dart) -- change both together.
-export const PET_DECAY_PER_HOUR = 2;
+export const PET_DECAY_PER_HOUR = 1;
 // A vital below this (out of 100) earns a "Pet Needs You".
 export const LOW_VITAL = 30;
 // At most one pet-care notification per this window.
 export const PET_CARE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+// Stop reminding once the pet has gone this long without care. Vitals hit zero after ~4 days
+// at 1/h, so this leaves about a week of daily reminders, then silence until the user cares
+// for the pet again (care resets lastDecayAt, which is what this measures).
+export const PET_CARE_DORMANT_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 const ACCESSORY_NAMES: Record<string, string> = { sunglasses: "a pair of sunglasses" };
 
@@ -50,11 +53,8 @@ export interface ProgressInput {
   notified: DocumentData | undefined;
 }
 
-/**
- * What a reward just earned, notification-wise. Level and evolution ratchet
- * against notificationState, so undoing a claim and redoing it doesn't
- * notify twice. Pure, so it can be unit-tested.
- */
+// Computes reward notifications; notificationState prevents duplicate level/evolution alerts.
+// Pure for unit testing.
 export function progressNotifications(input: ProgressInput): {
   notifications: PendingNotification[];
   stateUpdate: Record<string, unknown>;
@@ -92,10 +92,22 @@ export function progressNotifications(input: ProgressInput): {
   return { notifications, stateUpdate };
 }
 
+// The rules let a client write any value here, so only a real Timestamp counts.
+function lastDecayMillis(petData: DocumentData): number | null {
+  const value = petData.lastDecayAt;
+  return value instanceof Timestamp ? value.toMillis() : null;
+}
+
+/** True when the pet was last cared for over PET_CARE_DORMANT_AFTER_MS ago: stop nagging. */
+export function isPetCareDormant(petData: DocumentData, nowMillis: number): boolean {
+  const lastDecayAt = lastDecayMillis(petData);
+  return lastDecayAt !== null && nowMillis - lastDecayAt > PET_CARE_DORMANT_AFTER_MS;
+}
+
 /** Pet-care message for the lowest vital after decay, or null if all are fine. */
 export function petCareMessage(petData: DocumentData, nowMillis: number): string | null {
-  const lastDecayAt = petData.lastDecayAt?.toMillis?.();
-  const hours = typeof lastDecayAt === "number" ? Math.max(0, (nowMillis - lastDecayAt) / 3_600_000) : 0;
+  const lastDecayAt = lastDecayMillis(petData);
+  const hours = lastDecayAt !== null ? Math.max(0, (nowMillis - lastDecayAt) / 3_600_000) : 0;
   const drop = hours * PET_DECAY_PER_HOUR;
   const vital = (field: string) => {
     const value = petData[field];

@@ -117,15 +117,7 @@ class _SocialPrivacyScreenState extends State<SocialPrivacyScreen>
     children: [
       Expanded(child: Text(label, style: AppTextStyles.bodyMd)),
       const SizedBox(width: AppSpacing.unit),
-      Switch(
-        value: value,
-        onChanged: _busy ? null : onChanged,
-        activeTrackColor: AppColors.moss,
-        inactiveTrackColor: AppColors.linenAlt,
-        thumbColor: const WidgetStatePropertyAll(AppColors.white),
-        trackOutlineColor: const WidgetStatePropertyAll(AppColors.ink),
-        trackOutlineWidth: const WidgetStatePropertyAll(AppBorder.thin),
-      ),
+      Switch(value: value, onChanged: _busy ? null : onChanged),
     ],
   );
 

@@ -8,9 +8,12 @@ import 'package:nori/widgets/tactile_button.dart';
 /// Pushes a full-screen celebration over the current screen with the shared
 /// fade + scale entrance, so every celebration (level up, evolution) enters
 /// the same way. [builder] builds the screen, normally a [CelebrationScreen].
-Future<void> showCelebrationRoute(BuildContext context, WidgetBuilder builder) {
-  return Navigator.of(context).push(
-    PageRouteBuilder(
+Future<T?> showCelebrationRoute<T>(
+  BuildContext context,
+  WidgetBuilder builder,
+) {
+  return Navigator.of(context).push<T>(
+    PageRouteBuilder<T>(
       opaque: false,
       barrierColor: AppColors.ink.withValues(alpha: 0.35),
       transitionDuration: const Duration(milliseconds: 350),
@@ -31,11 +34,8 @@ Future<void> showCelebrationRoute(BuildContext context, WidgetBuilder builder) {
   );
 }
 
-/// The shell both celebration screens share: a transparent route over the
-/// dimmed app, a bordered card with two soft glows and a [ConfettiRing],
-/// a kicker line, a glowing circle holding [badge], a headline, a message
-/// and a dismiss button. [LevelUpScreen] and [EvolutionScreen] only choose
-/// the words and what goes in the circle.
+/// Shared celebration shell: dimmed route, glowing card, [ConfettiRing], badge and text.
+/// Level-up and evolution screens supply their words and circle content.
 class CelebrationScreen extends StatelessWidget {
   const CelebrationScreen({
     super.key,
@@ -43,6 +43,7 @@ class CelebrationScreen extends StatelessWidget {
     required this.badge,
     required this.title,
     required this.message,
+    this.actionLabel,
   });
 
   /// Small all-caps line above the circle, e.g. "LEVEL UP!".
@@ -53,6 +54,10 @@ class CelebrationScreen extends StatelessWidget {
 
   final String title;
   final String message;
+
+  /// Optional main button; tapping it closes the route with `true`. The
+  /// dismiss button then reads "Not now" and closes with null.
+  final String? actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -167,11 +172,23 @@ class CelebrationScreen extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: AppSpacing.stackMd),
-                          TactileButton(
-                            label: 'Nice!',
-                            icon: Icons.celebration,
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
+                          if (actionLabel != null) ...[
+                            TactileButton(
+                              label: actionLabel!,
+                              icon: Icons.checkroom,
+                              onPressed: () => Navigator.of(context).pop(true),
+                            ),
+                            const SizedBox(height: AppSpacing.unit),
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text('Not now'),
+                            ),
+                          ] else
+                            TactileButton(
+                              label: 'Nice!',
+                              icon: Icons.celebration,
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
                         ],
                       ),
                     ),

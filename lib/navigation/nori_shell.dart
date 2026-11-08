@@ -27,7 +27,7 @@ class _NoriShellState extends State<NoriShell> {
     HomeScreen(active: _index == 0, onOpenHabits: _openHabitsTab),
     HabitsListScreen(active: _index == 1, onOpenHome: _openHomeTab),
     CalendarScreen(active: _index == 2),
-    SocialScreen(active: _index == 3),
+    SocialScreen(active: _index == 3, onOpenHome: _openHomeTab),
     ProfileScreen(active: _index == 4),
   ];
 

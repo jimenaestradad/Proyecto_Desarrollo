@@ -48,6 +48,7 @@ class HabitProgressCard extends StatelessWidget {
         habit: habit,
         onToggle: onToggleBinary,
         onEdit: onEditHabit,
+        detailed: true,
       );
     }
     if (habit.type == HabitType.limit) {
@@ -71,12 +72,11 @@ class HabitProgressCard extends StatelessWidget {
   }
 }
 
-/// "Quantity · Health". Habits with no category (subtitle is empty) used to
-/// render a dangling "Duration ·" — join only the parts that exist.
-String _subtitle(Habit habit) => [
-  habit.type.label,
-  habit.subtitle,
-].where((part) => part.trim().isNotEmpty).join(' · ');
+/// The category ("Health"), or the tracking type when the habit has none.
+/// The type name used to lead every card ("Quantity · Health"), which is
+/// internal vocabulary; the target line already shows how it is measured.
+String _subtitle(Habit habit) =>
+    habit.subtitle.trim().isNotEmpty ? habit.subtitle : habit.type.label;
 
 /// `1.5` → `'01:30'`. Seconds used to be hardcoded to `:00`, so any
 /// fractional-minute entry (the form allows decimals) displayed wrong.
@@ -95,7 +95,9 @@ String _formatValue(Habit habit) {
   }
   final unit =
       habit.unit ?? (habit.type == HabitType.multipleCompletion ? 'times' : '');
-  return '${habit.currentValue.round()} / ${target.round()} $unit'.trim();
+  // Fractions stay visible: 0.4 / 1 must not read as 0 / 1.
+  String whole(double v) => formatTrimmedNumber((v * 100).round() / 100);
+  return '${whole(habit.currentValue)} / ${whole(target)} $unit'.trim();
 }
 
 /// What Complete will actually pay right now. Claiming snaps a
@@ -123,7 +125,8 @@ class _CardShell extends StatelessWidget {
     required this.title,
     required this.chip,
     required this.subtitle,
-    required this.trailing,
+    required this.reward,
+    required this.value,
     required this.progress,
     required this.quickLogLabel,
     required this.onLogProgress,
@@ -134,6 +137,7 @@ class _CardShell extends StatelessWidget {
     required this.claimBackground,
     required this.claimForeground,
     required this.onEditHabit,
+    required this.onEditProgress,
   });
 
   final bool claimed;
@@ -142,7 +146,12 @@ class _CardShell extends StatelessWidget {
   final String title;
   final Widget chip;
   final String subtitle;
-  final Widget trailing;
+
+  /// Top-right pill showing what Complete pays; null for cards that have none.
+  final Widget? reward;
+
+  /// The tappable `750 / 1000 ml` value, shown opposite the status [chip].
+  final Widget value;
   final Widget progress;
   final String quickLogLabel;
 
@@ -160,6 +169,10 @@ class _CardShell extends StatelessWidget {
   final Color claimBackground;
   final Color claimForeground;
   final VoidCallback onEditHabit;
+
+  /// The ⋮ menu's "Edit today's progress": the same dialog the tappable
+  /// number opens.
+  final VoidCallback onEditProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -184,34 +197,30 @@ class _CardShell extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: [
-                        Text(
-                          title,
-                          style: AppTextStyles.bodyMd.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        chip,
-                      ],
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.bodyMd.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 2),
+                    // Category sits straight under the title; the status chip
+                    // used to wrap into the title line and push it sideways.
                     Text(
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.labelSm.copyWith(
-                        color: AppColors.inkFaint,
+                      style: AppTextStyles.labelLg.copyWith(
+                        color: AppColors.inkMuted,
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              trailing,
+              ?reward,
               PopupMenuButton<void>(
                 tooltip: 'More options for $title',
                 padding: EdgeInsets.zero,
@@ -223,15 +232,21 @@ class _CardShell extends StatelessWidget {
                 itemBuilder: (context) => [
                   PopupMenuItem(
                     onTap: onEditHabit,
-                    child: const Text('Edit Habit'),
+                    child: const Text('Edit habit'),
+                  ),
+                  PopupMenuItem(
+                    onTap: onEditProgress,
+                    child: const Text("Edit today's progress"),
                   ),
                 ],
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           progress,
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
+          Row(children: [chip, const Spacer(), value]),
+          const SizedBox(height: 12),
           Row(
             children: [
               if (onLogProgress != null) ...[
@@ -346,11 +361,16 @@ class _ProgressCard extends StatelessWidget {
     ) = switch (true) {
       _ when claimed => ('Claimed', AppColors.mossLight, AppColors.mossDark),
       _ when habit.isTargetMet => (
-        'Target Reached!',
+        'Target reached!',
         AppColors.mossLight,
         AppColors.mossDark,
       ),
-      _ => ('In Progress', AppColors.linen, AppColors.inkFaint),
+      _ when habit.currentValue <= 0 => (
+        'Not started',
+        AppColors.linen,
+        AppColors.inkFaint,
+      ),
+      _ => ('In progress', AppColors.linen, AppColors.inkFaint),
     };
 
     return _CardShell(
@@ -360,14 +380,8 @@ class _ProgressCard extends StatelessWidget {
       title: habit.name,
       chip: _Chip(label: chipLabel, color: chipColor, textColor: chipTextColor),
       subtitle: _subtitle(habit),
-      trailing: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          RewardPill(xp: reward.xp, coins: reward.coins),
-          const SizedBox(height: 4),
-          _EditableValue(habit: habit, onEditProgress: onEditProgress),
-        ],
-      ),
+      reward: RewardPill(xp: reward.xp, coins: reward.coins),
+      value: _EditableValue(habit: habit, onEditProgress: onEditProgress),
       progress: ProgressBarPill(
         progress: habit.progressFraction,
         thresholdFraction: habit.minThresholdFraction,
@@ -383,9 +397,10 @@ class _ProgressCard extends StatelessWidget {
       claimEnabled: !claimed,
       onClaim: onClaim,
       onUnclaim: onUnclaim,
-      claimBackground: AppColors.moss,
-      claimForeground: AppColors.ink,
+      claimBackground: AppColors.mossDark,
+      claimForeground: AppColors.white,
       onEditHabit: onEditHabit,
+      onEditProgress: () => _editProgress(context, habit, onEditProgress),
     );
   }
 }
@@ -426,16 +441,16 @@ class _LimitCard extends StatelessWidget {
       Color chipTextColor,
     ) = switch (true) {
       _ when claimed => (
-        'Marked Safe',
+        'Stayed under',
         AppColors.mossLight,
         AppColors.mossDark,
       ),
       _ when exceeded => (
-        'Limit Exceeded',
+        'Limit exceeded',
         AppColors.blush,
         AppColors.terracottaDark,
       ),
-      _ => ('Within Limit', AppColors.mossLight, AppColors.mossDark),
+      _ => ('Within limit', AppColors.mossLight, AppColors.mossDark),
     };
 
     return _CardShell(
@@ -445,52 +460,60 @@ class _LimitCard extends StatelessWidget {
       title: habit.name,
       chip: _Chip(label: chipLabel, color: chipColor, textColor: chipTextColor),
       subtitle: _subtitle(habit),
-      trailing: _EditableValue(habit: habit, onEditProgress: onEditProgress),
+      reward: null,
+      value: _EditableValue(habit: habit, onEditProgress: onEditProgress),
       progress: ProgressBarPill(progress: ratio, color: barColor),
       quickLogLabel: habit.quickLogLabel,
       onLogProgress: claimed ? null : () => onLogProgress(habit.quickLogStep),
       claimLabel: claimed
-          ? 'Marked Safe'
-          : (exceeded ? 'Limit Exceeded' : 'Mark Day Safe'),
+          ? 'Stayed under'
+          : (exceeded ? 'Limit exceeded' : 'I stayed under'),
       claimEnabled: !claimed && !exceeded,
       onClaim: onClaim,
       onUnclaim: onUnclaim,
-      claimBackground: AppColors.moss,
-      claimForeground: AppColors.ink,
+      claimBackground: AppColors.mossDark,
+      claimForeground: AppColors.white,
       onEditHabit: onEditHabit,
+      onEditProgress: () => _editProgress(context, habit, onEditProgress),
     );
   }
 }
 
 /// The `750 / 1000 ml`-style value, tappable to open [_EditProgressDialog] —
 /// covers undo / manual correction / reset-to-0 for today's logged amount.
+/// Asks for today's value in [_EditProgressDialog] and hands it to
+/// [onEditProgress]. Shared by the tappable number and the ⋮ menu item.
+Future<void> _editProgress(
+  BuildContext context,
+  Habit habit,
+  Future<void> Function(double) onEditProgress,
+) async {
+  final newValue = await showDialog<double>(
+    context: context,
+    builder: (_) => _EditProgressDialog(habit: habit),
+  );
+  if (newValue == null) return;
+  await onEditProgress(newValue);
+}
+
 class _EditableValue extends StatelessWidget {
   const _EditableValue({required this.habit, required this.onEditProgress});
 
   final Habit habit;
   final Future<void> Function(double) onEditProgress;
 
-  Future<void> _openDialog(BuildContext context) async {
-    final newValue = await showDialog<double>(
-      context: context,
-      builder: (_) => _EditProgressDialog(habit: habit),
-    );
-    if (newValue == null) return;
-    await onEditProgress(newValue);
-  }
-
   @override
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadius.sm * 0.5),
-      onTap: () => _openDialog(context),
+      onTap: () => _editProgress(context, habit, onEditProgress),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
         // Dashed underline (not an icon) hints it's tappable without
         // looking like the same "edit" action as the habit-level menu.
         child: Text(
           _formatValue(habit),
-          style: AppTextStyles.labelSm.copyWith(
+          style: AppTextStyles.labelLg.copyWith(
             fontWeight: FontWeight.w700,
             color: AppColors.ink,
             decoration: TextDecoration.underline,
@@ -546,7 +569,7 @@ class _EditProgressDialogState extends State<_EditProgressDialog> {
         borderRadius: BorderRadius.circular(AppRadius.sm),
         side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
       ),
-      title: const Text('Edit Today\'s Progress'),
+      title: const Text('Edit today\'s progress'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

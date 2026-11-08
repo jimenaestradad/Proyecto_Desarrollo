@@ -1,18 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../models/competition.dart';
 import '../models/social_content.dart';
 import '../models/social_people.dart';
 
-/// Everything the Social tab reads and writes. Frontend-only for now: the
-/// only implementation is [MockSocialRepository] (in-memory, resets on app
-/// restart). docs/BACKEND.md lists friends/feed/competitions as non-goals,
-/// so nothing here touches Firestore — when that changes, a real
-/// implementation replaces the mock on `AppData.social` and screens stay as
-/// they are.
-///
-/// Reads and writes are `Future`s on purpose (same shape as every other
-/// repository) so screens already handle loading/error states.
+/// Social tab contract backed by the in-memory [MockSocialRepository].
+/// Future-based operations let screens handle loading and errors.
 abstract class SocialRepository {
   /// Fires after any write. Screens that show social data listen to this so a
   /// change made on a pushed screen shows up when you come back (see
@@ -63,6 +58,7 @@ abstract class SocialRepository {
     required ProofableHabit habit,
     required String caption,
     required bool withPhoto,
+    Uint8List? photo,
     required PostVisibility visibility,
     String? circleId,
     String? competitionId,
@@ -105,6 +101,7 @@ abstract class SocialRepository {
     String id, {
     required String caption,
     required bool withPhoto,
+    Uint8List? photo,
   });
 
   // ── Streaks, nudges, pets ─────────────────────────────────────────────

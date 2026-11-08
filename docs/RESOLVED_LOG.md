@@ -2,6 +2,482 @@
 
 Trimmed historical fix log for Nori, split out of `docs/KNOWN_ISSUES.md` on 2026-09-16 to keep the working file scannable. Full narrative detail from before the split was intentionally condensed; this log favors terse entries going forward.
 
+### 2026-11-08 — Phone pass follow-ups: nav hit area, Shop badge, Clothes banner, habit card layout
+
+- **Bottom nav:** the 12dp of vertical padding now sits inside each item's `InkWell`, so the tappable
+  area is the full bar height (~63dp) instead of the 39dp pill. The visible pill is unchanged.
+- **Shop "Owned" / "Wearing":** the pill moved off the item art into the (otherwise empty) price row
+  of the card (`_StatusPill`).
+- **Shop Clothes:** the placeholder Dino Onesie is gone, so the tab shows the same "coming soon" banner
+  as Furniture. Premium still shows the Royal Crown preview.
+- **Habit cards (Quantity/Duration/Cumulative/Multiple/Limit):** title with the category directly under
+  it (no chip in the title line any more); reward pill top right beside the ⋮ menu; under the progress
+  bar, the status chip on the left and the tappable value on the right. Limit habits still show no
+  reward pill. Not yet seen on the phone (analyze clean, 124 tests pass).
+- Dropped as agreed: the "+ button covers a card" item and "rows with no category" (intentional, the
+  category is optional).
+
+### 2026-11-08 — Friend pets show the real Nori; 22 new achievement badges in one style
+
+**Pets:** Visit pet and the pet card on a friend's profile showed a paw icon. Visit pet now renders
+the same room scene as Home (`NoriRoomStage`, 400 px tall in an ink-bordered frame; shorter than that
+crops the winged form) with the friend's stage: baby for stage 0, the winged form for 1 and 2. The
+profile card shows a still of the same two forms (`FriendPetPicture`, `nori_front.png` or
+`nori_evolved/frame_00.png`, not the 64-frame animation). Every friend's pet looks the same apart from
+its name, because art exists for two forms only. **Badges:** Consistency II and III, Rising Again,
+Getting Started, Dedicated I and II, Goal Getter, First Step (redone), Not All-or-Nothing, Balanced
+Life, Pet's Best Friend, First Evolution, Growing Family, Shopaholic, Better Together and Helping Hand,
+all in the Consistency I look (green shield, olive laurel, gold star, cream ribbon, tan sticker
+outline). The last six (Proof Pal, Circle Starter, Accountability Duo new; Habit Architect, On Track,
+Perfect Week redone) came after the Gemini limit reset, so all 23 now match. They are consistent because each Gemini prompt attached Consistency I as a master template
+and said "identical except the emblem and the ribbon text"; ribbon spellings were checked on every
+one. Transparent cutouts, 480 px tall, in `assets/images/achievements/`; the three coming-soon
+achievements (Balanced Life, Pet's Best Friend, Growing Family) now show their art too
+(`_soon` takes an `imageAsset`). The old First Step is kept in
+`assets/source/achievements/bundled-before-2026-11-08/`. Dev harness: `tool/social_preview.dart` takes
+`?uid=<friend id>`. `flutter analyze` is clean; the pet screens were checked at 390x844 (Jimena stage
+2, Tomas stage 0); the achievements screen was not looked at (it needs a signed-in account).
+
+### 2026-11-08 — Real photos on Social, shop previews and one achievement badge
+
+The demo read as a mock because every friend was an initials circle and every proof post a flat
+panel. Added 23 bundled images under `assets/images/social/` (1.7 MB total, JPEG): 11 profile
+pictures (`avatar_<id>.jpg`, 512 px), 6 proof photos (`proof_*.jpg`) and 6 covers (`cover_*.jpg`).
+They were generated with Gemini as realistic phone-style photos for Guatemala City: only men and
+women, mostly white and mestizo Latinos with a few exceptions (Chinese, redhead, Black), and varied
+shots (laughing off camera, a dog, sunglasses on a colonial street, a volcano landscape) instead of
+everyone staring into the camera. New optional fields: `SocialUser.avatarAsset`,
+`SocialCircle.coverAsset`, `Competition.coverAsset`, `SocialPost.photoAsset`; `NoriAvatar` takes
+`imageAsset`, `ProofPhoto` takes `asset` (a photo picked this session still wins), and a new
+`CoverPhoto` banner sits on the circle and competition detail screens. Initials and the placeholder
+panel remain the fallback. The seeded feed changed: Sarah's reading post now carries a photo (it was
+the one post without proof) and there is a new post from Tomas for the no-social challenge. The Shop's
+Dino Onesie and Royal Crown previews and the Consistency I achievement now use hand-style art with
+transparent backgrounds (`accessories/dino-onesie.png`, `accessories/royal-crown.png`,
+`achievements/consistency_i.png`). Raw 1024 px originals are in the gitignored
+`assets/source/gemini-social/`. Also fixed `tool/social_preview.dart` (it no longer compiled after
+`UserRepository.lastKnownUser` was added). `flutter analyze` is clean; checked the feed, a
+competition detail and a friend profile at 390x844 through that preview harness. Not done: the other
+18 achievement badges, pet art on Visit pet, and covers on the list rows (see KNOWN_ISSUES).
+
+### 2026-11-08 — Fonts bundled; XP pill no longer flashes a stale value; small Android-pass fixes
+
+Found on a moto g 20. **Fonts:** Fredoka and Karla were fetched from the network on first launch, so
+offline or on a slow first paint the whole app rendered in Roboto (the welcome headline, all body
+text). The eight static files `google_fonts` asks for (Regular/Medium/SemiBold/Bold) are now in
+`assets/google_fonts/` (hashes checked against the package's table; README there) and `pubspec.yaml`
+lists the folder, so the package finds them before the network. **XP pill:** each tab kept its own
+`_user` from its last visit, so switching tabs after a claim showed the old XP for 1 to 2 seconds
+until that tab's reload finished (Social showed 2,444 while Home had 2,474).
+`UserRepository.lastKnownUser` now returns the newest user any screen fetched, and the five tabs show
+it the moment they become active; their reload still has the last word. **Also:** Profile's
+achievement preview tiles are white (like the full screen) and say "Completed" when earned, and their
+icons are top-aligned so they line up; screen titles shrink to one line instead of breaking mid-word
+("Calenda / r" at a 1.3x system font; `NoriScreenHeader`), and the Notifications header stacks "Mark all
+as read" under the title at large text; Habits' header gap under the title drops from 48dp to 24dp;
+"Reset demo account" now shows "Resetting demo account…" at once and ignores a second tap (the call
+takes ~3s with no other sign). `flutter analyze` is clean; checked on the phone, no new tests.
+
+Follow-up the same day, after valevasqc answered the phone-pass notes. **Delete confirms are red:**
+`AppTheme.destructiveFilledButton` (the style the Delete account dialog already used) is now the one
+red confirm button, and the Delete habit and Delete bucket-list goal dialogs use it too instead of a
+soft green "Delete". **⋮ menu:** Quantity, Duration, Multiple and Limit cards now list "Edit today's
+progress" under "Edit habit"; it opens the same dialog as tapping the number (`_editProgress`).
+Binary habits have no number to edit, so their menu is unchanged. **Decided as intended, not bugs:**
+New habit opens on "Quantity", and a binary habit's empty progress bar stays (visual cohesion).
+Then more notes from valevasqc, same day: the **Adaptive XP note in Add Habit is dismissable** (a
+`OneTimeHint` with a new `Tip.adaptiveXp`, once per account, back via Settings > Replay intro and
+tips); the **value ("0 / 1000 ml") and category on habit cards are 14px** instead of 11px; the
+**Habits header** is XP + streak left, flag + bell right with a 12dp gap, title below; in the Shop
+**"Need N more" is faded** (the app theme painted every disabled FilledButton moss green, so the
+disabled colors are now set explicitly) and the **chips read Food & care, Accessories, Clothes,
+Furniture, Premium**, opening on Food & care (which also fixes "Go to Shop from a pet vital opens the
+Hats tab"; the Wardrobe's shop link passes `startOnAccessories` so it still lands on Accessories).
+`TipsStore.current()` now falls back to the shared bucket when Firebase isn't initialised, which keeps
+the Add Habit widget tests running. None of this has been seen on the phone yet (it lost its USB
+connection); `flutter analyze` is clean and the 124 tests pass.
+
+### 2026-11-07 — Limit-habit hint, and a prompt before the Wardrobe drops a look
+
+The limit habit's button was "Mark day safe", which a first-timer couldn't decode. It is now "I stayed
+under" (chip "Stayed under" once done), with a new one-time hint (`Tip.limitHabits`, one sentence)
+above the first limit card on Habits: "Stay under your limit all day, then tap I stayed under to count
+the day." Leaving the Wardrobe with a look that differs from what is saved now asks "Discard
+changes?" (Keep editing / Discard), from the back arrow, the Shop button and the system back
+gesture; the saved look is tracked, so a successful "Save look" leaves without a prompt. Tests:
+`wardrobe_discard_test.dart` (prompt with a change, none without). 124 Flutter tests pass; neither
+change was looked at on a screen.
+
+### 2026-11-07 — No-categories hint on Add Habit
+
+Add Habit shows a sky `NoriInfoBanner` under the Category field while the account has no categories:
+"No categories yet. Add one to group your habits." with an "Add one" button that opens the same
+"New category" prompt the dropdown's "Add category" entry uses, so nobody leaves a half-filled form for
+Settings. It is not a one-time tip: it disappears as soon as a category exists. `NoriInfoBanner` gained
+optional `actionLabel`/`onAction`. New widget test; 122 Flutter tests pass. Seeding Health, Study and
+Finance for new accounts (`onUserCreate`, needs a deploy) is still open above.
+
+### 2026-11-07 — Sentence case, and the "Not due today" line
+
+About 120 button, heading and label strings moved from Title Case to sentence case ("Create
+account", "Mark day safe", "Habit statistics", "Limit / negative"), matching DESIGN.md §10. Left as
+they were on purpose: product and pet names, content names (habits, competitions, achievements) and
+the `Pet Care` category key. Four test lookups were updated. The grey explanation under "Not due
+today" on Habits ("Scheduled for other days, so they don't count toward today.") is gone; the
+heading and the rows say enough. Also fixed in the same pass: `RewardBurst` put a `Positioned` inside
+an `IgnorePointer`, which throws in a real overlay; a new widget test (`reward_burst_test.dart`,
+chip shows then clears, a paying claim shows it, an undo or a paid re-claim shows nothing) caught it.
+118 -> 121 Flutter tests, all passing; the chip itself was not seen on a screen (screenshots land
+after its 1.3 s fade).
+
+### 2026-11-07 — Reward chip, Shop states, Wardrobe, one inbox
+
+Completing a habit now shows `RewardBurst`: a chip ("+13 XP · 5") rises from the tap point and fades
+in 1.3 s, with a light haptic, the checkbox pops, and `XpPill` counts up to its new total. It fires
+at tap time from `claimedLocally()` and only when the claim actually pays (`rewardPaid` false), so an
+undo, an edit, or a re-claim of a paid day shows nothing; both claim paths (`HabitDayActions.runClaim`,
+Home's `_runClaim`) call it, and `main.dart` tracks the last pointer position. Shop cards no longer
+fade: owned items get an "Owned" badge and a white Equip button, the worn item a green card and a
+"Wearing" badge with "Take off", and items you can't afford show a red price and a disabled
+"Need N more" button. "Pet Boutique" is now "Shop" and "Style Pet" is "Wardrobe" (the Shop's hanger
+icon became a "Wardrobe" text button, the Wardrobe has a "Shop" button). One inbox: every bell is the
+new `NotificationsBell` and opens `NotificationsScreen`, now with All / Pet / Social filters, social
+cards via `SocialNotificationCard`; `SocialNotificationsScreen` is gone and `SocialScreen` takes
+`onOpenHome` for the "Take care" button. Checked with `flutter analyze` and 118 Flutter tests.
+
+### 2026-11-07 — One back-button style
+
+Every pushed screen now leads with the plain arrow from `NoriScreenHeader.backButton` and a
+left-aligned title. Shop moved from an `AppBar` into `NoriScreenHeader` (inside the scroll, like
+Settings); Customization lost its circled arrow, centered title and 48px spacer; Add Habit lost the
+circled X on the right; Nori Plus's X became an arrow; Payment Method's title is left-aligned.
+`flutter analyze` is clean; Shop, Style Pet and New Habit were rendered at 412px.
+
+### 2026-11-07 — UX/UI audit quick wins (post-bugfix pass)
+
+Profile's "My Achievements" now leads with earned trophies, then in-progress, then locked (it used
+to show the first four in catalog order, all locked on the demo account), and locked illustrations
+are faded so they no longer read as earned. Profile lost its duplicate XP pill and the Current
+Streak progress bar (a streak has no target to fill; the streak pill stays). Log Out moved from a
+loud pink full-width button into the Account card as a plain row; Delete Account is a red-tinted
+`NoriListRow(destructive: true)`. Habits' bottom "Add New Habit" button is now a terracotta
+floating circular button (today only; the empty state says "Tap + to add one"). Home's three care
+rings turn red-tinted with a red dot below 30 (`kLowVital`, same number as `LOW_VITAL` in
+`functions/src/notifications.ts`); the care sheet says "Fullness", not "Hunger". Habit cards show
+the category instead of "Quantity · Health" (type name only when there's no category) and "Not
+started" instead of "In Progress" at 0 progress. Calendar's Missed Days uses a neutral icon, and
+the Shop's first tab is "Accessories" (it holds hats, glasses and a tail charm). Checked with
+`flutter analyze`, 117 Flutter tests and a 412px render of Home, Habits, Profile and Settings.
+
+### 2026-11-07 — Code audit fix pass
+
+Backend: `petCareCheck` only trusts a real `Timestamp` in `lastDecayAt` (a forged value used to throw
+and end the run for every later user), isolates each pet in a `try/catch`, and re-reads the pet
+inside its transaction so a pet fed since the scan gets no "hungry" notice. Not deployed yet.
+`resetDemoAccount` reuses `levelFields`/`syncPetStage`; `uncompleteBucketListItem` no longer reads
+the user and pet docs it never used; `seedPlan` reuses `isScheduledOnKey` and the shared
+`numberOrNull`. Dart: a failed Vacation start/end no longer leaves the cache "frozen" (it changes
+only after the write succeeds); `changeUsername` finishes the move when the new handle is already
+yours, so retrying a failed profile save no longer says it's taken; Home loads the pet in parallel
+and `syncEvolution` is gone; Home's "Try it on" opens Customize and Undo refreshes the streak;
+"Jump to today" clears yesterday's cards; progress writes to an existing log touch only `value`
+(a timezone change no longer breaks them); a huge `%` quick-log amount is rejected; fractional
+progress shows ("0.4 / 1"); Sign Up disposes its controllers; the demo reset checks `mounted`.
+Removed dead code (`_connectToEmulatorsInDebug`, `progressToNextEvolution`, `addXp`, `addCoins`,
+`addCareItem`, `addAccessory`, `syncEvolution`), shared the auth-card layout (`AuthCardScreen`),
+the quick-log default (`defaultQuickLogStep`) and weekday labels, and fixed three stale comments.
+Checked with `flutter analyze`, 117 Flutter tests and 59 functions tests; not run on a device.
+
+### 2026-11-07 — Text contrast and Profile's Habit Breakdown
+
+Measured the app's text/background pairs and darkened four tokens in `app_colors.dart` so small text
+reaches 4.5:1: `mustardDark` `#9A7C1F` -> `#735B10` (streak chip and Calendar "perfect" day were 3.1:1),
+`terracottaDark` `#B5652F` -> `#944B1C` (Calendar "done" day 3.2:1, "x / y Completed" 3.7:1),
+`mossDark` `#5B7A45` -> `#4A6A36` (4.1:1), `inkMuted` `#7A6B4F` -> `#6B5D43` (4.4:1). DESIGN.md's token
+table has the new values. Icons and borders that use those tokens get slightly deeper too.
+Profile's Habit Breakdown: the icon now sits on the habit's color with an ink icon (like every other
+`NoriIconBadge`), and the bar uses the default moss fill instead of the habit's pastel.
+Checked by ratio, `flutter analyze` and the tests; not yet looked at on a screen.
+
+### 2026-11-07 — Screen-reader labels on five controls
+
+From the 2026-10-26 semantics-tree audit. `NoriRoomStage`: the pet is now a button labeled "Style
+your pet" (sprite art hidden from the reader). Customization: each accessory tile is named after
+the accessory. Shop: category chips are one labeled, selectable button each (they read as unlabeled
+checkboxes). Habits: the "Completed to bottom" switch and its text are one control
+(`MergeSemantics`). Calendar: day cells read "October 3, done" / "perfect day" / "missed" /
+"today" / "upcoming" instead of a bare number. Labels only, no visual or behavior change.
+Checked with `flutter analyze` and the existing tests; not yet heard on TalkBack.
+
+### 2026-11-07 — Habits header: 48dp buttons, two rows
+
+The XP pill (left edge) and streak chip (right edge) now sit on their own row; the title and
+its two buttons (Bucket List, Notifications) sit below. Both buttons use the new
+`CircularIconButton(largeTapTarget: true)`: the same 36dp circle in a 48x48dp box. Archived Habits
+moved to Settings > Habits, and the two snackbar/help texts that said "restore it from Archived
+habits" now name Settings. The Habits tab reloads when you switch back to it, so a restore shows up.
+Chosen from five options (see the layout comparison in the 2026-11-07 session). Not yet seen on a
+screen, and Calendar's header still has the old one-row layout.
+
+### 2026-11-07 — Home HUD "avatar + pet name" is intentional (not a bug)
+
+The Home card pairing the user's profile picture with the pet's name and the user's level was
+logged as a "Nori naming collision". valevasqc confirmed it is deliberate: there is one level (the
+user's; the pet's stage derives from it), so the card reads as "you and your Nori". Removed from
+KNOWN_ISSUES; no code change.
+
+### 2026-11-07 — First-habit gift pop-up
+
+`HabitRewardResult` now carries `giftedAccessoryId` from the `claimHabit` response, and a new
+`GiftScreen` (shared `CelebrationScreen` shell, same entrance as evolution) shows the accessory
+after any level-up/evolution pop-up, from both Home and `HabitDayActions` (Habits list, Calendar),
+with a "Try it on" button that opens Customize ("Not now" dismisses).
+The "gift" feed notification is unchanged. Covered by widget tests for the screen; the end-to-end
+claim needs an account that has never completed a habit, so it has not been seen live.
+
+### 2026-11-07 — Change password in Settings
+
+Password accounts now get a "Change Password" row (Google-only accounts keep "Set a Password").
+`AuthRepository.changePassword` re-checks the current password, then calls `updatePassword`, mapping
+wrong password / weak password / rate limit / offline to plain messages. The dialog reuses
+`_SetPasswordDialog` with a current-password field and rejects an unchanged password. Not yet
+tried against live Firebase.
+
+### 2026-11-07 — Bucket-list retry id, catalog drift test
+
+Adding a bucket-list goal that timed out or failed remembers it (`_unconfirmedAdd`); adding the
+identical goal again reuses its id, so a write that committed late is overwritten instead of
+duplicated. It is forgotten once the list shows it or the add succeeds, so deliberately adding the
+same goal later still makes a new one. `test/data/catalog_sync_test.dart` reads
+`functions/src/shop.ts`, `firestore.rules`, `deleteHabit.ts` and `notifications.ts` as text and
+fails if care-item prices/grants/ids, accessory prices, `MAX_DELETABLE_ACTIVE_DAYS` or the pet decay
+rate differ from the Dart copies.
+
+### 2026-11-07 — Inventory count floor + dormant pets stop getting reminders
+
+`careItemCountsOnlyDecreased` now also requires each count `>= 0`; `<= old` alone let a client
+write -5 over 3. `petCareCheck` skips pets last cared for more than 7 days ago
+(`PET_CARE_DORMANT_AFTER_MS`, measured by `lastDecayAt`, which care actions reset), so abandoned
+accounts get about a week of daily reminders instead of one forever. Needs
+`firebase deploy --only firestore:rules,functions:petCareCheck` to go live.
+
+### 2026-11-07 — Data-correctness pass (code audit leftovers)
+
+- **Overlapping loads:** Home's `_loadData` drops its result if a newer load started or a habit
+  claim/log/care item happened while it ran (those re-read what they changed). Profile drops an
+  older `_fetchData`. Social screens (`SocialLoadState.reload`) now run loads one at a time and
+  queue one follow-up, so a slow older read can't land last. Habits list `_onReorder` applies the
+  saved order to the list as it is after the write instead of committing its pre-request copy.
+- **Stale badge on Habits list:** the user badge (streak, XP, coins) refreshes after every claim
+  *and* unclaim, after a progress edit that flips whether the day keeps the streak (reaching or
+  dropping below the minimum), and after returning from add/edit/delete/archive (a delete reverses
+  the XP and coins it paid).
+- **Category delete** is a transaction, so two devices can't delete down to zero.
+- **Customization:** the save captures the selection it started with; if the pick changed mid-save,
+  the toast says the newer pick still needs saving.
+- **Email verification banner** re-checks when the app returns to the foreground (only while it is
+  showing).
+- Not changed: mock-repository drift (only runs signed out and in tests, still in KNOWN_ISSUES) and
+  the Nori+ plan (premium is mock, still in KNOWN_ISSUES). The bucket-list "fresh id per save
+  attempt" item was dropped from KNOWN_ISSUES without a code change: a failed add re-reads the list,
+  so a save that did commit shows up before anyone would retype it.
+
+### 2026-11-07 — Notifications sync throttled
+
+`FirestoreNotificationRepository.getNotifications` skips `_sync` (user doc + months of habit history
+for achievements) if the last successful sync was under 5 minutes ago. Chosen over a dirty flag
+because achievements depend on habits, calendar, bucket list, pet, inventory and social, so every
+mutation path would need to bump it and a missed one drops a notification. Cost: a new
+streak/achievement notification can appear up to 5 minutes late. The cooldown lives on the
+repository instance, so it resets on sign-in/out.
+
+### 2026-11-07 — Instant feedback everywhere; `linenAlt` retired
+
+Everything that used to wait on the network now shows its result first and syncs behind it, using
+the same pattern as habit actions (pending counter, edit stamp that drops a stale reload, re-read on
+failure or when the last action lands):
+- **Shop:** buying a care item or accessory drops the coins, adds the item and shows the
+  confirmation at once (the "Buying…" label and disabled buttons are gone). Server calls go through
+  `OrderedQueue` (`lib/utils/ordered_queue.dart`) so equipping something just bought waits for the
+  purchase.
+- **Home:** using a care item lowers the stock and raises the vital immediately
+  (`applyCareRestore`); an "out of stock" answer from the server re-reads both.
+- **Bucket list:** complete/uncomplete, add, edit and delete update the list first; the progress
+  bar over the list is gone. Reward state (`rewardPaid`) is set locally on complete and corrected by
+  the re-read.
+- **Calendar:** month arrows change the title straight away, months already visited show from a
+  cache and refresh behind it, and an unread month shows a spinner under the title instead of
+  replacing the whole screen.
+- **XP/coins/level badge:** the exact reward is only known to the Cloud Function (adaptive
+  multiplier, pay-once), so the number is not guessed; the star/coin icon in the XP pill, Home's
+  level row and Home's coin chip turns into a spinner while a claim or unclaim is in flight
+  (`SyncingIcon`, `OptimisticHabits.rewardSyncing`).
+- **First load:** Habits shows a pulsing skeleton (`HabitListSkeleton`) and Home says "Waking up
+  your Nori…" next to its spinner.
+
+**Failure rollback.** Each of these screens keeps a copy of what it showed before the first change
+now in flight (one baseline per burst of actions, dropped when nothing is pending) and puts it
+back the moment a call fails, then shows the error and re-reads from the server. So the undo no
+longer depends on the network: with the server unreachable the re-read fails too, which used to
+leave the phantom purchase/claim on screen. If an earlier action in the same burst had succeeded,
+the baseline hides it until the re-read brings it back. The Habits list skips the restore if the
+viewer has moved to another day. Calendar months that fail to read now show a retry instead of
+spinning forever.
+
+**Live check (Chrome, localhost against `nori-pet`, as `demo@test.com`), bucket list only.** Add, edit,
+complete, undo and delete show at once and survive a reload; no console errors. With outgoing
+requests blocked by a script, a goal added while the request hung vanished after the 20 s guard and
+left nothing on the server, and "Mark Achieved" rolled back within a second with "Couldn't reach the
+server — try again.". The test goal's reward was reversed by deleting it, so the demo account ended
+unchanged. The Add path's snackbar text was not captured. The other screens were not run; what is
+still unchecked is under "Instant-feedback pass" in KNOWN_ISSUES.md.
+Bucket-list add and edit are now Firestore transactions with a read first (`FirestoreBucketListRepository`),
+because a plain `set`/`update` is queued in memory by the SDK while offline and would land after
+the error and rollback; a transaction needs the server and fails at once. (Persistence is already
+off, so a queued write never survived an app restart; equip already reads before it writes.)
+
+`linenAlt` is no longer a habit/bucket-list color: it was removed from `ColorRegistry`, so anything
+saved with that key loads as `mossLight` (the default) and is written back that way on its next
+save. The seeded mock "Social Media" habit uses `sky`. Firestore still holds the old key on
+untouched documents; nothing rewrites them in bulk. `AppColors.linenAlt` itself stays as a surface
+color.
+
+### 2026-11-07 — Economy pass: slower decay, cheap care, pricier hats, sized bucket goals, evolution at level 5
+
+Simulated four player types over 60 days (`tool/economy_sim.py`; method and tables in
+OPEN_DECISIONS.md, "Economy"): care used to cost ~106 coins a day against 14-78 earned, so Nori sat
+at 0 for most players and no accessory was affordable, while a self-made bucket goal paid 281 coins
+a day. Changes, all approved by valevasqc:
+- **Decay 2 → 1 point/hour** (`kPetDecayPerHour`, `PET_DECAY_PER_HOUR`; the notification test now
+  uses 40 hours).
+- **Care items:** basic (food, shampoo, plushie) 10 coins per pack of 3, restoring 25; better (cake,
+  hair brush, blanket) 18, restoring 50 (`care_item_catalog.dart`, `shop.ts`).
+- **Accessories:** Tail Charm Clasp 100, Horn Bow 180, Chef Hat 250, Steampunk Goggles 350, Flower
+  Crown 500; Sunglasses stay the free first-completion gift (`accessory_catalog.dart`, `shop.ts`).
+- **Bucket list:** pick Small / Medium / Big (75/25, 150/50, 300/100 XP/coins) instead of typing
+  numbers; the server caps at 300 XP / 100 coins and pays only **2 goals per rolling week** (`paidAt`
+  on each payout, `functions/src/bucketRewards.ts`, unit-tested). A third goal in the week is
+  achieved but pays nothing, and the app says so. `resetDemoAccount` clears `paidAt`.
+- **Evolution at level 5** instead of 7, as a single constant (`EVOLUTION_LEVEL` /
+  `kEvolutionLevel`); the threshold stored on existing pet documents is ignored, so existing
+  accounts follow it on their next XP change.
+- **New accounts** start with food 3, shampoo 3, plushie 3 (still 0 coins).
+**Needs a deploy to take effect:** `shop`, `completeBucketListItem` (and the other functions that
+sync the pet stage), `onUserCreate`, `petCareCheck`/notifications, `resetDemoAccount`. The app
+side ships with the next build; until the functions are deployed the shop charges the old prices
+and the app shows the new ones. Not run on a device. Unchanged and still open: the Undo/redo rule
+(KNOWN_ISSUES.md), seeding default categories, the midnight reload.
+
+### 2026-11-07 — Live password checklist, inline Add Habit errors, demo baseline
+
+- **Password rules show while typing.** Sign-up and Settings' "Set a Password" show a checklist
+  (8+ characters, a letter, a number) that ticks off as you type (`PasswordRules`,
+  `lib/widgets/password_rules.dart`). It is local, so there is no delay. `passwordChecks` in
+  `validators.dart` feeds both it and `validateNewPassword`, so the two can't disagree; the
+  submit-time snackbar stays as the backstop.
+- **Add Habit marks the field.** A refused Save now also puts the message in red under the field
+  and a red border on it (cleared when you edit it), on top of the snackbar, scroll and focus below.
+  Custom days get the red line under the day circles.
+- **Username availability check starts 250 ms after you stop typing** (was 400 ms). The rest is
+  one Firestore document read, so what is left is network time.
+- **Demo baseline.** Reset demo account (and the `seedHistory` script) now leave `demo@test.com`
+  with every care item at 3 or more and at least 500 coins (`demoBaseline.ts`, unit-tested).
+  **Takes effect after redeploying `resetDemoAccount`;** not deployed yet.
+
+### 2026-11-07 — Add Habit scrolls to the field a failed Save names; username picker gets an exit
+
+- **Add Habit:** when Save is refused (Ideal Target, Quick-Log, Minimum Threshold, custom days),
+  the snackbar is unchanged but the form now scrolls to that field and, for text fields, focuses
+  it (`_saveHabit`, `FocusNode`s / `_customDaysKey`). Inline red errors are still not built.
+  Checked with `flutter analyze` only, not run in a browser.
+- **Username picker:** "Not you? Use a different account" signs out and returns to Welcome
+  (`ChooseUsernameScreen._useDifferentAccount`), so a wrong Google account is no longer a dead end
+  that survives force-closing the app. The abandoned account stays in Firebase, harmless; a
+  scheduled cleanup is noted in KNOWN_ISSUES.
+
+### 2026-11-07 — Weak-password message states the app's rule
+
+`FirebaseAuthRepository` told people to use "at least 6 characters" when Firebase rejected a
+password (sign-up and Settings' "Set a Password"), contradicting the 8-plus-letter-and-number rule
+the forms enforce. Only reachable by getting past the form's check, but it now says "at least 8
+characters, including a letter and a number" (from `passwordMinLength`).
+
+### 2026-11-07 — Live Firestore rules match the repo
+
+Read the published ruleset of `nori-pet` through the Firebase Rules API (release
+`cloud.firestore`, last updated 2026-11-05 23:29 UTC) and diffed it against `firestore.rules` in
+the working tree: byte-identical. That closes the QA audit's "rules were never deployed" claim.
+Note the working-tree file is uncommitted; `git` HEAD still holds the 2026-10-26 version.
+
+### 2026-11-07 — QA audit F1/F4 follow-ups: lost sessions and half-finished sign-ups
+
+- **A session that ends while the app is open sends the person to Login.** `NoriApp` (`lib/main.dart`)
+  listens to `AuthRepository.sessionLost`, which fires when a signed-in Firebase session ends
+  without Log out or Delete account (token expired or revoked, account disabled or deleted
+  elsewhere). It unbinds the account, replaces the stack with `/login` and shows "You were signed
+  out. Please log in again." `SessionWatch` (`lib/data/session_watch.dart`) tells the two apart:
+  the repository announces its own sign-outs (`logOut`, `deleteAccount`), so those screens keep
+  navigating on their own. Unit-tested; not exercised against a really revoked session.
+- **Sign-up interrupted after the username claim is picked up too.** The claim and the profile
+  save are separate writes, so closing the app between them left a claimed name on an empty profile
+  and the old check (claim only) opened Home with a blank name. `isSignUpComplete`
+  (`lib/utils/account_setup.dart`, replaces `hasClaimedUsername`) now also needs the profile's
+  name and username (`UserRepository.hasProfile`). `FinishSignUpScreen` reuses a name the account
+  already holds instead of asking again, which would have left two claims on one account. Unit-tested
+  with fakes; the full path (sign up, close the app after the claim, reopen) was not run live.
+- **Email login no longer says "Unable to sign in" for a person who is signed in.** The username
+  lookup inside `logIn` is best-effort now; the login screen's own sign-up check follows right after.
+
+### 2026-11-07 — `resetDemoAccount` deployed
+
+The dev-only callable was exported in `index.ts` but missing from the live project (found 2026-11-05,
+`firebase functions:list` showed only the other 11), so Settings > Developer > "Reset demo account"
+would have failed. Deployed by the owner; `firebase functions:list` now lists it, and the post-deploy
+preflight check (KNOWN_ISSUES.md, "QA pass 2026-11-03") returned 204 for all 11 callables including
+`resetdemoaccount` (`petcarecheck` is scheduled, not public, and returns 403 as expected). Not yet
+exercised by pressing the button as `demo@test.com`.
+
+### 2026-11-05 — `/usernames` create rule deployed
+
+`firestore.rules` now only accepts a `/usernames` entry whose id is 3-20 lowercase letters, digits
+or underscores, whose `username` field equals that id lowercased, and whose keys are only `uid`,
+`username` and `createdAt`. Written to match `lib/utils/validators.dart` and compiled with
+`firebase deploy --dry-run`; deployed by the owner. Not yet exercised with a fresh sign-up and a rename.
+
+### 2026-11-05 — Second batch: shop equip, photos, rematch, seed habit, QA-audit fixes
+
+Shop cards now equip/unequip in place (button flips to Unequip, a Dressing room icon in the app bar
+opens the full screen). Profile picture and social proof photos can be picked from the device and
+kept in memory for the session (`SessionPhotos`, `image_picker`), standing in for Firebase
+Storage. Competition standings put each progress bar inside the person's card; Rematch opens the
+finished competition's format and people on the review step. Binary habits on the Habits tab show
+the reward chip and a 0/1 progress bar like the others. Every login-only route is guarded and any
+unknown address goes to Home or Login. From the external QA audit: Login now resumes a sign-up
+that never claimed a username, and its button says "Log In". See KNOWN_ISSUES.md for the triage.
+`functions/src` comments were condensed like `lib/` (the notes worth keeping are in `docs/CODE_NOTES.md`).
+
+### 2026-11-05 — Quick-fix batch: instant habit actions, autocomplete, Undo, sign-up checks
+
+Habit quick-log, Complete, Undo and checkbox taps now render locally first and sync in the
+background (`OptimisticHabits`); the last action in flight re-syncs, and a stale reload is dropped
+via an edit counter. Reaching a progress habit's target now completes it automatically (not limit
+habits), and Undo restores the pre-Complete value (1/3, Complete, Undo is 1/3; session-only, see
+KNOWN_ISSUES). Also: Complete button is white on `mossDark`, the "Completed to bottom" switch sits
+before its label and every Switch now has an ink thumb/outline (theme-level), the beige `linenAlt`
+swatch left the habit color picker, Ideal Target takes digits only, Home's Today's Goal list fades
+under the header when scrolled, Delete Account moved below Plan, `/home` while signed out redirects
+to Login, and sign-up/choose-username/edit-profile validate name, username, email and password
+(`lib/utils/validators.dart`, tested). Long code comments were condensed, with the removed rationale
+moved to `docs/CODE_NOTES.md`. Not browser-tested; `flutter analyze` clean, 88 tests pass.
+
+### 2026-11-05 — Account & pet audit: Set a Password rule and pet-name limits
+
+"Set a Password" in Settings accepted any password (even empty-looking or 6-character ones); it now
+uses the same rule as sign-up (8+ with a letter and a number). The pet name had no length or
+character check on the onboarding screen or in `renamePet`; it is now 1-20 characters with no `<`
+or `>` (`petNameMaxLength`, `lib/utils/validators.dart`). The rules-side pet-name check was left out
+on purpose, see KNOWN_ISSUES.
+
 ### 2026-11-04 — All Cloud Functions redeployed on Node 22, verified live
 
 Node 20 passed its decommission date (2026-10-30), so `firebase deploy --only functions` moved all
@@ -90,6 +566,21 @@ BACKEND.md is now a current-state reference; the dated narrative it used to carr
   a taken name is typed. Verified on the demo account without saving.
 - **Deleting an account confirms it** ("Your account has been deleted.") on the Welcome screen.
 - **Home's empty state points at the Habits tab** for a brand-new account.
+
+### 2026-11-03 — QA pass: vacation toggle verified live, two items checked and not bugs
+
+Vacation Mode Enable/Disable in Settings works end to end on `demo@test.com`: both taps saved
+without error and the badge flipped Inactive/Active. Also checked and left alone: undoing a claim
+keeps the XP/coins (the pay-once rule, 2026-10-26), and the Edit Habit icon row has a sixth icon off-screen but scrolls.
+
+### 2026-11-03 — `purchaseCareItem` blocked by a missing public Cloud Run binding
+
+Buying a care item showed "Couldn't reach the server": the CORS preflight to `purchaseCareItem` got a
+403 ("Empty Authorization header") because the service had lost its public invoker binding, unlike
+`claimHabit` and `purchaseAccessory`. valevasqc fixed it live in the console (~13:43Z, sets
+`invoker-iam-disabled=true`), after which all three callables answered the preflight with 204; the
+failed revision that save left behind was cleared by the 2026-11-04 redeploy. The cause of the lost
+binding is still unknown, so check the preflight after every deploy.
 
 ### 2026-11-03 — QA pass fixes: logout error, dialog crashes, invisible progress fill, shop feedback
 
@@ -470,6 +961,16 @@ Tightened achievement card spacing, ellipsized habit subtitles, allowed two-line
 ### 2026-09-15 — secondary-text contrast, touch targets, and screen-reader semantics gaps
 
 Darkened `inkFaint`, raised undersized interactive controls to 48dp, and added semantics for navigation, checkboxes, progress, and unread state. `inkMuted` was not part of this change and should not be assumed fixed by the token update.
+
+### 2026-09-15 — Layout audit re-check: stale findings dropped
+
+Source-read re-verification of the 2026-09-10 audit found these no longer true: Shop category chips
+are a horizontally scrolling list (no truncation), Welcome and Sign-up align to one shared constant,
+the Habits "Min. Reached" pill no longer exists (it is "Target Reached!" in an unconstrained `Wrap`),
+the Bucket List "Add" button uses the standard primary `TactileButton`, the Add Habit "floating Save
+bar" is a real `bottomNavigationBar` with reserved space, and quick-logging a quantity/duration habit
+from Home already calls `logProgress` inline (no dead-end SnackBar). Only the Add Habit
+description-clipping half was real, and it was fixed the same day.
 
 ### 2026-09-15 — "tapping the pet opens Customization, not care" was never a bug
 

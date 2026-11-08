@@ -1,18 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart' show FirebaseException;
 
-/// Runs [action] (a write to a doc `onUserCreate` provisions: `/users/{uid}`,
-/// `pet/main`), retrying while that doc might not exist yet. Firebase Auth
-/// account creation returns before the trigger is guaranteed to have run, so
-/// a write right after sign-up/login can land first. A handful of short
-/// retries covers the normal sub-second gap without leaving the caller stuck
-/// if the doc genuinely never shows up: after [attempts] tries the last
-/// error is rethrown, and any other error is rethrown immediately.
-///
-/// A write to a not-yet-provisioned doc can surface as either `not-found`
-/// (the backend rejects the update outright) or `permission-denied` (the
-/// update rule's `resource.data.diff(...)` check can only be evaluated once
-/// `resource` exists; before that it's cleanly denied, per
-/// firestore.rules). Both mean the doc isn't there yet, so both are retried.
+import 'app_log.dart';
+
+/// Retries [action] on not-found/permission-denied while `onUserCreate` provisions docs.
+/// Auth may return first; rethrows after [attempts] or immediately for other errors.
 Future<T> retryWhileProvisioning<T>(
   Future<T> Function() action, {
   int attempts = 8,
@@ -24,7 +15,15 @@ Future<T> retryWhileProvisioning<T>(
     } on FirebaseException catch (e) {
       final isMissingDocRace =
           e.code == 'not-found' || e.code == 'permission-denied';
-      if (!isMissingDocRace || attempt >= attempts) rethrow;
+      if (!isMissingDocRace || attempt >= attempts) {
+        // Giving up on a missing doc is the tell-tale of an account that
+        // onUserCreate never provisioned (e.g. one made by hand in the
+        // Firebase console) -- say so, since the UI only shows a generic error.
+        if (isMissingDocRace) {
+          logError('write to users/pet doc (gave up after $attempts tries)', e);
+        }
+        rethrow;
+      }
       await Future.delayed(delay);
     }
   }

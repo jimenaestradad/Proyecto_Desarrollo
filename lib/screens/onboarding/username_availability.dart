@@ -6,14 +6,9 @@ import 'package:nori/theme/app_theme.dart';
 
 enum UsernameStatus { idle, checking, available, taken }
 
-/// The live "is this username free?" check behind the username field on
-/// Sign Up and Choose Username: debounced lookup, a status, and the suffix
-/// icon / helper text the field shows for it.
-///
-/// Advisory only — the atomic `claim` at submit time is the real guard, so a
-/// failed lookup just returns to [UsernameStatus.idle] instead of blocking
-/// typing. The screen supplies [usernameController] and wires its field's
-/// `onChanged` to [onUsernameChanged].
+/// Debounced advisory username lookup with status, suffix icon and helper text.
+/// Screens supply [usernameController] and wire [onUsernameChanged].
+/// Failed lookups return to idle; the submit-time atomic claim is the real guard.
 mixin UsernameAvailability<T extends StatefulWidget> on State<T> {
   Timer? _usernameDebounce;
 
@@ -38,7 +33,7 @@ mixin UsernameAvailability<T extends StatefulWidget> on State<T> {
     }
 
     setState(() => usernameStatus = UsernameStatus.checking);
-    _usernameDebounce = Timer(const Duration(milliseconds: 400), () async {
+    _usernameDebounce = Timer(const Duration(milliseconds: 250), () async {
       bool available;
       try {
         available = await AppData.usernames.isAvailable(username);

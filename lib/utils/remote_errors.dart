@@ -5,18 +5,11 @@ import 'package:flutter/material.dart';
 
 import '../data/cloud_functions_client.dart';
 
-/// The shared "call, catch, show error" helper docs/BACKEND.md asks for
-/// ("Online only -- no offline mode"): every repository call can fail now
-/// that the repositories are real Firestore, so screens route their loads
-/// through [RemoteLoadState.guardedLoad] and their actions through
-/// [RemoteLoadState.guardedAction] instead of writing their own try/catch.
+/// Shared repository error handling through [RemoteLoadState.guardedLoad]
+/// and [RemoteLoadState.guardedAction].
 
-/// How long any single guarded load or action may take before it's
-/// treated as a failure. Firestore reads fail fast when offline, but a
-/// write with offline persistence off still waits in memory for the
-/// server's ack -- without this it would hang on a spinner forever.
-/// Longer than callCloudFunction's own 15s so an action that is a
-/// function call plus a reload isn't cut off mid-reload.
+/// Bounds guarded operations so unacknowledged Firestore writes cannot hang the UI.
+/// Exceeds callable functions' 15s timeout to allow a subsequent reload.
 const remoteTimeout = Duration(seconds: 20);
 
 /// One plain, user-facing sentence for whatever a repository or Cloud
@@ -68,9 +61,9 @@ mixin RemoteLoadState<T extends StatefulWidget> on State<T> {
   }
 
   /// Runs a user-triggered [action] (claim, save, buy, ...). On failure
-  /// the UI is left as it was and a snackbar explains -- no optimistic
-  /// update to roll back (docs/BACKEND.md). Returns whether it succeeded,
-  /// for callers that only continue (pop, celebrate) on success.
+  /// a snackbar explains. A screen that changed itself first re-reads from
+  /// the server on failure to undo that change. Returns whether it
+  /// succeeded, for callers that only continue (pop, celebrate) on success.
   Future<bool> guardedAction(Future<void> Function() action) async {
     try {
       await action().timeout(remoteTimeout);

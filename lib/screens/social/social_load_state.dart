@@ -3,33 +3,9 @@ import 'package:nori/data/app_data.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/load_error_view.dart';
 
-/// Load-and-stay-fresh plumbing every Social screen shares.
-///
-/// A screen mixes this in *after* [RemoteLoadState], implements [loadSocial]
-/// (read from `AppData.social`, then `setState` its fields), and renders its
-/// body through [buildLoaded]. The mixin runs [loadSocial] on first build and
-/// again whenever `AppData.social.changes` fires, so a screen that stays
-/// mounted underneath a pushed route (the hub, a list) refreshes when you
-/// come back from a change made elsewhere.
-///
-/// ```dart
-/// class _FooState extends State<Foo>
-///     with RemoteLoadState<Foo>, SocialLoadState<Foo> {
-///   List<SocialUser>? _friends;
-///
-///   @override
-///   Future<void> loadSocial() async {
-///     final friends = await AppData.social.getFriends();
-///     if (!mounted) return;
-///     setState(() => _friends = friends);
-///   }
-///
-///   @override
-///   Widget build(BuildContext context) => Scaffold(
-///     body: SafeArea(child: buildLoaded((context) => ...)),
-///   );
-/// }
-/// ```
+/// Mix in after [RemoteLoadState] and implement [loadSocial] to read and set state.
+/// Render through [buildLoaded]; loads on startup and `AppData.social.changes`
+/// keep mounted screens fresh after changes elsewhere.
 mixin SocialLoadState<T extends StatefulWidget>
     on State<T>, RemoteLoadState<T> {
   bool _hasLoaded = false;
@@ -61,10 +37,30 @@ mixin SocialLoadState<T extends StatefulWidget>
     if (mounted && AppData.auth.currentUserId != null) reload();
   }
 
-  Future<void> reload() => guardedLoad(hasData: _hasLoaded, () async {
-    await loadSocial();
-    _hasLoaded = true;
-  });
+  Future<void>? _inFlight;
+  bool _reloadQueued = false;
+
+  /// Loads run one at a time: a request that arrives mid-load queues one
+  /// more run after it, so a slow older read can never land after (and
+  /// overwrite) a newer one.
+  Future<void> reload() {
+    final running = _inFlight;
+    if (running != null) {
+      _reloadQueued = true;
+      return running;
+    }
+    return _inFlight = _runLoads().whenComplete(() => _inFlight = null);
+  }
+
+  Future<void> _runLoads() async {
+    do {
+      _reloadQueued = false;
+      await guardedLoad(hasData: _hasLoaded, () async {
+        await loadSocial();
+        _hasLoaded = true;
+      });
+    } while (_reloadQueued && mounted);
+  }
 
   /// Spinner until the first load, [LoadErrorView] if it failed, else
   /// [builder]'s content.

@@ -31,14 +31,8 @@ abstract class CalendarRepository {
 /// than this stops counting (400 days is more than a year).
 const kStreakMaxLookback = 400;
 
-/// Today always renders as [CalendarDayStatus.today] regardless of progress —
-/// it's still in flight. A day with nothing scheduled (every habit's schedule
-/// skips it) reads as [CalendarDayStatus.done] rather than missed, per
-/// FEATURES.md §5: an off-schedule day isn't a broken commitment. A
-/// [frozen] day (Vacation Mode was active) gets the same neutral treatment —
-/// per FEATURES.md §2, paused time shouldn't read as a miss. [scheduled] is
-/// the day's hydrated habits. Shared by both calendar repositories, so the
-/// mock and the real one can't colour a day differently.
+/// Computes shared day status: today stays in progress regardless of completion.
+/// Off-schedule and [frozen] days count as neutral, rather than missed.
 CalendarDayStatus calendarDayStatus({
   required DateTime date,
   required DateTime today,
@@ -59,14 +53,8 @@ CalendarDayStatus calendarDayStatus({
 /// What one day does to a streak being walked back from today.
 enum StreakStep { skip, count, stop }
 
-/// A streak is consecutive days (walking back from today) with at least one
-/// habit that [Habit.keptStreak] (claimed, or logged up to its minimum),
-/// skipping days nothing was scheduled — the "streaks aren't broken by
-/// off-schedule days" rule in FEATURES.md §5, applied across all habits
-/// together since this is a single aggregate number. Today itself only
-/// counts once every scheduled habit is kept; until then it's "still in
-/// progress" rather than a break. Pass an empty [scheduled] for a day
-/// Vacation Mode was active on: frozen, not missed.
+/// Classifies a day for aggregate streaks, skipping empty or vacation schedules.
+/// Past days need at least one kept habit; today counts only when all are kept.
 StreakStep streakStep(List<Habit> scheduled, {required bool isToday}) {
   if (scheduled.isEmpty) return StreakStep.skip;
   if (isToday) {
@@ -79,12 +67,8 @@ StreakStep streakStep(List<Habit> scheduled, {required bool isToday}) {
       : StreakStep.stop;
 }
 
-/// The month grid and totals for [year]/[month]. [habitsFor] returns a past
-/// or present day's scheduled, hydrated habits (how it gets them is the
-/// caller's business: the mock asks per day, Firestore reads a prefetched
-/// month); days after [today] are never asked for. [vacationLog] marks
-/// frozen days and [currentStreak] is passed in because each repository
-/// walks it its own way.
+/// Builds the [year]/[month] grid and totals from hydrated [habitsFor] results.
+/// Never requests future days; uses [vacationLog] and the supplied [currentStreak].
 Future<CalendarMonthStats> buildMonthStats({
   required int year,
   required int month,
@@ -240,15 +224,8 @@ class MockCalendarRepository implements CalendarRepository {
   );
 }
 
-/// Real Firestore-backed [CalendarRepository]. Deliberately *not* a
-/// line-for-line port of [MockCalendarRepository] — that class calls
-/// [HabitRepository.getHabitsForDate] once per day (cheap when it's an
-/// in-memory map lookup, ruinous as up to ~400 separate network round-trips
-/// against Firestore for a streak walk). This fetches each visible date
-/// range with one call to [FirestoreHabitRepository.logsInRange] and derives
-/// every day's status/streak/stat in memory instead — see docs/BACKEND.md
-/// "Why habitLogs is a flat collection" for why that single range query is
-/// possible at all. The rules themselves are the shared functions above.
+/// Firestore calendar using one [FirestoreHabitRepository.logsInRange] query per range.
+/// Derives statuses, streaks and stats in memory with the shared rules.
 class FirestoreCalendarRepository implements CalendarRepository {
   FirestoreCalendarRepository(this._habits, this._vacationLog);
 

@@ -7,26 +7,9 @@ import 'color_registry.dart';
 import 'habit_repository.dart' show HabitRewardResult;
 import 'icon_registry.dart';
 
-/// Real Firestore-backed [BucketListRepository] for
-/// `/users/{uid}/bucketList/{itemId}` -- see docs/BACKEND.md, "Firestore
-/// schema".
-///
-/// [getItems]/[addItem]/[updateItem] are direct, rules-guarded client
-/// writes -- no currency involved (Architecture table: "Habit
-/// create/update/delete/reorder", same reasoning applies here).
-/// [deleteItem] is the exception: deleting a completed item takes its
-/// reward back, so it's a Cloud Function call (see its own comment). [updateItem] only ever touches the user-editable fields --
-/// never `isCompleted`/`completedAt`/`awardedXp`/`awardedCoins`, which are
-/// Cloud-Function-only (see below).
-///
-/// [completeItem]/[uncompleteItem] are the currency-minting half --
-/// completing an item awards XP/coins, so per the Architecture table
-/// that's Cloud-Function-only (`completeBucketListItem`/
-/// `uncompleteBucketListItem` in functions/src/bucketList.ts). This repository
-/// deliberately doesn't attempt a direct write for either, matching
-/// FirestoreUserRepository.addXp's UnsupportedError idiom -- screens call
-/// the Cloud Function directly instead (see bucket_list_screen.dart's
-/// `_toggleComplete`, via cloud_functions_client.dart's shared helper).
+/// Firestore bucket-list CRUD for `/users/{uid}/bucketList/{itemId}`.
+/// Completion rewards and reward-reversing deletion require Cloud Functions;
+/// client updates only change user-editable fields.
 class FirestoreBucketListRepository implements BucketListRepository {
   FirestoreBucketListRepository({
     required String uid,
@@ -76,36 +59,50 @@ class FirestoreBucketListRepository implements BucketListRepository {
     return snapshot.docs.map(_fromDoc).toList();
   }
 
+  /// Written in a transaction, with a read first, on purpose: a plain
+  /// `set`/`update` is queued by the SDK while the device is offline and
+  /// applied later, after the screen has already shown an error and undone
+  /// the change. A transaction needs the server, so it fails right away and
+  /// nothing is left waiting to land.
   @override
   Future<void> addItem(BucketListItem item) async {
-    await _collection.doc(item.id).set({
-      'title': item.title,
-      'description': item.description,
-      'iconKey': IconRegistry.tryKeyFor(item.icon) ?? IconRegistry.defaultKey,
-      'colorKey':
-          ColorRegistry.tryKeyFor(item.color) ?? ColorRegistry.defaultKey,
-      'xpReward': item.xpReward,
-      'coinReward': item.coinReward,
-      // Cloud-Function-only fields must start at their untouched defaults
-      // -- mirrors the habit doc's create rule (firestore.rules).
-      'isCompleted': false,
-      'completedAt': null,
-      'awardedXp': 0,
-      'awardedCoins': 0,
-      'createdAt': FieldValue.serverTimestamp(),
+    final ref = _collection.doc(item.id);
+    await _firestore.runTransaction((tx) async {
+      await tx.get(ref);
+      tx.set(ref, {
+        'title': item.title,
+        'description': item.description,
+        'iconKey': IconRegistry.tryKeyFor(item.icon) ?? IconRegistry.defaultKey,
+        'colorKey':
+            ColorRegistry.tryKeyFor(item.color) ?? ColorRegistry.defaultKey,
+        'xpReward': item.xpReward,
+        'coinReward': item.coinReward,
+        // Cloud-Function-only fields must start at their untouched defaults
+        // -- mirrors the habit doc's create rule (firestore.rules).
+        'isCompleted': false,
+        'completedAt': null,
+        'awardedXp': 0,
+        'awardedCoins': 0,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
     });
   }
 
+  /// A transaction for the same reason as [addItem].
   @override
   Future<void> updateItem(BucketListItem item) async {
-    await _collection.doc(item.id).update({
-      'title': item.title,
-      'description': item.description,
-      'iconKey': IconRegistry.tryKeyFor(item.icon) ?? IconRegistry.defaultKey,
-      'colorKey':
-          ColorRegistry.tryKeyFor(item.color) ?? ColorRegistry.defaultKey,
-      'xpReward': item.xpReward,
-      'coinReward': item.coinReward,
+    final ref = _collection.doc(item.id);
+    await _firestore.runTransaction((tx) async {
+      await tx.get(ref);
+      tx.update(ref, {
+        'title': item.title,
+        'description': item.description,
+        'iconKey': IconRegistry.tryKeyFor(item.icon) ?? IconRegistry.defaultKey,
+        'colorKey':
+            ColorRegistry.tryKeyFor(item.color) ?? ColorRegistry.defaultKey,
+        'xpReward': item.xpReward,
+        'coinReward': item.coinReward,
+      });
     });
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nori/data/session_photos.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/models/competition.dart';
 import 'package:nori/models/social_content.dart';
@@ -151,6 +152,8 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                         icon: post.habitIcon,
                         color: post.habitColor,
                         height: 240,
+                        bytes: SessionPhotos.proofFor(post.id),
+                        asset: post.photoAsset,
                       ),
                     ],
                     const SizedBox(height: AppSpacing.stackSm),

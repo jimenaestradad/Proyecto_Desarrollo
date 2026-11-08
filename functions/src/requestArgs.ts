@@ -10,16 +10,12 @@ export function requireAuth(uid: string | undefined): string {
   return uid;
 }
 
-// How recently the caller must have signed in for an irreversible action
-// (deleting the account). OWASP asks for re-authentication before sensitive
-// operations; five minutes is long enough to type a password, short enough
-// that a session left open on a phone can't be used to wipe the account.
+// Requires recent authentication for account deletion.
+// Five minutes allows password entry while limiting exposure from an unattended session.
 export const RECENT_LOGIN_MAX_AGE_MS = 5 * 60 * 1000;
 
-// Throws unless the caller's ID token says they authenticated within
-// [maxAgeMs]. `auth_time` (seconds since epoch) is when they last signed in
-// or re-authenticated — a refreshed token keeps the old one, so a long-lived
-// session doesn't pass. A missing claim is treated as too old.
+// Checks auth_time against maxAgeMs; missing claims count as too old.
+// Token refresh preserves auth_time, so a long-lived session does not pass.
 export function requireRecentLogin(
   token: { auth_time?: unknown } | undefined,
   nowMs: number = Date.now(),
@@ -84,10 +80,8 @@ export function parseDayArgs(data: { dayKey?: unknown; dayStartMillis?: unknown 
   return { dayKey: match[0], dayStartMillis, utcMidnightMillis: utcMidnight };
 }
 
-// The client-local dayKey of a date-only habit field (startDate/endDate),
-// which the date picker stores as local midnight. Shifted by the caller's
-// offset, then rounded to the nearest UTC midnight so a DST hour of drift
-// can't tip it into the neighbouring day.
+// Converts a date-only local-midnight field to the caller’s local dayKey.
+// Rounds the shifted time to UTC midnight so DST drift cannot change the day.
 export function localDayKeyOf(dateOnlyMillis: number, day: DayArgs): string {
   const shifted = dateOnlyMillis + (day.utcMidnightMillis - day.dayStartMillis);
   return new Date(Math.round(shifted / DAY_MS) * DAY_MS).toISOString().slice(0, 10);

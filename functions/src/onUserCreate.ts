@@ -1,36 +1,13 @@
-// onUserCreate is a v1-style Auth trigger (functions.auth.user().onCreate)
-// rather than a v2 callable, on purpose: v2 doesn't have a direct
-// non-blocking "after this account was created" trigger equivalent to
-// v1's — v2's identity triggers (beforeUserCreated/beforeUserSignedIn) are
-// *blocking* functions that run synchronously as part of sign-up/sign-in
-// and are meant for validation, not this "provision some Firestore docs
-// afterward, don't hold up the response" job. Mixing v1 (this trigger)
-// and v2 (the callables) in one codebase is normal and supported.
+// Uses the v1 non-blocking Auth creation trigger to provision Firestore after sign-up.
+// v2 identity triggers block sign-up/sign-in and are intended for validation.
 
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import * as functionsV1 from "firebase-functions/v1";
 import { userDocRefs } from "./docRefs";
+import { EVOLUTION_LEVEL } from "./rewards";
 
-/**
- * Provisions a brand-new sign-up's /users/{uid} doc, starter pet, and
- * starter inventory. Values are exactly docs/BACKEND.md's "New-account
- * provisioning" table — do not tune game-balance numbers here, that's an
- * OPEN_DECISIONS.md question, not this function's.
- *
- * Deliberately NOT set here (left for the client to fill in immediately
- * after, as direct writes the security rules already allow):
- * - `name`, `username`, `avatarUrl` — this trigger fires the instant the
- *   Auth account exists, before the client's own sign-up flow has run
- *   updateProfile() or claimed a username (see docs/BACKEND.md, "Username
- *   uniqueness" — same race, same accepted sub-second window).
- * - Pet `name` — stays 'Nori' until onboarding writes a real one, also
- *   per docs/BACKEND.md (an auth trigger can't see a value typed on a
- *   later onboarding screen).
- *
- * No accessory is granted here — the one free accessory (sunglasses) is a
- * first-habit-completion gift, granted inside Valeria's claimHabit
- * transaction, not at sign-up. See docs/BACKEND.md.
- */
+// Provisions the user, starter pet, and inventory with the agreed balance values.
+// The client fills profile fields and pet name afterward; sign-up grants no accessory.
 export const onUserCreate = functionsV1.auth.user().onCreate(async (user) => {
   const db = getFirestore();
   const uid = user.uid;
@@ -65,22 +42,19 @@ export const onUserCreate = functionsV1.auth.user().onCreate(async (user) => {
     happiness: 100,
     lastDecayAt: now,
     stage: "baby",
-    evolutionLevelThreshold: 7,
+    evolutionLevelThreshold: EVOLUTION_LEVEL,
   });
 
   batch.create(
     refs.inventory,
     {
-      // All six catalog ids present from the start (not just the ones
-      // with a starting count) so consumeCareItem/purchaseCareItem never
-      // have to special-case "this key doesn't exist yet" — see
-      // care_item_catalog.dart for where these ids come from.
+      // Includes all six catalog IDs so care-item operations need no missing-key special case.
       careItemCounts: {
         food: 3,
         cake: 0,
-        shampoo: 2,
+        shampoo: 3,
         "hair-brush": 0,
-        plushie: 1,
+        plushie: 3,
         blanket: 0,
       },
       ownedAccessoryIds: [],

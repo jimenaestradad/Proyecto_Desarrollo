@@ -9,22 +9,9 @@ import 'habit_history_store.dart' show dayKey;
 import 'notification_repository.dart';
 import 'user_repository.dart';
 
-/// Real Firestore-backed [NotificationRepository] for
-/// `/users/{uid}/notifications/{id}` -- in-app only, no push (docs/BACKEND.md,
-/// "In-app notifications").
-///
-/// Most notifications are written server-side, in the transaction of the
-/// event itself: level-up, evolution and the first-completion gift by
-/// claimHabit/completeBucketListItem, pet care by the hourly petCareCheck
-/// (functions/src/notifications.ts). Streaks and achievements are only ever
-/// computed here on the client, so [getNotifications] syncs those two first:
-/// it compares them against the client's fields on
-/// `/users/{uid}/notificationState/main` and writes what's new. Not
-/// currency, so a direct rules-guarded write -- the worst a client can do
-/// is spoof notifications into its own feed.
-///
-/// The first client sync only records a baseline, so an existing account
-/// isn't flooded with one notification per past achievement.
+/// In-app Firestore notifications; most events are written server-side.
+/// [getNotifications] syncs client-derived streaks and achievements before reading.
+/// The first sync records a baseline to avoid flooding existing accounts.
 class FirestoreNotificationRepository implements NotificationRepository {
   FirestoreNotificationRepository({
     required String uid,
@@ -54,9 +41,22 @@ class FirestoreNotificationRepository implements NotificationRepository {
   DocumentReference<Map<String, dynamic>> get _stateDoc =>
       _userDoc.collection('notificationState').doc('main');
 
+  /// Reopening the screen within this window reuses the last sync: it reads
+  /// the user and months of habit history, and a new streak/achievement
+  /// notification showing up a few minutes late is harmless.
+  static const _syncCooldown = Duration(minutes: 5);
+
+  DateTime? _lastSyncedAt;
+
   @override
   Future<List<AppNotification>> getNotifications({bool sync = true}) async {
-    if (sync) await _sync();
+    final last = _lastSyncedAt;
+    final fresh =
+        last != null && DateTime.now().difference(last) < _syncCooldown;
+    if (sync && !fresh) {
+      await _sync();
+      _lastSyncedAt = DateTime.now();
+    }
     final snapshot = await _collection
         .orderBy('createdAt', descending: true)
         .limit(_pageSize)
@@ -189,7 +189,7 @@ class FirestoreNotificationRepository implements NotificationRepository {
     return switch (data['kind']) {
       'petCare' => build(
         type: NotificationType.petAction,
-        label: 'Pet Needs You',
+        label: 'Pet needs you',
         icon: Icons.pets,
         color: AppColors.mustardDark,
         ctaLabel: 'Take care',
@@ -223,7 +223,7 @@ class FirestoreNotificationRepository implements NotificationRepository {
       ),
       _ => build(
         type: NotificationType.system,
-        label: 'Level Up',
+        label: 'Level up',
         icon: Icons.auto_awesome,
         color: AppColors.inkMuted,
       ),

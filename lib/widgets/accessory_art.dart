@@ -4,14 +4,8 @@ import '../data/accessory_catalog.dart';
 import 'nori_evolved_frame_anchors.dart';
 import 'nori_frame_anchors.dart';
 
-/// Draws one equipped accessory as a hand-drawn cutout PNG (see
-/// accessory_catalog.dart's [AccessoryItem.image]) — every catalog entry
-/// has real art now, cut from Jimena's reference sheets in
-/// assets/source/accessories/.
-///
-/// [headWidth] is the art's own width; height comes from
-/// [_kImageAspectRatios] so the box is sized correctly before the image
-/// itself has loaded.
+/// Draws an equipped accessory's hand-cut PNG from [AccessoryItem.image].
+/// [headWidth] sets its width; [_kImageAspectRatios] sizes it before loading.
 class AccessoryArt extends StatelessWidget {
   const AccessoryArt({super.key, required this.item, required this.headWidth});
 
@@ -31,12 +25,8 @@ class AccessoryArt extends StatelessWidget {
   }
 }
 
-/// height/width of each hand-cutout PNG, so [AccessoryArt] can size its box
-/// before the image itself has loaded. Source pixel dimensions, from the
-/// cutout script run against assets/source/accessories/ — see
-/// accessory_catalog.dart. Keyed by the image [AccessoryArt] actually
-/// renders (`wornImage ?? image`), so `tail-charm-clasp` reflects its
-/// smaller worn cutout, not the bold shop-icon one.
+/// Source PNG height/width ratios for sizing [AccessoryArt] before images load.
+/// Uses the rendered `wornImage ?? image`, including the tail charm's smaller cutout.
 const Map<String, double> _kImageAspectRatios = {
   'flower-crown': 59 / 160,
   'horn-bow': 71 / 85,
@@ -46,18 +36,8 @@ const Map<String, double> _kImageAspectRatios = {
   'tail-charm-clasp': 85 / 45,
 };
 
-/// How to place [AccessoryArt] on top of Nori: a size (as a fraction of
-/// whatever single reference measurement the caller has on hand — Nori's
-/// rendered height in the Customization preview, his rendered sprite width
-/// in NoriRoomStage) and a vertical shift from the top of his bounding box
-/// (negative = extends upward above his head, positive = sits down into
-/// the face/head).
-///
-/// [scale] is relative to Nori's whole body span (that's the only
-/// measurement either screen actually has on hand), and his head is only
-/// roughly a quarter to a third of that. Tuned by eye against screenshots —
-/// nudge further here if something looks off once Jimena tests it on
-/// device.
+/// Accessory size and top offset relative to Nori's rendered reference measurement.
+/// Negative offsets extend above the head; [scale] is relative to the whole body span.
 class _AccessoryPlacement {
   const _AccessoryPlacement({
     required this.scale,
@@ -68,11 +48,8 @@ class _AccessoryPlacement {
   final double scale;
   final double topFraction;
 
-  /// Horizontal nudge (fraction of [referenceSize]) from the Stack's
-  /// automatic horizontal centering — every other accessory here sits on
-  /// Nori's centerline so this defaults to 0; `tail-charm-clasp` is the one
-  /// exception, since the tail it hangs from sticks out to his side rather
-  /// than sitting on the centerline.
+  /// Horizontal nudge from Stack centering as a fraction of [referenceSize].
+  /// Defaults to zero; the tail charm needs a side offset.
   final double dxFraction;
 }
 
@@ -81,33 +58,16 @@ const Map<String, _AccessoryPlacement> _kPlacements = {
   // as in the reference sheet: ~2.5 eye gaps wide (gap is 210px of
   // nori_front.png's 800), centred ~0.7 gaps above the eye line.
   'flower-crown': _AccessoryPlacement(scale: 0.667, topFraction: 0.059),
-  // Perched up between the horns rather than resting low on the forehead
-  // -- nori_front.png's horn valley sits around 9-10% down, so the bow's
-  // box needs to start well above that (negative topFraction) to read as
-  // "on top of the head" instead of "stuck to the face". Centered
-  // (dxFraction: 0) like the goggles/crown/glasses above, rather than
-  // shifted toward one horn -- off-center here is what read as "crooked".
-  // NOT the same reference point as the animated placement below --
-  // confirmed by testing: nori_front.png's own "zero" is the horn tips
-  // (they touch the very top of the image), while the animated canvas's
-  // headTopY anchor sits lower already, so the two dyFrac/topFraction
-  // values aren't interchangeable. Measured directly off nori_front.png
-  // instead: the valley between the horns bottoms out around 9-10% down,
-  // so the box centers there.
+  // Center the bow in the horn valley, about 9–10% down nori_front.png.
+  // Static zero is the horn tips; animated headTopY uses a different reference.
   'horn-bow': _AccessoryPlacement(scale: 0.22, topFraction: -0.03),
   'sunglasses': _AccessoryPlacement(scale: 0.52, topFraction: 0.25),
-  // Worn pulled up like a headband, as in the reference sheet: lenses sit on
-  // top of the head flanking the horn bases, strap wrapping the head. Sized
-  // off nori_front.png's eye gap (210px of 800): art ~2.3 gaps wide so the
-  // lenses (35.5% of its width apart) land ~one gap apart, centred ~0.66 gaps
-  // above the eye line.
+  // Wear goggles as a headband around the horn bases.
+  // Art spans ~2.3 eye gaps, with lenses ~one gap apart and ~0.66 gaps above the eyes.
   'steampunk-goggles': _AccessoryPlacement(scale: 0.60, topFraction: 0.06),
   'chef-hat': _AccessoryPlacement(scale: 0.28, topFraction: -0.12),
-  // The clasp hooks onto the tail's leafy tip -- measured directly off
-  // nori_front.png (green tail-leaf pixels average at ~77% of the image's
-  // height; dxFraction is relative to the *face* centerline now that
-  // _kFaceCenterOffsetFraction corrects for it, so this is bigger-magnitude
-  // than a naive "left of the middle of the picture" guess would be).
+  // Hook the clasp onto the tail leaf at ~77% of nori_front.png's height.
+  // dxFraction is relative to the corrected face centerline.
   'tail-charm-clasp': _AccessoryPlacement(
     scale: 0.11,
     topFraction: 0.68,
@@ -115,30 +75,13 @@ const Map<String, _AccessoryPlacement> _kPlacements = {
   ),
 };
 
-/// nori_front.png's tail sticks out to Nori's left, which drags the
-/// alpha bounding box's geometric center to the left of his actual
-/// face/eye centerline -- measured directly off the art: the two eyes'
-/// shared midpoint sits at ~54.8% of the image's width, not 50%.
-/// [positionedAccessoryArt] used to rely on the enclosing `Stack`'s
-/// `topCenter` alignment for horizontal placement whenever an item's
-/// [_AccessoryPlacement.dxFraction] was 0, but that alignment only knows
-/// about the geometric center -- so every "centered" accessory (sunglasses,
-/// goggles, the flower crown, the chef hat) actually rendered shifted well
-/// to the left of Nori's real face, which is exactly the "crooked"/
-/// off-center look Jimena flagged. This is the same correction the
-/// animated placements already get for free via [kNoriFaceCenterX] --
-/// expressed here as a fraction of [referenceSize] (742/800 is
-/// nori_front.png's own width/height ratio, since the offset was measured
-/// as a fraction of the image's *width*, not the height [referenceSize]
-/// itself represents).
+/// Correct static centering to the eye midpoint at ~54.8% of image width.
+/// The tail shifts the bounding-box center left; convert the offset to height units
+/// using nori_front.png's 742/800 width/height ratio.
 const double _kFaceCenterOffsetFraction = 0.0483 * (742 / 800);
 
-/// Wraps [AccessoryArt] in the `Positioned` it needs to sit correctly
-/// inside a `Stack` whose only other (non-positioned) child is Nori's
-/// sprite/image — used identically by the Customization preview and
-/// NoriRoomStage so an equipped accessory lands in the same relative spot
-/// everywhere Nori appears. See [_AccessoryPlacement] for what
-/// [referenceSize] scales against.
+/// Positions [AccessoryArt] over Nori's image in a Stack for consistent previews.
+/// [referenceSize] follows [_AccessoryPlacement]'s reference measurement.
 Widget positionedAccessoryArt({
   required AccessoryItem item,
   required double referenceSize,
@@ -180,36 +123,14 @@ class _AnimatedAccessoryPlacement {
   /// moves with Nori's breathing instead of from a fixed origin.
   final double dyFrac;
 
-  /// Horizontal fine-nudge from the anchor to the accessory box's left
-  /// edge, same units as [dyFrac] — on top of, not instead of, the
-  /// automatic horizontal centering every anchor already gets (see
-  /// [animatedPositionedAccessoryArt]: `eyeMid`/`headTop` center on
-  /// [kNoriFaceCenterX], `tail` on the per-frame tail position). Used by
-  /// `horn-bow`, which sits off-center near the left horn rather than
-  /// centered like a hat.
+  /// Horizontal fine-nudge added to anchor centering, in [dyFrac] units.
+  /// Eye/head anchors center on [kNoriFaceCenterX]; tail anchors use per-frame position.
   final double dxFrac;
 }
 
-/// Anchor-based placements for [NoriRoomStage]'s animated breathing sprite.
-/// Calibrated by eye against rendered frames (frame_00 in particular) the
-/// same way [_kPlacements] was, but referencing [kNoriFrameAnchors] instead
-/// of a single fixed fraction, so the accessory now moves with Nori instead
-/// of drifting off him over the loop (docs/KNOWN_ISSUES.md).
-///
-/// `sunglasses`'s [_AnimatedAccessoryPlacement.dyFrac] is derived directly
-/// from its own art's aspect ratio (see [_kImageAspectRatios]) so its
-/// vertical center — not just its top edge — lands on the eye line:
-/// `dyFrac = -scale * aspectRatio / 2`.
-///
-/// Not yet anchored: neckties/bows/necklaces/bandanas (no anatomical "neck"
-/// on Nori's silhouette to detect automatically — he's a single rounded
-/// body with no distinct head/neck/torso break), torso-worn items (bags,
-/// vests, capes), and feet (socks, boots) — none of these have a body part
-/// to anchor to in [kNoriFrameAnchors] yet. Add the anchor once one of
-/// these is actually implemented; the reference art for several already
-/// exists in assets/source/accessories/ waiting on it (see that folder's
-/// README entry for which sheet/item). `tail` *is* anchored, first used by
-/// `tail-charm-clasp` below.
+/// Breathing-sprite placements track [kNoriFrameAnchors] to follow Nori's motion.
+/// Sunglasses center on the eye line via `dyFrac = -scale * aspectRatio / 2`.
+/// Neck, torso and feet items still need anchors when implemented.
 const Map<String, _AnimatedAccessoryPlacement> _kAnimatedPlacements = {
   // Full wreath like the reference sheet (see the static placement): ~2.5 eye
   // gaps wide, centred ~0.7 gaps above the eye line (gap = 59.7px of the
@@ -219,12 +140,8 @@ const Map<String, _AnimatedAccessoryPlacement> _kAnimatedPlacements = {
     anchor: AccessoryAnchor.eyeMid,
     dyFrac: -0.316,
   ),
-  // headTopY tracks the very tip of the horns, not the head surface below
-  // them, so this is pushed down to rest in the valley between them --
-  // scaled down since the bow nestles *between* the horns (in the valley)
-  // rather than resting on the wider head surface below them. Centered
-  // (dxFrac: 0) instead of shifted toward one horn -- same fix as the
-  // static placement, where off-center is what read as "crooked".
+  // Place the small bow down from headTopY's horn tips into the valley.
+  // Keep it centered between the horns, matching the static placement.
   'horn-bow': _AnimatedAccessoryPlacement(
     scale: 0.22,
     anchor: AccessoryAnchor.headTop,
@@ -265,23 +182,12 @@ const Map<String, _AnimatedAccessoryPlacement> _kAnimatedPlacements = {
   ),
 };
 
-/// Anchor-tracking counterpart to [positionedAccessoryArt], used only by
-/// [NoriRoomStage] (the animated breathing sprite) via
-/// [NoriBreathingSprite.overlayBuilder]. Returns null when [item] has no
-/// entry in [_kAnimatedPlacements] yet, so callers can fall back to
-/// [positionedAccessoryArt]'s fixed placement rather than the accessory
-/// disappearing.
+/// Animated anchor-tracking counterpart to [positionedAccessoryArt].
+/// Unmapped items return null so callers can fall back to fixed placement.
 const double _kTailXMean = 43.17;
 
-/// The raw per-frame tail.dy in nori_frame_anchors.dart has sudden jumps
-/// of ~10-14 canvas px lasting a handful of frames -- almost certainly an
-/// artifact of the auto-extraction script momentarily mis-tracking the
-/// tail (motion blur, or it briefly overlapping his leg) rather than real
-/// motion. Tracking it directly made the tail charm visibly snap between
-/// two heights instead of moving smoothly (confirmed by Jimena watching it
-/// live: "tipo un segundo arriba y uno abajo"). Smoothing it with a
-/// circular moving average turns those snaps into a gentle ramp without
-/// needing to hand-fix the underlying data.
+/// Smooth tail.dy with a circular moving average to soften ~10–14px extraction jumps.
+/// Raw anchors made the charm visibly snap between heights.
 List<double>? _kSmoothedTailY;
 List<double> get _smoothedTailY => _kSmoothedTailY ??= _circularMovingAverage([
   for (final a in kNoriFrameAnchors) a.tail.dy,
@@ -332,12 +238,8 @@ Widget? animatedPositionedAccessoryArt({
       top = anchors.headTopY * scale + placement.dyFrac * spriteWidth;
       anchorX = kNoriFaceCenterX;
     case AccessoryAnchor.tail:
-      // The tail's real visible motion is vertical (up/down), not
-      // horizontal -- confirmed by Jimena watching it live. So it tracks
-      // a smoothed version of tail.dy (see [_smoothedTailY]), but anchorX
-      // stays pinned at the calibrated mean instead of following
-      // anchors.tail.dx, which just reads as an unrelated left-right
-      // wobble.
+      // Track smoothed vertical tail motion while keeping X at its calibrated mean.
+      // Raw tail.dx adds an unrelated sideways wobble.
       final frameIndex = _frameIndexOf(anchors);
       final tailY = frameIndex != null
           ? _smoothedTailY[frameIndex]
@@ -354,21 +256,9 @@ Widget? animatedPositionedAccessoryArt({
   );
 }
 
-/// Placement for the evolved (winged) form. Everything is measured off the
-/// per-frame eye midpoint ([NoriEvolvedFrameAnchors]) because the evolved head
-/// is rigid -- it only translates as he hops -- so a single anchor tracks every
-/// head item. [scale] is the art's width as a fraction of the sprite's width;
-/// [dyFrac] is the vertical offset from the eye midpoint to the art's top
-/// edge, same units. Both were derived from the baby's calibrated values
-/// (eye gap is 40/480 of the evolved canvas vs 59.7/223 on the baby, so a
-/// baby scale converts by x0.311) and then re-tuned by compositing onto frames
-/// from across the loop, since the evolved head is taller relative to its eyes
-/// and its leaf horns are far longer and sit at the head's centre.
-///
-/// Deliberately absent: `tail-charm-clasp`. The evolved tail is hidden behind
-/// the wings or legs for ~3/4 of the loop (only a small stub shows mid-hop),
-/// so a charm hung on it would float in mid-air -- see
-/// [accessoryFitsEvolved].
+/// Evolved head accessories track the per-frame eye midpoint; the head only translates.
+/// [scale] and [dyFrac] use sprite-width units, calibrated from baby placements.
+/// The tail charm is omitted because the evolved tail is usually obscured.
 class _EvolvedPlacement {
   const _EvolvedPlacement({required this.scale, required this.dyFrac});
 
@@ -382,8 +272,10 @@ const Map<String, _EvolvedPlacement> _kEvolvedPlacements = {
   'flower-crown': _EvolvedPlacement(scale: 0.212, dyFrac: -0.098),
   // Centred between the horn bases, just above the forehead marks.
   'horn-bow': _EvolvedPlacement(scale: 0.075, dyFrac: -0.085),
-  // Lens centres land on the pupils (box centred on the eye line).
-  'sunglasses': _EvolvedPlacement(scale: 0.162, dyFrac: -0.036),
+  // Box centred on the eye line. Kept smaller than the lens spacing would
+  // ideally want (lenses are 46% of the art's width apart vs the pupils' 40px):
+  // 0.162 read as too big on the evolved head, and this still covers the eyes.
+  'sunglasses': _EvolvedPlacement(scale: 0.14, dyFrac: -0.031),
   // Pulled up like a headband (matches the baby's): lenses flank the horn
   // bases, ~0.66 eye gaps above the eye line.
   'steampunk-goggles': _EvolvedPlacement(scale: 0.20, dyFrac: -0.091),
@@ -416,16 +308,9 @@ Widget? evolvedPositionedAccessoryArt({
   );
 }
 
-/// A small live render of Nori wearing [item] (or bare, if null): the same
-/// nori_front.png art plus [positionedAccessoryArt] the Customization
-/// screen's "Style Pet" preview uses, just reusable at any [height]. The
-/// Shop uses this for each accessory card so a shopper sees how the item
-/// will actually sit on Nori -- not just its flat cutout icon floating in
-/// a colored box -- both before and after buying it. Because it calls the
-/// exact same [positionedAccessoryArt] function with the exact same
-/// placement table ([_kPlacements]), tuning an accessory's position once
-/// updates its look everywhere this preview (or the Customization screen)
-/// is used.
+/// Reusable static Nori preview wearing [item], or bare when null.
+/// Shares [positionedAccessoryArt] and [_kPlacements] with Customization
+/// so Shop cards show the same fit and receive placement adjustments together.
 class NoriAccessoryPreview extends StatelessWidget {
   const NoriAccessoryPreview({super.key, required this.height, this.item});
 
@@ -440,19 +325,8 @@ class NoriAccessoryPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // A Shop grid cell is much narrower relative to its height than
-        // the Customization screen's preview panel is, so unlike there,
-        // width -- not [height] -- is often what actually limits how big
-        // Nori renders here (Image.asset(fit: contain) shrinks him to fit
-        // the available width, leaving empty space above/below within a
-        // box that's still nominally [height] tall). [_kPlacements]'
-        // fractions are measured against Nori's own rendered height, so
-        // an accessory positioned against the full, unshrunk [height]
-        // instead of his actual (smaller) rendered height ends up floating
-        // well above his head. Working out the real rendered height here
-        // -- and sizing this widget's own box to match exactly, with no
-        // leftover letterboxing -- keeps every placement correct at any
-        // card size.
+        // Size placements from Nori's actual rendered height when card width limits the image.
+        // Shrink the widget to that height too, avoiding letterboxing that floats accessories.
         final maxWidth = constraints.maxWidth;
         final renderedHeight =
             maxWidth.isFinite && maxWidth / _imageAspect < height

@@ -45,6 +45,7 @@ class SocialPost {
     required this.caption,
     required this.createdAt,
     this.hasProof = true,
+    this.photoAsset,
     this.visibility = PostVisibility.allFriends,
     this.circleId,
     this.competitionId,
@@ -64,9 +65,11 @@ class SocialPost {
   final String caption;
   final DateTime createdAt;
 
-  /// Proof photo attached (the mock renders a placeholder panel, not a
-  /// real image — see ProofPhoto).
+  /// Proof photo attached. Showcase posts carry a bundled [photoAsset]; posts
+  /// without one render the placeholder panel (see ProofPhoto) unless a photo
+  /// was picked this session.
   final bool hasProof;
+  final String? photoAsset;
   final PostVisibility visibility;
   final String? circleId;
 
@@ -96,6 +99,7 @@ class SocialPost {
       caption: caption,
       createdAt: createdAt,
       hasProof: hasProof,
+      photoAsset: photoAsset,
       visibility: visibility,
       circleId: circleId,
       competitionId: competitionId,

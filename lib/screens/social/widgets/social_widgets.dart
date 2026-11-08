@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:nori/data/session_photos.dart';
 import 'package:nori/models/social_content.dart';
 import 'package:nori/models/social_people.dart';
 import 'package:nori/theme/app_theme.dart';
@@ -8,7 +11,8 @@ import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 
 /// Avatar for a [SocialUser]: your own gets the illustrated default art,
-/// everyone else a deterministic initials circle.
+/// everyone else their bundled photo, or a deterministic initials circle when
+/// they have none.
 class SocialAvatar extends StatelessWidget {
   const SocialAvatar({
     super.key,
@@ -26,6 +30,7 @@ class SocialAvatar extends StatelessWidget {
     size: size,
     borderWidth: borderWidth,
     name: user.isMe ? null : user.name,
+    imageAsset: user.isMe ? null : user.avatarAsset,
   );
 }
 
@@ -62,11 +67,15 @@ class PersonRow extends StatelessWidget {
     this.onTap,
     this.highlighted = false,
     this.avatarSize = 44,
+    this.footer,
   });
 
   final SocialUser user;
   final String? subtitle;
   final Widget? trailing;
+
+  /// Shown inside the card under the row, e.g. a progress bar.
+  final Widget? footer;
   final VoidCallback? onTap;
 
   /// Your own row in a list: mossLight fill.
@@ -82,48 +91,57 @@ class PersonRow extends StatelessWidget {
         padding: const EdgeInsets.all(AppSpacing.stackSm),
         borderWidth: AppBorder.thin,
         color: highlighted ? AppColors.mossLight : AppColors.white,
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SocialAvatar(user: user, size: avatarSize),
-            const SizedBox(width: AppSpacing.stackSm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+            Row(
+              children: [
+                SocialAvatar(user: user, size: avatarSize),
+                const SizedBox(width: AppSpacing.stackSm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        child: Text(
-                          user.shortName,
-                          maxLines: 1,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              user.shortName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.labelLg,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            user.handle,
+                            style: AppTextStyles.labelSm.copyWith(
+                              color: AppColors.inkFaint,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (subtitle != null)
+                        Text(
+                          subtitle!,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.labelLg,
+                          style: AppTextStyles.labelSm.copyWith(
+                            color: AppColors.inkMuted,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        user.handle,
-                        style: AppTextStyles.labelSm.copyWith(
-                          color: AppColors.inkFaint,
-                        ),
-                      ),
                     ],
                   ),
-                  if (subtitle != null)
-                    Text(
-                      subtitle!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.labelSm.copyWith(
-                        color: AppColors.inkMuted,
-                      ),
-                    ),
+                ),
+                if (trailing != null) ...[
+                  const SizedBox(width: AppSpacing.unit),
+                  trailing!,
                 ],
-              ),
+              ],
             ),
-            if (trailing != null) ...[
-              const SizedBox(width: AppSpacing.unit),
-              trailing!,
+            if (footer != null) ...[
+              const SizedBox(height: AppSpacing.stackSm),
+              footer!,
             ],
           ],
         ),
@@ -160,9 +178,10 @@ class ProofBadge extends StatelessWidget {
   );
 }
 
-/// Stand-in for a proof photo: no image storage exists, so this is a tinted,
-/// ink-bordered panel showing the habit icon. Swap for `Image.network` once
-/// uploads exist.
+/// Proof photo for a post: a photo picked this session, else the showcase
+/// post's bundled photo, else a tinted, ink-bordered panel showing the habit
+/// icon (no image storage exists yet; swap for `Image.network` once uploads
+/// exist).
 class ProofPhoto extends StatelessWidget {
   const ProofPhoto({
     super.key,
@@ -170,6 +189,8 @@ class ProofPhoto extends StatelessWidget {
     required this.color,
     this.height = 180,
     this.label = 'Proof photo',
+    this.bytes,
+    this.asset,
   });
 
   final IconData icon;
@@ -177,9 +198,16 @@ class ProofPhoto extends StatelessWidget {
   final double height;
   final String label;
 
+  /// A photo picked this session; wins over [asset].
+  final Uint8List? bytes;
+
+  /// A bundled photo for the showcase posts.
+  final String? asset;
+
   @override
   Widget build(BuildContext context) => Container(
     height: height,
+    clipBehavior: Clip.antiAlias,
     width: double.infinity,
     decoration: BoxDecoration(
       color: color,
@@ -188,22 +216,84 @@ class ProofPhoto extends StatelessWidget {
     ),
     child: Stack(
       children: [
-        Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 56, color: AppColors.ink),
-              const SizedBox(height: 6),
-              Text(label, style: AppTextStyles.labelSm),
-            ],
+        if (bytes != null)
+          Positioned.fill(child: Image.memory(bytes!, fit: BoxFit.cover))
+        else if (asset != null)
+          Positioned.fill(child: Image.asset(asset!, fit: BoxFit.cover))
+        else
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 56, color: AppColors.ink),
+                const SizedBox(height: 6),
+                Text(label, style: AppTextStyles.labelSm),
+              ],
+            ),
           ),
-        ),
-        const Positioned(
-          right: 10,
-          bottom: 10,
-          child: Icon(Icons.photo_camera, size: 20, color: AppColors.inkMuted),
-        ),
+        if (bytes == null && asset == null)
+          const Positioned(
+            right: 10,
+            bottom: 10,
+            child: Icon(
+              Icons.photo_camera,
+              size: 20,
+              color: AppColors.inkMuted,
+            ),
+          ),
       ],
+    ),
+  );
+}
+
+/// A friend's pet as a still picture: the baby Nori for stage 0, the winged
+/// form for anything later (the art exists for two forms only, so every friend's
+/// pet looks the same apart from its name). Still frames, not the animated
+/// sprites, so a profile card doesn't preload 64 frames.
+class FriendPetPicture extends StatelessWidget {
+  const FriendPetPicture({super.key, required this.stage, this.size = 144});
+
+  /// SocialUser.petStage: 0 = baby, 1 and 2 = evolved.
+  final int stage;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    padding: const EdgeInsets.all(AppSpacing.unit),
+    decoration: BoxDecoration(
+      color: AppColors.linenAlt,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+    ),
+    child: Image.asset(
+      stage == 0
+          ? 'assets/images/nori_front.png'
+          : 'assets/images/nori_evolved/frame_00.png',
+      fit: BoxFit.contain,
+    ),
+  );
+}
+
+/// Banner photo for a showcase circle or competition: 16:9, ink-bordered,
+/// same corner radius as [ProofPhoto].
+class CoverPhoto extends StatelessWidget {
+  const CoverPhoto({super.key, required this.asset});
+
+  final String asset;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    clipBehavior: Clip.antiAlias,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+    ),
+    child: AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Image.asset(asset, fit: BoxFit.cover),
     ),
   );
 }
@@ -500,6 +590,8 @@ class PostCard extends StatelessWidget {
                 icon: post.habitIcon,
                 color: post.habitColor,
                 height: compact ? 130 : 180,
+                bytes: SessionPhotos.proofFor(post.id),
+                asset: post.photoAsset,
               ),
             ],
             const SizedBox(height: AppSpacing.stackSm),

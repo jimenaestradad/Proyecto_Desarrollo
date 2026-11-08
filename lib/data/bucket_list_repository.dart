@@ -29,7 +29,7 @@ class MockBucketListRepository implements BucketListRepository {
       description: 'Cherry blossoms, Tokyo, and a bowl of real ramen.',
       icon: Icons.flight_takeoff,
       color: AppColors.blushPink,
-      xpReward: 200,
+      xpReward: 300,
       coinReward: 100,
     ),
     const BucketListItem(
@@ -39,7 +39,7 @@ class MockBucketListRepository implements BucketListRepository {
       icon: Icons.directions_run,
       color: AppColors.mossLight,
       xpReward: 150,
-      coinReward: 75,
+      coinReward: 50,
     ),
     const BucketListItem(
       id: 'graduate',
@@ -48,16 +48,10 @@ class MockBucketListRepository implements BucketListRepository {
       icon: Icons.school,
       color: AppColors.sky,
       xpReward: 300,
-      coinReward: 150,
+      coinReward: 100,
     ),
-    // Dev-only fast-forward, not a real bucket list goal: lets leveling and
-    // evolution be exercised without waiting through weeks of real habit
-    // XP (10-30 per habit) to close a gap this size. kDebugMode-gated so
-    // it never ships in a release build — see docs/OPEN_DECISIONS.md "XP
-    // balancing"/"Pet mechanics": the real XP curve/evolution thresholds
-    // are still undecided, so this doesn't touch the mock economy itself,
-    // just gives a lever to trigger it. Toggle it (check/uncheck) to add
-    // or remove the XP repeatedly while testing.
+    // Debug-only XP fast-forward for testing leveling and evolution.
+    // Toggle completion to add or remove the reward.
     if (kDebugMode)
       const BucketListItem(
         id: 'dev-level-up',

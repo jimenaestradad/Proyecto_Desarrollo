@@ -19,8 +19,16 @@ import 'package:nori/screens/social/add_friend_screen.dart';
 import 'package:nori/screens/social/competition_detail_screen.dart';
 
 class CreateCompetitionScreen extends StatefulWidget {
-  const CreateCompetitionScreen({super.key, this.presetCircleId});
+  const CreateCompetitionScreen({
+    super.key,
+    this.presetCircleId,
+    this.rematchOf,
+  });
   final String? presetCircleId;
+
+  /// A finished competition to run again: its format and the people who
+  /// were in it come pre-filled, opening on the final review step.
+  final Competition? rematchOf;
   @override
   State<CreateCompetitionScreen> createState() =>
       _CreateCompetitionScreenState();
@@ -30,7 +38,11 @@ class _CreateCompetitionScreenState extends State<CreateCompetitionScreen>
     with
         RemoteLoadState<CreateCompetitionScreen>,
         SocialLoadState<CreateCompetitionScreen> {
-  final _name = TextEditingController(text: 'Water streak');
+  late final _name = TextEditingController(
+    text: widget.rematchOf == null
+        ? 'Water streak'
+        : 'Rematch: ${widget.rematchOf!.title}',
+  );
   List<SocialUser> _friends = [];
   List<SocialCircle> _circles = [];
   Set<String> _invitees = {};
@@ -38,11 +50,11 @@ class _CreateCompetitionScreenState extends State<CreateCompetitionScreen>
   String _audience = 'all';
   bool _initialized = false;
   bool _launching = false;
-  int _step = 0;
-  CompetitionType _type = CompetitionType.streak;
-  int _habitIndex = 0;
-  int _target = 7;
-  int _duration = 7;
+  late int _step = widget.rematchOf == null ? 0 : 3;
+  late CompetitionType _type = widget.rematchOf?.type ?? CompetitionType.streak;
+  late int _habitIndex = _rematchHabitIndex();
+  late int _target = widget.rematchOf?.targetCount ?? 7;
+  late int _duration = widget.rematchOf?.durationDays ?? 7;
   // Competition types, targets, and duration choices are mock product rules.
   static const _habits = [
     (name: 'Water', icon: Icons.water_drop, color: AppColors.sky),
@@ -60,6 +72,13 @@ class _CreateCompetitionScreenState extends State<CreateCompetitionScreen>
       color: AppColors.linenAlt,
     ),
   ];
+  int _rematchHabitIndex() {
+    final index = _habits.indexWhere(
+      (h) => h.name == widget.rematchOf?.habitName,
+    );
+    return index < 0 ? 0 : index;
+  }
+
   @override
   Future<void> loadSocial() async {
     final friends = await AppData.social.getFriends();
@@ -72,6 +91,22 @@ class _CreateCompetitionScreenState extends State<CreateCompetitionScreen>
         final preset = circles
             .where((c) => c.id == widget.presetCircleId)
             .firstOrNull;
+        final rematch = widget.rematchOf;
+        if (rematch != null) {
+          // The same people (only those still friends), under the same
+          // circle when it still exists.
+          final circle = circles
+              .where((c) => c.id == rematch.circleId)
+              .firstOrNull;
+          _circleId = circle?.id;
+          _audience = circle?.id ?? 'pick';
+          _invitees = friends
+              .where((f) => rematch.participantIds.contains(f.id))
+              .map((f) => f.id)
+              .toSet();
+          _initialized = true;
+          return;
+        }
         _circleId = preset?.id;
         _audience = preset?.id ?? 'all';
         _invitees = preset == null

@@ -101,7 +101,7 @@ class _ArchivedHabitsScreenState extends State<ArchivedHabitsScreen>
             children: [
               NoriScreenHeader(
                 leading: NoriScreenHeader.backButton(context, result: _changed),
-                title: 'Archived Habits',
+                title: 'Archived habits',
                 titleStyle: AppTextStyles.headlineLgMobile,
               ),
               const SizedBox(height: AppSpacing.stackMd),

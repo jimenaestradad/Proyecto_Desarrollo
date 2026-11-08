@@ -7,14 +7,8 @@ import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/load_error_view.dart';
 
-/// Where the app opens for someone who is signed in but never claimed a
-/// username — they closed the app (or lost the connection) partway through
-/// sign-up, after the account was created. Without this, startup would send
-/// them straight to Home with no username and no way back to the step.
-///
-/// Picks up the same last steps as a fresh sign-up: choose a username, save
-/// the profile, name the pet, then Home. Opened from main.dart; see
-/// [ChooseUsernameScreen], which does the actual claiming.
+/// Resumes sign-up for authenticated accounts without a claimed username.
+/// Opened at startup to choose a username, save the profile and name the pet before Home.
 class FinishSignUpScreen extends StatefulWidget {
   const FinishSignUpScreen({super.key});
 
@@ -42,6 +36,20 @@ class _FinishSignUpScreenState extends State<FinishSignUpScreen>
       return;
     }
     final email = AppData.auth.currentEmail ?? '';
+
+    if (_username == null) {
+      // Interrupted after the claim but before the profile was saved: the name
+      // is already theirs, so keep it instead of asking again (picking a
+      // different one would leave two claims on this account). A failed lookup
+      // shows the retry view rather than guessing.
+      String? claimed;
+      await guardedLoad(
+        hasData: false,
+        () async => claimed = await AppData.usernames.usernameForUid(uid),
+      );
+      if (!mounted || loadError != null) return;
+      _username = claimed;
+    }
 
     if (_username == null) {
       final chosen = await Navigator.push<String>(

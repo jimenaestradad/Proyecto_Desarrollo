@@ -28,7 +28,9 @@ class NoriBottomNav extends StatelessWidget {
           top: BorderSide(color: AppColors.ink, width: AppBorder.standard),
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      // No vertical padding here: each item carries it inside its InkWell so the
+      // whole bar height is tappable (the visible pill alone was ~39dp tall).
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: SafeArea(
         top: false,
         child: Row(
@@ -72,48 +74,42 @@ class _NavItem extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.sm),
         child: ExcludeSemantics(
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-            decoration: BoxDecoration(
-              color: selected ? AppColors.mossLight : Colors.transparent,
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-              border: selected
-                  ? Border.all(color: AppColors.ink, width: AppBorder.thin)
-                  : null,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  icon,
-                  size: 22,
-                  color: selected ? AppColors.mossDark : AppColors.inkFaint,
-                ),
-                const SizedBox(height: 4),
-                // Plain Text, not a fixed-height FittedBox(scaleDown): the
-                // old version shrank labels back down to fit a fixed 14px
-                // box, which meant a larger system font size made the nav
-                // labels *smaller* instead of bigger — the one place an
-                // accessibility setting made the app actively worse. Every
-                // label is short enough now ("Calendar" is the longest) to
-                // render at full size in an Expanded slice at normal scale;
-                // the bar has no fixed height (see NoriShell), so it simply
-                // grows taller under a larger text scale instead of
-                // shrinking its content. `ellipsis` is only a backstop for
-                // extreme scale factors, not the normal-case behavior.
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.labelSm.copyWith(
-                    letterSpacing: 0,
-                    color: selected ? AppColors.ink : AppColors.inkFaint,
-                    fontWeight: FontWeight.w700,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+              decoration: BoxDecoration(
+                color: selected ? AppColors.mossLight : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                border: selected
+                    ? Border.all(color: AppColors.ink, width: AppBorder.thin)
+                    : null,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    icon,
+                    size: 22,
+                    color: selected ? AppColors.mossDark : AppColors.inkFaint,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  // Let labels and the bar grow with system text scale.
+                  // Avoid fixed-height scaling; ellipsis is a backstop for extreme sizes.
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.labelSm.copyWith(
+                      letterSpacing: 0,
+                      color: selected ? AppColors.ink : AppColors.inkFaint,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

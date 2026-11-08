@@ -4,56 +4,37 @@ import { userDocRefs } from "./docRefs";
 import { requireAuth } from "./requestArgs";
 import { asNumber } from "./habitTransaction";
 
-/**
- * Server-side mirror of lib/data/care_item_catalog.dart's price/grants.
- * The *catalog* (icons, colors, restore amounts) stays a bundled Dart
- * constant per ../docs/BACKEND.md ("Static content catalogs") -- but a
- * Cloud Function can never trust a price the client hands it, so the two
- * numbers that actually affect the currency (price, grants) are
- * duplicated here. Keep in sync BY HAND if either catalog changes --
- * same rule firestore.rules's own header comment already lives by.
- */
+// Mirrors trusted prices/grants from lib/data/care_item_catalog.dart; never trust client prices.
+// Keep both catalogs in sync manually when prices or grants change.
 const CARE_ITEM_CATALOG: Record<string, { price: number; grants: number }> = {
-  food: { price: 50, grants: 3 },
-  cake: { price: 90, grants: 3 },
-  shampoo: { price: 40, grants: 3 },
-  "hair-brush": { price: 70, grants: 3 },
-  plushie: { price: 60, grants: 3 },
-  blanket: { price: 100, grants: 3 },
+  food: { price: 10, grants: 3 },
+  cake: { price: 18, grants: 3 },
+  shampoo: { price: 10, grants: 3 },
+  "hair-brush": { price: 18, grants: 3 },
+  plushie: { price: 10, grants: 3 },
+  blanket: { price: 18, grants: 3 },
 };
 
-/** Server-side mirror of lib/data/accessory_catalog.dart's prices -- same
- * hand-sync reasoning as [CARE_ITEM_CATALOG] above. */
+// Server-side mirror of lib/data/accessory_catalog.dart's prices; hand-synced
+// like CARE_ITEM_CATALOG above.
 const ACCESSORY_CATALOG: Record<string, { price: number }> = {
-  "flower-crown": { price: 180 },
-  "horn-bow": { price: 120 },
+  "flower-crown": { price: 500 },
+  "horn-bow": { price: 180 },
   sunglasses: { price: 140 },
-  "steampunk-goggles": { price: 180 },
-  "chef-hat": { price: 160 },
-  "tail-charm-clasp": { price: 130 },
+  "steampunk-goggles": { price: 350 },
+  "chef-hat": { price: 250 },
+  "tail-charm-clasp": { price: 100 },
 };
 
-/**
- * Own-key catalog lookup. A plain `catalog[id]` also matches inherited
- * keys ("constructor", "toString", "__proto__"), whose `price` is
- * undefined -- the coin check then compares against NaN, passes, and
- * saves `coins: NaN`, after which every purchase is free.
- */
+// Looks up own catalog keys only; inherited keys can yield undefined prices.
+// That would bypass the coin check via NaN and make subsequent purchases free.
 function catalogEntry<T>(catalog: Record<string, T>, id: unknown): T | undefined {
   return typeof id === "string" && Object.prototype.hasOwnProperty.call(catalog, id)
     ? catalog[id]
     : undefined;
 }
 
-/**
- * Buys `quantity` (default 1) of a Food & Care item -- see
- * ../docs/BACKEND.md's Architecture table: spends coins to mint an owned
- * item, which is exactly the currency-affecting write the Cloud-Functions
- * boundary exists to guard. Validates `itemId` against [CARE_ITEM_CATALOG]
- * (never trusts a price/grants amount from the client), checks
- * `cost <= coins`, then decrements coins and increments
- * `careItemCounts[itemId]` in one transaction.
- */
+// Buys care items atomically using catalog prices/grants and the available coin balance.
 export const purchaseCareItem = onCall(async (request) => {
   const db = getFirestore();
   const uid = requireAuth(request.auth?.uid);
@@ -105,15 +86,8 @@ export const purchaseCareItem = onCall(async (request) => {
   });
 });
 
-/**
- * Buys one accessory -- same currency reasoning as [purchaseCareItem].
- * Validates `accessoryId` against [ACCESSORY_CATALOG], rejects an
- * accessory the user already owns (../docs/BACKEND.md: "Buying something
- * already owned is rejected server-side, even if the UI already hides
- * it"), checks `price <= coins`, then decrements coins and adds the id to
- * `ownedAccessoryIds` in one transaction. Does not auto-equip -- equipping
- * stays its own direct client write (`setEquippedAccessory`).
- */
+// Buys a catalog accessory atomically after checking ownership and available coins.
+// Equipping remains a separate direct client write.
 export const purchaseAccessory = onCall(async (request) => {
   const db = getFirestore();
   const uid = requireAuth(request.auth?.uid);

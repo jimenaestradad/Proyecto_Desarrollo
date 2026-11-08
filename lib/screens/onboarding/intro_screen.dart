@@ -5,12 +5,8 @@ import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
-/// Three swipeable cards explaining the loop (habits → XP and coins → care
-/// for Nori → streaks), shown once after naming the pet — see
-/// [NamePetScreen] — and again from Settings' "Replay intro and tips".
-///
-/// Counts as seen the moment it opens, so leaving by Skip, system back or
-/// the last button all behave the same. Always pops back to its caller.
+/// Three swipeable intro cards shown after naming the pet and replayable in Settings.
+/// Marked seen on opening; Skip, back and the final button all pop to the caller.
 class IntroScreen extends StatefulWidget {
   const IntroScreen({super.key, this.store});
 
@@ -36,7 +32,7 @@ class _IntroScreenState extends State<IntroScreen> {
       tint: AppColors.blush,
       title: 'Look after Nori',
       body:
-          "Nori's Happy, Fed and Clean meters drop over time. Spend your "
+          "Nori's happy, fed and clean meters drop over time. Spend your "
           'coins in the shop on food, care items and accessories.',
     ),
     _IntroPage(

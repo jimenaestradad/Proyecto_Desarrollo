@@ -145,8 +145,9 @@ class MockAchievementRepository implements AchievementRepository {
     String title,
     String subtitle,
     IconData icon,
-    Color color,
-  ) => Achievement(
+    Color color, {
+    String? imageAsset,
+  }) => Achievement(
     id: id,
     category: category,
     title: title,
@@ -156,6 +157,7 @@ class MockAchievementRepository implements AchievementRepository {
     progressCurrent: 0,
     progressTarget: 0,
     status: AchievementStatus.comingSoon,
+    imageAsset: imageAsset,
   );
 
   @override
@@ -232,6 +234,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.moss,
           consistencyStreak.clamp(0, 3),
           3,
+          imageAsset: 'assets/images/achievements/consistency_i.png',
         ),
         _a(
           'consistency-ii',
@@ -242,6 +245,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.mossDark,
           consistencyStreak.clamp(0, 7),
           7,
+          imageAsset: 'assets/images/achievements/consistency_ii.png',
         ),
         _a(
           'consistency-iii',
@@ -252,6 +256,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.inkFaint,
           consistencyStreak.clamp(0, 30),
           30,
+          imageAsset: 'assets/images/achievements/consistency_iii.png',
         ),
         _a(
           'rising-again',
@@ -262,6 +267,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.terracotta,
           risingAgainCurrent,
           1,
+          imageAsset: 'assets/images/achievements/rising_again.png',
         ),
       ],
       'Milestones': [
@@ -274,6 +280,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.moss,
           history.totalCompletions.clamp(0, 10),
           10,
+          imageAsset: 'assets/images/achievements/getting_started.png',
         ),
         _a(
           'dedicated-i',
@@ -284,6 +291,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.moss,
           history.totalCompletions.clamp(0, 25),
           25,
+          imageAsset: 'assets/images/achievements/dedicated_i.png',
         ),
         _a(
           'dedicated-ii',
@@ -294,6 +302,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.mustardDark,
           history.totalCompletions.clamp(0, 50),
           50,
+          imageAsset: 'assets/images/achievements/dedicated_ii.png',
         ),
         _a(
           'goal-getter',
@@ -304,6 +313,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.terracotta,
           goalGetterCurrent,
           1,
+          imageAsset: 'assets/images/achievements/goal_getter.png',
         ),
       ],
       'Habits': [
@@ -338,6 +348,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.terracotta,
           notAllOrNothingCurrent,
           1,
+          imageAsset: 'assets/images/achievements/not_all_or_nothing.png',
         ),
         _soon(
           'balanced-life',
@@ -346,6 +357,7 @@ class MockAchievementRepository implements AchievementRepository {
           'Complete habits from 3 different categories in a week',
           Icons.balance,
           AppColors.mustardDark,
+          imageAsset: 'assets/images/achievements/balanced_life.png',
         ),
       ],
       'Pet Care': [
@@ -356,6 +368,7 @@ class MockAchievementRepository implements AchievementRepository {
           'Care for your pet 5 days in a row',
           Icons.favorite,
           AppColors.terracotta,
+          imageAsset: 'assets/images/achievements/pets_best_friend.png',
         ),
         _a(
           'first-evolution',
@@ -366,6 +379,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.inkFaint,
           firstEvolutionCurrent,
           1,
+          imageAsset: 'assets/images/achievements/first_evolution.png',
         ),
         _soon(
           'growing-family',
@@ -374,6 +388,7 @@ class MockAchievementRepository implements AchievementRepository {
           'Adopt a second pet',
           Icons.pets,
           AppColors.inkFaint,
+          imageAsset: 'assets/images/achievements/growing_family.png',
         ),
         _a(
           'dapper-debut',
@@ -384,6 +399,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.terracotta,
           dapperDebutCurrent,
           1,
+          imageAsset: 'assets/images/achievements/dapper_debut.png',
         ),
       ],
       'Social': [
@@ -396,6 +412,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.mossDark,
           social.friendCount,
           1,
+          imageAsset: 'assets/images/achievements/better_together.png',
         ),
         _a(
           'helping-hand',
@@ -406,6 +423,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.moss,
           social.reactionsGiven,
           5,
+          imageAsset: 'assets/images/achievements/helping_hand.png',
         ),
         _a(
           'proof-pal',
@@ -416,6 +434,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.skyBlue,
           social.proofPosts,
           5,
+          imageAsset: 'assets/images/achievements/proof_pal.png',
         ),
         _a(
           'circle-starter',
@@ -426,6 +445,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.mustardDark,
           social.circlesCreated,
           1,
+          imageAsset: 'assets/images/achievements/circle_starter.png',
         ),
         _a(
           'accountability-duo',
@@ -436,6 +456,7 @@ class MockAchievementRepository implements AchievementRepository {
           AppColors.terracotta,
           social.challengesCompleted,
           1,
+          imageAsset: 'assets/images/achievements/accountability_duo.png',
         ),
       ],
     };

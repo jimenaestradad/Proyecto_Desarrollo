@@ -5,27 +5,12 @@ import 'inventory_repository.dart';
 abstract class PetRepository {
   Future<Pet> getPet();
 
-  /// Spends one [item] from the inventory and restores the vital its
-  /// [CareItem.category] targets by [CareItem.restoreAmount] (after
-  /// decay), as one unit: either both happen or neither does. Returns false,
-  /// changing nothing, when the item is out of stock. Replaced separate
-  /// consume + feed/groom/play calls (2026-10-06), which could spend an item
-  /// without restoring anything if the second write failed.
+  /// Atomically spends one [item] and restores its target vital after decay.
+  /// Returns false without changes when the item is out of stock.
   Future<bool> useCareItem(CareItem item);
 
-  /// Keeps the pet's evolution stage in sync with [userLevel] against its
-  /// threshold — promotes on crossing it, demotes back if a claim gets
-  /// undone and the level drops below it again, so evolution never drifts
-  /// out of sync with the level it's derived from. Call after any action
-  /// that might change the user's level.
-  Future<void> syncEvolution(int userLevel);
-
-  /// Sets the pet's display name -- a direct client write, not
-  /// Cloud-Function-only (docs/BACKEND.md, "Onboarding answer (pet
-  /// name)": it's typed on a screen after sign-up, not currency, so an
-  /// auth trigger can't see it and it needs no Cloud Function). Called
-  /// once from the "name your pet" onboarding screen; skipping onboarding
-  /// just never calls this, leaving onUserCreate's default of 'Nori'.
+  /// Sets the pet's display name through a direct client write during onboarding.
+  /// Skipping keeps `onUserCreate`'s default name, 'Nori'.
   Future<void> renamePet(String name);
 }
 
@@ -39,7 +24,7 @@ class MockPetRepository implements PetRepository {
     id: 'nori-pet',
     name: 'Nori',
     stage: PetEvolutionStage.baby,
-    evolutionLevelThreshold: 7,
+    evolutionLevelThreshold: kEvolutionLevel,
     hunger: 78,
     hygiene: 90,
     happiness: 88,
@@ -62,16 +47,6 @@ class MockPetRepository implements PetRepository {
   }
 
   @override
-  Future<void> syncEvolution(int userLevel) async {
-    final shouldEvolve = userLevel >= _pet.evolutionLevelThreshold;
-    if (shouldEvolve && _pet.stage == PetEvolutionStage.baby) {
-      _pet = _pet.copyWith(stage: PetEvolutionStage.evolution1);
-    } else if (!shouldEvolve && _pet.stage == PetEvolutionStage.evolution1) {
-      _pet = _pet.copyWith(stage: PetEvolutionStage.baby);
-    }
-  }
-
-  @override
   Future<void> renamePet(String name) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
@@ -79,17 +54,20 @@ class MockPetRepository implements PetRepository {
   }
 }
 
-/// How many points each vital loses per hour. Balance numbers are still
-/// open (docs/BACKEND.md, "Balance numbers are still open"), so this is the
-/// mock's demo value, ported as-is. `PET_DECAY_PER_HOUR` in
-/// functions/src/notifications.ts mirrors it — change both together.
-const double kPetDecayPerHour = 2;
+/// How many points each vital loses per hour: 1 means a full vital reaches
+/// the "Pet needs you" line (30) in about 70 hours, and one cheap care item per
+/// vital a day keeps Nori fine (economy pass 2026-11-07, OPEN_DECISIONS.md).
+/// `PET_DECAY_PER_HOUR` in functions/src/notifications.ts mirrors it — change
+/// both together.
+const double kPetDecayPerHour = 1;
 
-/// [pet] after the decay that has built up since its `lastDecayAt` (as of
-/// [now], default the current time): every vital drops by the same amount,
-/// floored at 0, and `lastDecayAt` moves to [now]. Whole minutes only, so a
-/// partial minute is dropped when the clock is reset. Shared by both
-/// repositories so a decay rule change can't make them disagree.
+/// The level at which Nori first evolves (1,000 XP in total). Every pet uses
+/// this: an `evolutionLevelThreshold` stored on older pet documents (7) is
+/// ignored. `EVOLUTION_LEVEL` in functions/src/rewards.ts mirrors it.
+const int kEvolutionLevel = 5;
+
+/// Applies equal decay to every vital since `lastDecayAt`, floored at zero.
+/// Uses whole minutes and resets `lastDecayAt` to [now]; shared by both repositories.
 Pet applyPetDecay(Pet pet, {DateTime? now}) {
   final current = now ?? DateTime.now();
   final elapsedHours = current.difference(pet.lastDecayAt).inMinutes / 60;

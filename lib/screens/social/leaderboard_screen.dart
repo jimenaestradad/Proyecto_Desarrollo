@@ -11,6 +11,7 @@ import 'package:nori/widgets/nori_empty_state.dart';
 import 'package:nori/models/social_people.dart';
 import 'package:nori/widgets/nori_choice_chip.dart';
 import 'package:nori/widgets/nori_segmented_control.dart';
+import '../../widgets/scroll_edge_fade.dart';
 import 'package:nori/screens/social/add_friend_screen.dart';
 import 'package:nori/screens/social/friend_profile_screen.dart';
 
@@ -155,25 +156,27 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
                     titleStyle: AppTextStyles.headlineLgMobile,
                   ),
                   const SizedBox(height: AppSpacing.stackMd),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        NoriChoiceChip(
-                          label: 'All friends',
-                          selected: _circleId == null,
-                          onTap: () => _filter(),
-                        ),
-                        for (final circle in _circles) ...[
-                          const SizedBox(width: AppSpacing.unit),
+                  ScrollEdgeFade(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
                           NoriChoiceChip(
-                            label: circle.name,
-                            icon: circle.icon,
-                            selected: _circleId == circle.id,
-                            onTap: () => _filter(circleId: circle.id),
+                            label: 'All friends',
+                            selected: _circleId == null,
+                            onTap: () => _filter(),
                           ),
+                          for (final circle in _circles) ...[
+                            const SizedBox(width: AppSpacing.unit),
+                            NoriChoiceChip(
+                              label: circle.name,
+                              icon: circle.icon,
+                              selected: _circleId == circle.id,
+                              onTap: () => _filter(circleId: circle.id),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: AppSpacing.stackSm),

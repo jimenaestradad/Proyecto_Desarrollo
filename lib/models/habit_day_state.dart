@@ -1,10 +1,5 @@
-/// One habit's logged state on one specific date.
-///
-/// This is the per-date half of a habit: [Habit] holds the *definition*
-/// (name, target, schedule) which is the same every day, while this holds
-/// what actually happened on a given day. Mirrors how a backend would store
-/// it — a row keyed by (habit id, date) — so swapping the mock for a real
-/// repository is a data-source change, not a model change.
+/// One habit's logged state on one date, separate from its [Habit] definition.
+/// Corresponds to storage keyed by habit id and date.
 class HabitDayState {
   const HabitDayState({
     this.value = 0,

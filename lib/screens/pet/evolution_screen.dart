@@ -3,14 +3,8 @@ import 'package:nori/models/pet.dart';
 import 'package:nori/widgets/celebration_card.dart';
 import 'package:nori/widgets/nori_evolved_sprite.dart';
 
-/// Full-screen celebration shown the moment [Pet.stage] advances — the
-/// "Pantalla/animacion de evolucion" beat FEATURES.md §6 calls for but
-/// doesn't spec further. Shows the evolved winged Nori ([NoriEvolvedSprite])
-/// over a warm glow — the same sprite [NoriRoomStage] shows for evolved pets.
-///
-/// Shares [CelebrationScreen]'s shell with [LevelUpScreen]. Push with
-/// [showEvolutionCelebration] rather than a bare `Navigator.push`, so every
-/// call site gets the same fade+scale entrance.
+/// Celebrates a pet stage advance with [NoriEvolvedSprite] in [CelebrationScreen].
+/// Use [showEvolutionCelebration] for the shared fade-and-scale entrance.
 class EvolutionScreen extends StatelessWidget {
   const EvolutionScreen({
     super.key,

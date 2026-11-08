@@ -4,13 +4,8 @@ import { onCall } from "firebase-functions/v2/https";
 import { userDocRefs } from "./docRefs";
 import { requireAuth, requireRecentLogin } from "./requestArgs";
 
-// Deletes everything the caller owns, then the Firebase Auth user itself:
-// the whole /users/{uid} tree (habits, habitLogs, pet, inventory,
-// bucketList, notifications, ...) and every /usernames entry pointing at
-// this uid. A client can't delete subcollections in one step, which is why
-// this is a function (docs/KNOWN_ISSUES.md, "Account settings are only half
-// built"). Data goes first so a failure leaves a signed-in user who can
-// simply retry; every step is safe to re-run.
+// Deletes the user tree and matching usernames before deleting the Auth user.
+// Data goes first so failures leave a signed-in user who can safely retry.
 export async function runDeleteAccount(uid: string): Promise<void> {
   const db = getFirestore();
   const usernames = await db.collection("usernames").where("uid", "==", uid).get();

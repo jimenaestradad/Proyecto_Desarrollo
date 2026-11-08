@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'session_photos.dart';
 
 import '../models/competition.dart';
 import '../models/social_content.dart';
@@ -118,6 +121,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         'me': _liveMe ?? _seedMe,
         'jimena': SocialUser(
           id: 'jimena',
+          avatarAsset: 'assets/images/social/avatar_jimena.jpg',
           name: 'Jimena Vargas',
           username: 'jimena',
           level: 8,
@@ -132,6 +136,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         ),
         'alexh': SocialUser(
           id: 'alexh',
+          avatarAsset: 'assets/images/social/avatar_alexh.jpg',
           name: 'Alex Hart',
           username: 'alexh',
           level: 7,
@@ -146,6 +151,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         ),
         'sarahj': SocialUser(
           id: 'sarahj',
+          avatarAsset: 'assets/images/social/avatar_sarahj.jpg',
           name: 'Sarah Jenkins',
           username: 'sarahj',
           level: 6,
@@ -160,6 +166,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         ),
         'miked': SocialUser(
           id: 'miked',
+          avatarAsset: 'assets/images/social/avatar_miked.jpg',
           name: 'Mike Dalton',
           username: 'miked',
           level: 5,
@@ -174,6 +181,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         ),
         'priya': SocialUser(
           id: 'priya',
+          avatarAsset: 'assets/images/social/avatar_priya.jpg',
           name: 'Priya Patel',
           username: 'priya',
           level: 6,
@@ -188,6 +196,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         ),
         'tomas': SocialUser(
           id: 'tomas',
+          avatarAsset: 'assets/images/social/avatar_tomas.jpg',
           name: 'Tomas Rivera',
           username: 'tomas',
           level: 4,
@@ -203,6 +212,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         // Not friends yet: pending requests and discoverable people.
         'leochen': const SocialUser(
           id: 'leochen',
+          avatarAsset: 'assets/images/social/avatar_leochen.jpg',
           name: 'Leo Chen',
           username: 'leochen',
           level: 6,
@@ -216,6 +226,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         ),
         'clarab': const SocialUser(
           id: 'clarab',
+          avatarAsset: 'assets/images/social/avatar_clarab.jpg',
           name: 'Clara Brooks',
           username: 'clarab',
           level: 5,
@@ -229,6 +240,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         ),
         'koawood': const SocialUser(
           id: 'koawood',
+          avatarAsset: 'assets/images/social/avatar_koawood.jpg',
           name: 'Koa Wood',
           username: 'koawood',
           level: 6,
@@ -242,6 +254,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         ),
         'elenar': const SocialUser(
           id: 'elenar',
+          avatarAsset: 'assets/images/social/avatar_elenar.jpg',
           name: 'Elena Rostova',
           username: 'elenar',
           level: 7,
@@ -255,6 +268,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         ),
         'samura': const SocialUser(
           id: 'samura',
+          avatarAsset: 'assets/images/social/avatar_samura.jpg',
           name: 'Sam Aura',
           username: 'samura',
           level: 3,
@@ -287,6 +301,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
     _circles = [
       SocialCircle(
         id: 'roommates',
+        coverAsset: 'assets/images/social/cover_circle_roommates.jpg',
         name: 'Roommates',
         icon: Icons.cottage,
         color: AppColors.mossLight,
@@ -296,6 +311,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
       ),
       SocialCircle(
         id: 'gym',
+        coverAsset: 'assets/images/social/cover_circle_gym.jpg',
         name: 'Gym Buddies',
         icon: Icons.fitness_center,
         color: AppColors.mustardLight,
@@ -331,6 +347,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
     _posts = [
       SocialPost(
         id: 'p1',
+        photoAsset: 'assets/images/social/proof_water.jpg',
         authorId: 'jimena',
         habitName: 'Drink 8 glasses of water',
         habitIcon: Icons.water_drop,
@@ -363,6 +380,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
       ),
       SocialPost(
         id: 'p2',
+        photoAsset: 'assets/images/social/proof_gym.jpg',
         authorId: 'alexh',
         habitName: 'Gym Session: Upper Body',
         habitIcon: Icons.fitness_center,
@@ -389,18 +407,19 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
       ),
       SocialPost(
         id: 'p3',
+        photoAsset: 'assets/images/social/proof_read.jpg',
         authorId: 'sarahj',
         habitName: 'Read 10 mins',
         habitIcon: Icons.menu_book,
         habitColor: AppColors.blushPink,
         caption: 'Finished another chapter of Atomic Habits.',
         createdAt: _ago(hours: 5),
-        hasProof: false,
         circleId: 'roommates',
         reactionCounts: const {Reaction.thumbsUp: 2},
       ),
       SocialPost(
         id: 'p4',
+        photoAsset: 'assets/images/social/cover_circle_gym.jpg',
         authorId: 'me',
         habitName: 'Gym Session: Upper Body',
         habitIcon: Icons.fitness_center,
@@ -421,6 +440,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
       ),
       SocialPost(
         id: 'p5',
+        photoAsset: 'assets/images/social/proof_run.jpg',
         authorId: 'miked',
         habitName: 'Morning Run',
         habitIcon: Icons.directions_run,
@@ -431,6 +451,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
       ),
       SocialPost(
         id: 'p6',
+        photoAsset: 'assets/images/social/proof_meditate.jpg',
         authorId: 'priya',
         habitName: 'Meditate',
         habitIcon: Icons.self_improvement,
@@ -440,6 +461,17 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         circleId: 'roommates',
         reactionCounts: const {Reaction.love: 4},
       ),
+      SocialPost(
+        id: 'p7',
+        authorId: 'tomas',
+        photoAsset: 'assets/images/social/proof_nosocial.jpg',
+        habitName: 'No social media',
+        habitIcon: Icons.phonelink_off,
+        habitColor: AppColors.blushPink,
+        caption: 'Phone face-down until Monday. Notebook out instead.',
+        createdAt: _ago(hours: 9),
+        reactionCounts: const {Reaction.thumbsUp: 3, Reaction.celebrate: 1},
+      ),
     ];
   }
 
@@ -448,6 +480,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
     _competitions = [
       Competition(
         id: 'hydration',
+        coverAsset: 'assets/images/social/cover_comp_hydration.jpg',
         title: 'Hydration Sprint',
         description: 'Drink 8 glasses of water every day for 7 days.',
         type: CompetitionType.total,
@@ -468,6 +501,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
       ),
       Competition(
         id: 'gym-warriors',
+        coverAsset: 'assets/images/social/cover_comp_gym.jpg',
         title: 'Gym Warriors',
         description: 'Log at least 4 strength sessions this week.',
         type: CompetitionType.race,
@@ -492,6 +526,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
       ),
       Competition(
         id: 'no-social',
+        coverAsset: 'assets/images/social/cover_comp_nosocial.jpg',
         title: 'No Social Media Weekend',
         description: 'Stay under your social media limit for 2 days straight.',
         type: CompetitionType.streak,
@@ -511,6 +546,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
       ),
       Competition(
         id: 'morning-run',
+        coverAsset: 'assets/images/social/cover_comp_run.jpg',
         title: 'Morning Run Streak',
         description: 'Run every morning for 5 days.',
         type: CompetitionType.streak,
@@ -752,6 +788,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
     statusLine: u.statusLine,
     friendSince: DateTime.now(),
     mutualFriends: u.mutualFriends,
+    avatarAsset: u.avatarAsset,
   );
 
   @override
@@ -886,6 +923,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
     required ProofableHabit habit,
     required String caption,
     required bool withPhoto,
+    Uint8List? photo,
     required PostVisibility visibility,
     String? circleId,
     String? competitionId,
@@ -904,6 +942,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
       competitionId: competitionId,
       xpEarned: withPhoto ? 50 : 0,
     );
+    if (photo != null) SessionPhotos.setProof(post.id, photo);
     _posts = [post, ..._posts];
     notifyListeners();
     return post;
@@ -1114,6 +1153,7 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
     String id, {
     required String caption,
     required bool withPhoto,
+    Uint8List? photo,
   }) async {
     final c = _competitions.firstWhere((c) => c.id == id);
     if (c.submittedToday) return;
@@ -1123,9 +1163,11 @@ class MockSocialRepository extends ChangeNotifier implements SocialRepository {
         submittedToday: true,
       ),
     );
+    final postId = generateId();
+    if (photo != null) SessionPhotos.setProof(postId, photo);
     _posts = [
       SocialPost(
-        id: generateId(),
+        id: postId,
         authorId: 'me',
         habitName: c.habitName,
         habitIcon: c.icon,

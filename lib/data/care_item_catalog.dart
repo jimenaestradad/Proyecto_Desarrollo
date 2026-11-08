@@ -5,17 +5,8 @@ import '../theme/app_colors.dart';
 /// (Fed/Clean/Happy in `_RoomHud`).
 enum CareCategory { hunger, hygiene, love }
 
-/// One consumable pet-care item — shown in the Shop's Food & Care category
-/// and, once owned, offered as a choice when the matching vital ring is
-/// tapped on Home (see `_CareActionSheet` in home_screen.dart).
-///
-/// Two tiers per stat so "which item to use" is a real choice rather than a
-/// single auto-applied item — the reference sheet
-/// (assets/source/accessories/care_items_source.jpg) has 15 icons total (5
-/// per stat); only 2 per stat are wired up so far, matching FEATURES.md §9's
-/// MVP note ("a few basic care actions/items — not a full economy"). The
-/// other 9 are cut-when-needed, same as the "not yet cut" accessories — see
-/// that folder's README.
+/// Consumable pet-care item sold in Shop and selected from Home's vital rings.
+/// Two tiers per stat provide a choice within the MVP's basic care economy.
 class CareItem {
   const CareItem({
     required this.id,
@@ -53,7 +44,7 @@ const List<CareItem> kCareItemCatalog = [
     icon: Icons.restaurant,
     image: 'assets/images/accessories/food.png',
     color: AppColors.blush,
-    price: 50,
+    price: 10,
     category: CareCategory.hunger,
     restoreAmount: 25,
     grants: 3,
@@ -64,9 +55,9 @@ const List<CareItem> kCareItemCatalog = [
     icon: Icons.cake,
     image: 'assets/images/accessories/cake.png',
     color: AppColors.blush,
-    price: 90,
+    price: 18,
     category: CareCategory.hunger,
-    restoreAmount: 45,
+    restoreAmount: 50,
     grants: 3,
   ),
   CareItem(
@@ -75,7 +66,7 @@ const List<CareItem> kCareItemCatalog = [
     icon: Icons.soap,
     image: 'assets/images/accessories/shampoo.png',
     color: AppColors.sky,
-    price: 40,
+    price: 10,
     category: CareCategory.hygiene,
     restoreAmount: 25,
     grants: 3,
@@ -86,9 +77,9 @@ const List<CareItem> kCareItemCatalog = [
     icon: Icons.brush,
     image: 'assets/images/accessories/hair-brush.png',
     color: AppColors.sky,
-    price: 70,
+    price: 18,
     category: CareCategory.hygiene,
-    restoreAmount: 45,
+    restoreAmount: 50,
     grants: 3,
   ),
   CareItem(
@@ -97,9 +88,9 @@ const List<CareItem> kCareItemCatalog = [
     icon: Icons.sports_baseball,
     image: 'assets/images/accessories/plushie.png',
     color: AppColors.mustardLight,
-    price: 60,
+    price: 10,
     category: CareCategory.love,
-    restoreAmount: 20,
+    restoreAmount: 25,
     grants: 3,
   ),
   CareItem(
@@ -108,9 +99,9 @@ const List<CareItem> kCareItemCatalog = [
     icon: Icons.bed,
     image: 'assets/images/accessories/blanket.png',
     color: AppColors.mustardLight,
-    price: 100,
+    price: 18,
     category: CareCategory.love,
-    restoreAmount: 40,
+    restoreAmount: 50,
     grants: 3,
   ),
 ];

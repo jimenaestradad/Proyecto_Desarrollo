@@ -7,10 +7,6 @@ abstract class InventoryRepository {
   /// already 0 — callers must not apply the matching pet-care action then.
   Future<bool> consumeCareItem(String careItemId);
 
-  Future<void> addCareItem(String careItemId, int amount);
-
-  Future<void> addAccessory(String accessoryId);
-
   /// No-op if [accessoryId] isn't in [Inventory.ownedAccessoryIds] — `null`
   /// (unequip) is always allowed.
   Future<void> setEquippedAccessory(String? accessoryId);
@@ -38,23 +34,6 @@ class MockInventoryRepository implements InventoryRepository {
       careItemCounts: {..._inventory.careItemCounts, careItemId: count - 1},
     );
     return true;
-  }
-
-  @override
-  Future<void> addCareItem(String careItemId, int amount) async {
-    _inventory = _inventory.copyWith(
-      careItemCounts: {
-        ..._inventory.careItemCounts,
-        careItemId: _inventory.countOf(careItemId) + amount,
-      },
-    );
-  }
-
-  @override
-  Future<void> addAccessory(String accessoryId) async {
-    _inventory = _inventory.copyWith(
-      ownedAccessoryIds: {..._inventory.ownedAccessoryIds, accessoryId},
-    );
   }
 
   @override

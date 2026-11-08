@@ -3,11 +3,8 @@ import '../models/app_notification.dart';
 import '../theme/app_colors.dart';
 
 abstract class NotificationRepository {
-  /// Newest first. The Firestore implementation also creates any
-  /// notifications owed since the last call before reading (see
-  /// FirestoreNotificationRepository). Pass `sync: false` to skip that and
-  /// just read what's already stored -- fast, so a screen can paint
-  /// immediately and then call again with the default to catch up.
+  /// Returns newest first, syncing newly owed notifications in Firestore by default.
+  /// Use `sync: false` for an immediate read before refreshing with sync.
   Future<List<AppNotification>> getNotifications({bool sync = true});
 
   /// Live: whether any notification is unread. Backs the dot on the bell.

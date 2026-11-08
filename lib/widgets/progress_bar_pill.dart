@@ -40,22 +40,15 @@ class ProgressBarPill extends StatelessWidget {
               ? Border.all(color: AppColors.ink, width: AppBorder.thin)
               : null,
         ),
-        // The Container already pads its child by the border's width
-        // (BoxDecoration.padding), so everything below is laid out inside
-        // the track. Insetting again here used to eat the whole fill on the
-        // short bars (6px XP pill, 8px Today's Goal): 2px of border on each
-        // side, twice, left nothing to draw.
+        // Container's BoxDecoration already pads for the border.
+        // Another inset would consume the fill on short bars.
         child: LayoutBuilder(
           builder: (context, constraints) {
             final innerWidth = constraints.maxWidth;
             return Stack(
               children: [
-                // Clipped on its own RRect, not the outer Container's
-                // `clipBehavior`: a Container clips to the *outer* edge of
-                // its decoration, not inset by the border's stroke, so a
-                // sharp-cornered fill rectangle clipped that way can bleed
-                // into the rounded border's corner instead of stopping
-                // inside it — most visible on a fully/near-fully filled bar.
+                // Clip the fill to its own inner RRect.
+                // Container clipping follows the decoration's outer edge and can bleed into corners.
                 Positioned.fill(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(height),
@@ -70,12 +63,8 @@ class ProgressBarPill extends StatelessWidget {
                 ),
                 if (thresholdFraction != null)
                   Positioned(
-                    // Not FractionallySizedBox here: it gives its child a
-                    // *tight* width of widthFactor × available width, which
-                    // overrides this line's own `width: AppBorder.standard`
-                    // instead of just capping it — the tick rendered as a
-                    // solid block from 0 to thresholdFraction instead of a
-                    // thin marker at that position.
+                    // Position the fixed-width tick directly.
+                    // FractionallySizedBox would force its width to a fraction of the track, making a block.
                     left:
                         (thresholdFraction!.clamp(0, 1) * innerWidth -
                                 AppBorder.standard / 2)

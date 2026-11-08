@@ -1,26 +1,11 @@
-// Adaptive XP (FEATURES.md §4). Scales XP only: coins stay at the flat
-// difficulty amount (rewards.ts computeReward), so the shop economy doesn't
-// shift with it.
-//: a habit pays more while the user struggles
-// with it and less once it's consistently easy for them. Built 2026-10-06;
-// the numbers below are defaults (docs/OPEN_DECISIONS.md, "XP balancing").
-// Pure, so it can be unit-tested; claimHabit does the Firestore reads.
-//
-// Recomputed from scratch on every claim from the habit's recent history —
-// never stepped up or down from its previous value — so claiming, unclaiming
-// and re-claiming can't ratchet it.
+// Scales XP with recent habit history; coins keep the flat difficulty reward.
+// Recomputes on every claim so unclaiming and re-claiming cannot ratchet XP.
 
 import { isArchivedOn } from "./habitTransaction";
 import { HabitDifficulty } from "./rewards";
 
-// Per-difficulty multiplier bounds. Chosen so the XP ranges never overlap
-// (easy 9–13, medium 16–24, hard 26–36): adaptation fine-tunes a habit
-// within its tier but never makes an easy habit out-earn a medium one. The
-// floors keep an easy habit worth claiming; the hard ceiling keeps one
-// struggled-with habit from dominating the level curve. The spreads are also
-// narrow enough that completing a habit more often always earns more XP per
-// day — wider ones (the first draft's easy 8–14, medium 15–25) paid a
-// 90%-consistent user slightly less than an 80% one.
+// Per-difficulty bounds keep XP tiers separate and frequent completion more rewarding.
+// Floors keep easy habits worthwhile; the hard ceiling limits domination of the level curve.
 export const ADAPTIVE_BOUNDS: Record<HabitDifficulty, { min: number; max: number }> = {
   easy: { min: 0.85, max: 1.3 },
   medium: { min: 0.8, max: 1.2 },
