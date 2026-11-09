@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nori/screens/premium/nori_plans.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
 import 'package:nori/widgets/nori_card.dart';
@@ -8,7 +9,9 @@ import 'package:nori/widgets/tactile_button.dart';
 enum _PaymentMethod { card, paypal, express }
 
 class PaymentMethodScreen extends StatefulWidget {
-  const PaymentMethodScreen({super.key});
+  const PaymentMethodScreen({super.key, required this.plan});
+
+  final PlanChoice plan;
 
   @override
   State<PaymentMethodScreen> createState() => _PaymentMethodScreenState();
@@ -43,7 +46,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                 "Payments aren't implemented — nothing here is sent or stored.",
           ),
           const SizedBox(height: AppSpacing.stackMd),
-          const _PlanSummaryCard(),
+          _PlanSummaryCard(plan: widget.plan),
           const SizedBox(height: AppSpacing.stackMd),
           _PaymentOptionCard(
             selected: _selectedMethod == _PaymentMethod.card,
@@ -119,13 +122,18 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: _CheckoutBar(onConfirm: _showUnavailable),
+      bottomNavigationBar: _CheckoutBar(
+        plan: widget.plan,
+        onConfirm: _showUnavailable,
+      ),
     );
   }
 }
 
 class _PlanSummaryCard extends StatelessWidget {
-  const _PlanSummaryCard();
+  const _PlanSummaryCard({required this.plan});
+
+  final PlanChoice plan;
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +153,7 @@ class _PlanSummaryCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text('Nori Plus yearly', style: AppTextStyles.headlineMd),
+                Text(plan.title, style: AppTextStyles.headlineMd),
               ],
             ),
           ),
@@ -154,13 +162,13 @@ class _PlanSummaryCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                r'$39.99',
+                plan.price,
                 style: AppTextStyles.headlineLgMobile.copyWith(
                   color: AppColors.terracottaDark,
                 ),
               ),
               Text(
-                '/year',
+                plan.unit,
                 style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
               ),
             ],
@@ -357,8 +365,9 @@ class _PreviewTextField extends StatelessWidget {
 }
 
 class _CheckoutBar extends StatelessWidget {
-  const _CheckoutBar({required this.onConfirm});
+  const _CheckoutBar({required this.plan, required this.onConfirm});
 
+  final PlanChoice plan;
   final VoidCallback onConfirm;
 
   @override
@@ -392,7 +401,7 @@ class _CheckoutBar extends StatelessWidget {
                           color: AppColors.inkMuted,
                         ),
                       ),
-                      Text(r'$39.99', style: AppTextStyles.headlineLgMobile),
+                      Text(plan.price, style: AppTextStyles.headlineLgMobile),
                     ],
                   );
 

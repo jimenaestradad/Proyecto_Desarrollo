@@ -3,9 +3,13 @@ import { logger } from "firebase-functions/v2";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { PET_CARE_COOLDOWN_MS, isPetCareDormant, notificationRefs, petCareMessage } from "./notifications";
 
-// Hourly low-vital notifications respect PET_CARE_COOLDOWN_MS.
+// Low-vital notifications respect PET_CARE_COOLDOWN_MS.
 // Computes lazy pet decay locally without writing the pet document.
-export const petCareCheck = onSchedule("every 60 minutes", async () => {
+// Every 6 hours, not hourly: it reads every pet document ever created (dormant ones included),
+// so reads scale with registered users, not active ones. Vitals decay 1/hour, so a vital takes
+// ~70 hours to fall below LOW_VITAL, and the notification is an in-app inbox entry nobody sees
+// before opening the app, so hourly precision bought nothing and cost 6x the reads.
+export const petCareCheck = onSchedule("every 6 hours", async () => {
   const db = getFirestore();
   const now = Date.now();
   const pets = await db.collectionGroup("pet").get();

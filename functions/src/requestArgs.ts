@@ -49,7 +49,7 @@ export interface DayArgs {
   utcMidnightMillis: number;
 }
 
-// The client sends its device-local day (docs/BACKEND.md "Dates and the
+// The client sends its device-local day (docs/technical/BACKEND.md "Dates and the
 // day-rollover rule") — the server never derives it from UTC. dayStartMillis
 // is that day's local midnight, stored as the log's `date` for range queries.
 export function parseDayArgs(data: { dayKey?: unknown; dayStartMillis?: unknown }): DayArgs {

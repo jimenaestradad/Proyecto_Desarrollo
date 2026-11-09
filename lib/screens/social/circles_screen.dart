@@ -11,7 +11,6 @@ import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_empty_state.dart';
-import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/tactile_button.dart';
@@ -129,11 +128,12 @@ class _CircleCard extends StatelessWidget {
       children: [
         Row(
           children: [
-            NoriIconBadge(
+            CoverBadge(
               icon: circle.icon,
               background: AppColors.white,
               size: 48,
               iconSize: 24,
+              asset: circle.coverAsset,
             ),
             const SizedBox(width: AppSpacing.stackSm),
             Expanded(

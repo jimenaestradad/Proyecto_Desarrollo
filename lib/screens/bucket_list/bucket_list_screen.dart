@@ -14,7 +14,7 @@ import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/reward_pill.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
-/// One-time major life goals — see docs/FEATURES.md §11. Reached from the
+/// One-time major life goals — see docs/product/FEATURES.md §11. Reached from the
 /// Habits screen topbar, not the bottom nav: distinct from the daily habit
 /// list, but not important enough to compete for a nav slot.
 class BucketListScreen extends StatefulWidget {
@@ -103,7 +103,7 @@ class _BucketListScreenState extends State<BucketListScreen>
                     completedAt: DateTime.now(),
                     rewardPaid: true,
                   )
-                : i.copyWith(isCompleted: false)
+                : i.copyWith(isCompleted: false, rewardPaid: false)
           else
             i,
       ],

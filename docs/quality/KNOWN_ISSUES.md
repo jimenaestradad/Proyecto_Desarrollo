@@ -3,7 +3,7 @@
 This file contains only currently open bugs and gaps, not a task queue tied to any
 particular session — log something here the moment you notice it even if you don't plan
 to fix it right away. When a fix lands, write a terse 2–4 sentence entry directly in
-`docs/RESOLVED_LOG.md` using `### YYYY-MM-DD — <short title>`: state what changed and
+`docs/quality/RESOLVED_LOG.md` using `### YYYY-MM-DD — <short title>`: state what changed and
 why, not a narrative. Then remove or trim the item from wherever it was listed as open
 here — don't leave a closed item worded as if it's still a problem.
 
@@ -17,7 +17,7 @@ here — don't leave a closed item worded as if it's still a problem.
 
 ## 🔴 Critical
 
-(None open right now — see docs/RESOLVED_LOG.md)
+(None open right now — see docs/quality/RESOLVED_LOG.md)
 
 ---
 
@@ -26,10 +26,9 @@ here — don't leave a closed item worded as if it's still a problem.
 ### 🟠 Placeholder pictures: nearly done, one gap left (added 2026-11-07, mostly fixed 2026-11-08)
 
 Social now shows real photos, friends' pets show the real Nori, and all 23 achievements have badge
-art in one shared style (see RESOLVED_LOG, 2026-11-08). What is still plain:
+art in one shared style, and circle and competition rows show their cover thumbnails (see
+RESOLVED_LOG, 2026-11-08). What is still plain:
 
-- **Circle and competition list rows are still icon-only**; the covers only show on the detail
-  screens. Small thumbnails in the list rows would carry the photos further.
 - The signed-in user's own avatar is still the default illustration (Google sign-in photo, if any,
   is not used), and picked photos are session-only (see "Picked photos are session-only" below).
 
@@ -48,32 +47,14 @@ art in one shared style (see RESOLVED_LOG, 2026-11-08). What is still plain:
   subtitle). Fix: seed Health, Study and Finance in `functions/src/onUserCreate.ts` (the demo
   account already has them) so a first habit needs no extra step; "Add Category" stays in the
   dropdown. Needs a redeploy of `onUserCreate`, and only affects accounts created after it.
-- **Shop previews show the baby sprite after Nori has evolved (CONFIRMED, 🟠; logged 2026-11-08, not fixed).**
-  Every accessory/clothing card in the Shop renders the item on the baby pet, even when the account's
-  pet is at the evolved stage (seen on a moto g 20: evolved Nori at level 7, Shop cards still show the
-  baby). Fix: pass the pet's current stage into the Shop previews and draw the evolved sprite (and its
-  accessory anchors) when it is evolved. Related: "Tail Charm Clasp doesn't show on the evolved Nori"
-  in the Minor section, since that item can't be previewed on the evolved sprite today.
-- **Undo / redo and what happens to XP and coins is undecided (CONFIRMED, 🟠).** Today a habit-day
-  pays once: Undo clears "completed" but keeps the XP and coins, and completing the same day again
-  pays 0 (`unclaimHabit`, `rewardPaid`). What people see: Undo leaves the XP pill and coin count
-  where they were, so it looks like the reward is still there for free; a stray tap that reaches a
-  progress habit's target pays at once and Undo can't take it back; and un-claimed days stop
-  counting toward the adaptive-XP completion rate, so claim-then-undo keeps a habit at its maximum
-  multiplier (see "Unclaiming can keep adaptive XP at its maximum" below). Exact reversal was
-  rejected on 2026-10-26 because claim → spend → undo → re-claim minted coins. The options (keep
-  and label the button, claw back exactly, claw back only within a window, or pay at day's end) and
-  their trade-offs are in OPEN_DECISIONS.md, "Complete / Undo". Needs your decision, then a change
-  in `unclaimHabit`/`claimHabit` and a deploy.
-- **Plans and pricing are undecided (UNRESOLVED, 🟠).** Nobody has picked what Nori sells. The
-  Nori Plus preview shows $4.99/month and $39.99/year and says Free is limited to 3 habits, but
-  nothing enforces the limit (the free demo account has 6), the checkout ignores the plan you
-  select (always yearly), premium is a mock, and OPEN_DECISIONS.md "Monetization" says no model was
-  chosen while the course homework compares Finch/Habitica (freemium + subscription). Needs a
-  decision before the app is shown as a product: freemium + subscription or something else; what
-  Free keeps and what Plus adds (habit count? cosmetics? more pets?); the real prices; and whether
-  the preview screens are removed or kept as labeled mockups. Until then the code and the docs
-  contradict each other.
+- **Plans are chosen and the screens show them, but nothing enforces or bills them (CONFIRMED, 🟠).**
+  Free / Nori Plus ($3.99/mo, $29.99/yr) / Nori Duo ($5.99/mo, $44.99/yr) are in
+  docs/business/COTIZACION.md Part 2 (prices approved by valevasqc 2026-11-08; Jimena hasn't weighed in).
+  The Nori Plus and payment preview screens now show them. Still open: the 5-habit and 3-goal Free limits
+  exist nowhere in the code (the free demo account has 6 habits), checkout is a mock, no Google Play
+  Billing, no ads, and Duo's account linking doesn't exist. The screens keep their "Preview only" banner
+  until the Fase 2 work (COTIZACION.md §7) lands. Server-side limit design and estimate (~11 pts, after
+  the demo): docs/technical/BACKEND.md, "Plan limits".
 
 ### Vacation mode: frozen days still unverified (2026-10-05)
 
@@ -329,7 +310,7 @@ First run on a real phone (fixed items are in RESOLVED_LOG.md, same date). Open:
 - **"Reset demo account" is partial (CONFIRMED, 🟡).** It reverses bucket-list payouts and tops up coins
   and care items, but does not undo habit claims or return the account to the documented baseline
   (level 6, 1,524 XP, 760 coins); that still needs an Admin SDK script. Unclaiming a habit does not
-  give the XP back either (pay-once, see "Undo / redo" above).
+  give the XP back either (Undo now does, but the reset script predates it).
 
 ### UX/UI audit 2026-10-26: what the easy-win pass did not fix
 
@@ -452,11 +433,19 @@ this pass.
   `firestore.rules:7`. An inventory missing one key makes the rule error, which denies *every*
   inventory write including equipping; a seventh item would have no guard at all. Worth reworking
   before the catalog grows. (The `>= 0` floor is done, see RESOLVED_LOG 2026-11-07.)
-- **`petCareCheck` won't scale (CONFIRMED, 🟡).** `functions/src/petCareCheck.ts` reads every pet
+- **`petCareCheck` won't scale (CONFIRMED, 🟡).** Now every 6 hours instead of hourly (code changed
+  2026-11-08, **not deployed yet**: run `firebase deploy --only functions:petCareCheck`), which cut its
+  reads 6x but not the problem below. `functions/src/petCareCheck.ts` reads every pet
   and runs one transaction per notified user, one after another. Fine at today's scale; batch the
   checks, or query only recently-cared-for pets (needs a collection-group index on `lastDecayAt`),
   when it matters. Dormant pets no longer get reminders, but their old notifications still can't
   be deleted.
+- **No spend cap on Firestore or Auth, no App Check (CONFIRMED, 🟠).** Firebase spend caps only cover
+  Functions/App Hosting/AI Logic/Extensions, and the project has them on Functions and Cloud Run
+  (BACKEND.md, "GCP sprint status"). Firestore reads and writes can only be alerted on (a $5 and a
+  $1 early-warning budget), so a looping or forged client could run up cost before anyone reads the
+  email. App Check (Play Integrity) would reject non-app clients; not started. A billing kill switch was
+  considered and rejected: it takes the whole project, user data included, offline.
 - **Client writes have no type or length validation in the rules (CONFIRMED, 🟡).** Name,
   `habitCategories`, notification `message`, habit and bucket-list text fields, and the pet name
   (the app caps it at 20, the rules don't). Only affects the user's own data today; matters once
@@ -465,12 +454,6 @@ this pass.
 
 **Need a decision (game design, not fixed on purpose)**
 
-- **Unclaiming can keep adaptive XP at its maximum (CONFIRMED).** A day keeps its payout when
-  un-claimed, but `claimHabit` counts only days that are *currently* claimed when computing the
-  completion rate (`functions/src/claimHabit.ts:119`). Claiming and then un-claiming every day keeps
-  the multiplier at the "struggling" max: about +38% XP per claim on a hard habit (36 vs 26), at the
-  cost of the visible streak. Option: count days that paid (`rewardPaid`) instead. Related to the reopened Complete/Undo
-  decision in OPEN_DECISIONS.md.
 - **Tomorrow can be claimed a day early (CONFIRMED).** `parseDayArgs` accepts any UTC offset up to
   +14h, so tomorrow's dayKey passes the "not in the future" check if the client claims a +14h
   offset. Each day still pays once; only the timing is off.
@@ -571,12 +554,12 @@ address — worth confirming in QA on a real inbox.
 ### claimHabit still trusts two client-written habit fields (2026-09-24, found while implementing it)
 
 `claimHabit` no longer trusts the habit doc's `xpReward`/`coinReward`/`adaptiveMultiplier`
-(it derives base rewards from `difficulty` and clamps the multiplier — see docs/BACKEND.md's
+(it derives base rewards from `difficulty` and clamps the multiplier — see docs/technical/BACKEND.md's
 Cloud Functions list). Two smaller cheats are still possible, because `firestore.rules`' habit
 `allow create` accepts any payload: (1) a client can create a habit with a backdated
 `createdAt`, then claim it on every past day back to that date; (2) a client can create any
 number of habits and claim each one daily. Each claim is capped at 45 XP (hard × 1.5), so
-this stays the bounded "moderate" trust level docs/BACKEND.md chose, not an open mint. The fix,
+this stays the bounded "moderate" trust level docs/technical/BACKEND.md chose, not an open mint. The fix,
 if it's ever worth doing: require `createdAt == request.time` in the create rule (the client
 would send `FieldValue.serverTimestamp()`, and `FirestoreHabitRepository.addHabit` would need
 to switch to that).
@@ -585,7 +568,7 @@ to switch to that).
 
 `firestore.rules` lets a client set `hunger`/`hygiene`/`happiness` on `pet/main` to any value,
 so a modified client can keep the pet at 100 without spending coins on food/care items. This is
-the trust level chosen for cosmetic stats (docs/BACKEND.md); logged only because the shop economy
+the trust level chosen for cosmetic stats (docs/technical/BACKEND.md); logged only because the shop economy
 depends on it. Fix if it ever matters: allow only decreases from the client (like
 `careItemCounts`) and move restoring into a `consumeCareItem` Cloud Function.
 
@@ -626,7 +609,7 @@ have tests (`npm test`), that upgrade can be regression-checked instead of done 
 ### Tail Charm Clasp doesn't show on the evolved Nori (2026-11-04, deliberate)
 
 Head accessories (crown, bow, sunglasses, goggles, chef hat) now track the evolved form (see
-docs/RESOLVED_LOG.md, 2026-11-04). The **Tail Charm Clasp** is the exception: the evolved tail is
+docs/quality/RESOLVED_LOG.md, 2026-11-04). The **Tail Charm Clasp** is the exception: the evolved tail is
 hidden behind the wings or legs for roughly three quarters of the loop, with only a small stub
 visible mid-hop, so a charm hung on it would float in mid-air. It stays equipped but is not drawn
 once the pet evolves (`accessoryFitsEvolved` in `accessory_art.dart`).
@@ -637,11 +620,11 @@ new one in the player's inventory when the pet evolves — rather than giving th
 on the evolved art. Open details when this is picked up: what the replacement is, whether the swap
 is automatic or offered, and what happens to an already-equipped/owned clasp (refund, convert, keep
 for the baby form). Until then, players can still buy and equip it on an evolved pet, and nothing
-tells them it won't show. The Shop's per-item preview still uses the baby art regardless of stage.
+tells them it won't show; the Shop's evolved preview of the clasp just shows a bare evolved pet.
 
 ### Neck/hand accessory anchors not implemented (necktie, bow, hand-held items)
 
-Per-frame anchor points now exist for eye-midpoint and head-top (see docs/RESOLVED_LOG.md,
+Per-frame anchor points now exist for eye-midpoint and head-top (see docs/quality/RESOLVED_LOG.md,
 2026-09-13), covering glasses and every current hat/headphones item. Neckties/bows and
 hand-held accessories are explicitly **not** covered yet:
 
@@ -777,7 +760,7 @@ accepts a target that can't be reached in the chosen duration.
 
 ### First-run help: what's still missing after the intro cards and hints (2026-10-26)
 
-The intro cards and one-time hints shipped (docs/RESOLVED_LOG.md). Left: the Add Habit terms that
+The intro cards and one-time hints shipped (docs/quality/RESOLVED_LOG.md). Left: the Add Habit terms that
 still lack a plain-language explanation, and any hint for Home (kept
 off on purpose, it's already dense). A hint is one `Tip` value plus one `OneTimeHint` if wanted later.
 Also worth knowing: the seen-state lives in `shared_preferences` (`TipsStore`, keyed by uid), so

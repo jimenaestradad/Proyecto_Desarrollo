@@ -17,7 +17,7 @@ extension HabitRepeatLabel on HabitRepeat {
   };
 }
 
-/// How habit progress is measured; see docs/FEATURES.md §2.
+/// How habit progress is measured; see docs/product/FEATURES.md §2.
 /// [quantity] covers both running amounts and accumulated entries.
 enum HabitType { binary, quantity, duration, multipleCompletion, limit }
 
@@ -41,7 +41,7 @@ extension HabitTypeLabel on HabitType {
 
 /// Starting XP tier picked at habit creation. Values are mock MVP defaults
 /// adopted from the Stitch mock, not a settled balance decision — see
-/// docs/OPEN_DECISIONS.md "XP balancing".
+/// docs/product/OPEN_DECISIONS.md "XP balancing".
 enum HabitDifficulty { easy, medium, hard }
 
 extension HabitDifficultyXp on HabitDifficulty {
@@ -152,7 +152,7 @@ class Habit {
   final double currentValue;
 
   /// Static per-habit multiplier standing in for adaptive difficulty — see
-  /// docs/OPEN_DECISIONS.md "Adaptive-XP formula and adjustment window",
+  /// docs/product/OPEN_DECISIONS.md "Adaptive-XP formula and adjustment window",
   /// which this does not attempt to resolve. Clamped 0.5–1.5.
   final double adaptiveMultiplier;
 
@@ -161,8 +161,9 @@ class Habit {
 
   final bool allowVacationFreeze;
 
-  /// What today's first claim paid out. Kept after an unclaim, since each
-  /// day pays once (docs/BACKEND.md, unclaimHabit) — a re-claim pays nothing.
+  /// What today's claim paid out, held only while claimed: an unclaim takes
+  /// it back and zeroes this (docs/technical/BACKEND.md, unclaimHabit). Days
+  /// un-claimed before 2026-11-08 still hold theirs, and a re-claim pays nothing.
   final int lastAwardedXp;
   final int lastAwardedCoins;
 
@@ -319,7 +320,7 @@ class Habit {
   }
 
   /// XP/coins today's state would pay out. Deliberately `base × adaptive ×
-  /// tier` only — no cadence multiplier, since docs/OPEN_DECISIONS.md defers
+  /// tier` only — no cadence multiplier, since docs/product/OPEN_DECISIONS.md defers
   /// "exact cadence multipliers" and this doesn't attempt to resolve it.
   ({int xp, int coins}) computeReward() {
     final fraction = rewardTier.xpFraction;
@@ -380,7 +381,7 @@ class Habit {
 
   /// The document body for `/users/{uid}/habits/{habitId}` — `id` is the
   /// path segment, not a field, so it's deliberately left out here (see
-  /// [fromJson]). See docs/BACKEND.md "Firestore schema".
+  /// [fromJson]). See docs/technical/BACKEND.md "Firestore schema".
   Map<String, dynamic> toJson() => {
     'name': name,
     'subtitle': subtitle,

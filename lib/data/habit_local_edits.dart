@@ -21,7 +21,8 @@ extension HabitLocalEdits on Habit {
   Habit withLogged(double amount) => withProgress(currentValue + amount);
 
   /// Complete: progress habits snap up to the target, like the server's
-  /// claimValue. A day pays once, so a re-claim keeps what it paid.
+  /// claimValue. Only a legacy day that kept its payout through an old undo
+  /// pays nothing on re-claim; every other claim pays in full.
   Habit claimedLocally() {
     final target = targetValue;
     final snapped = completesAtTarget && currentValue < target!
@@ -36,11 +37,13 @@ extension HabitLocalEdits on Habit {
     );
   }
 
-  /// Undo: the payout stays, as on the server. [restoreValue] is the
+  /// Undo: the payout is taken back, as on the server. [restoreValue] is the
   /// progress the habit had before Complete snapped it to the target.
   Habit unclaimedLocally({double? restoreValue}) => copyWith(
     isCompletedToday: false,
     currentValue: restoreValue ?? currentValue,
+    lastAwardedXp: 0,
+    lastAwardedCoins: 0,
   );
 }
 

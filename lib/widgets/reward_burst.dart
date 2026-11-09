@@ -8,7 +8,7 @@ import 'reward_pill.dart';
 /// The no-modal "that counted" cue for completing a habit: a reward chip
 /// ("+13 XP · 5") rises from where the finger tapped and fades in about a
 /// second, with a short haptic tap. Nothing to dismiss and nothing blocks the
-/// next tap. See docs/DESIGN.md §9.
+/// next tap. See docs/product/DESIGN.md §9.
 class RewardBurst {
   RewardBurst._();
 
@@ -24,7 +24,7 @@ class RewardBurst {
   );
 
   /// Shows the burst for a claim that is about to pay. Does nothing for an
-  /// undo, an edit, or a day that already paid (a re-claim pays 0).
+  /// undo, an edit, or a legacy day that kept its payout (a re-claim pays 0).
   static void showForClaim(
     BuildContext context, {
     required Habit before,

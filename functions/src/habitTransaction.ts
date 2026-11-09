@@ -45,22 +45,27 @@ export function asNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-// Whether a habit log or bucket-list item already paid its reward. Each pays
-// once: unclaiming keeps the payout, so re-claiming pays nothing and
-// claim → spend → unclaim → re-claim can't mint coins (2026-10-26).
+// Whether a habit log or bucket-list item currently holds a payout. Undo takes
+// it back (unclaimHabit / uncompleteBucketListItem zero these fields), so a
+// re-claim pays again. Only records un-claimed before 2026-11-08, which kept
+// their payout, still hold one while unclaimed; re-claiming those pays nothing.
 export function rewardPaid(data: DocumentData | undefined): boolean {
   return asNumber(data?.awardedXp, 0) > 0 || asNumber(data?.awardedCoins, 0) > 0;
 }
 
-// The balance after taking back [amount] coins, for deletes, which do
-// reverse a payout. Rejects instead of clamping at 0, so a delete can't keep
-// coins that were already spent.
-export function coinsAfterReversal(userData: DocumentData, amount: number): number {
+// The balance after taking back [amount] coins, for deletes and undos, which
+// reverse a payout. Rejects instead of clamping at 0, so neither can keep
+// coins that were already spent. [action] completes the user-facing message.
+export function coinsAfterReversal(
+  userData: DocumentData,
+  amount: number,
+  action: "deleted" | "undone" = "deleted",
+): number {
   const coins = asNumber(userData.coins, 0);
   if (coins < amount) {
     throw new HttpsError(
       "failed-precondition",
-      "You've already spent the coins this earned, so it can't be deleted.",
+      `You've already spent the coins this earned, so it can't be ${action}.`,
     );
   }
   return coins - amount;

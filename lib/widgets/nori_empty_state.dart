@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'tactile_button.dart';
 
-/// Friendly empty state (docs/DESIGN.md §9): one Material icon in a tinted
+/// Friendly empty state (docs/product/DESIGN.md §9): one Material icon in a tinted
 /// ink-bordered circle, a heading, muted body copy, and an optional CTA.
 class NoriEmptyState extends StatelessWidget {
   const NoriEmptyState({

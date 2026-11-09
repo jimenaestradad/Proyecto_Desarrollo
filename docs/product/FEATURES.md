@@ -181,9 +181,15 @@ OPEN_DECISIONS.
   state after switching accounts, competitions that never expire, blocked users still listed, and
   so on) are accepted and aren't being fixed. Only fix something here if it crashes, or if it
   breaks a *real* screen (Home, Habits, Profile, Achievements) that shares code with it.
-  Layouts came from two Stitch exports, rebuilt on our own design system (`docs/DESIGN.md`).
+  Layouts came from two Stitch exports, rebuilt on our own design system (`docs/product/DESIGN.md`).
   The earlier design-only mock (2026-09-10) it replaces took the old Achievements tab slot;
   Achievements itself lives under Profile.
+- **Idea, not for now (2026-11-08, valevasqc): avatars as an option instead of profile pictures.**
+  Let people pick an illustrated avatar (in the app's art style) instead of uploading a photo. Not
+  planned for this semester and nothing is built; today the profile picture is a photo the user
+  picks (kept in memory for the session only, see above). If it's picked up later, decide whether
+  avatars replace photos or sit beside them, and where they're stored (a bundled set needs no
+  backend; custom or unlockable ones would).
 
 ## 11. Bucket list
 

@@ -42,7 +42,7 @@ class FirestoreInventoryRepository implements InventoryRepository {
     if (data == null) {
       throw StateError(
         'No inventory/main document for $_uid -- onUserCreate has not '
-        'provisioned one yet (see docs/BACKEND.md, Cloud Functions). '
+        'provisioned one yet (see docs/technical/BACKEND.md, Cloud Functions). '
         "FirestoreInventoryRepository isn't safe to use until that exists.",
       );
     }

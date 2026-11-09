@@ -298,6 +298,44 @@ class CoverPhoto extends StatelessWidget {
   );
 }
 
+/// Small square thumbnail for list rows: the showcase cover photo when there
+/// is one, else the same colored icon badge the row always used.
+class CoverBadge extends StatelessWidget {
+  const CoverBadge({
+    super.key,
+    required this.icon,
+    required this.background,
+    required this.size,
+    required this.iconSize,
+    this.asset,
+  });
+
+  final IconData icon;
+  final Color background;
+  final double size;
+  final double iconSize;
+  final String? asset;
+
+  @override
+  Widget build(BuildContext context) => asset == null
+      ? NoriIconBadge(
+          icon: icon,
+          background: background,
+          size: size,
+          iconSize: iconSize,
+        )
+      : Container(
+          width: size,
+          height: size,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.sm * 0.75),
+            border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+          ),
+          child: Image.asset(asset!, fit: BoxFit.cover),
+        );
+}
+
 /// Reaction pills for a post plus an "add reaction" picker and a comment
 /// count. Existing reactions (or ones you've added) show as toggle pills.
 class ReactionBar extends StatelessWidget {

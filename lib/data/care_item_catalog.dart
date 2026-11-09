@@ -5,6 +5,22 @@ import '../theme/app_colors.dart';
 /// (Fed/Clean/Happy in `_RoomHud`).
 enum CareCategory { hunger, hygiene, love }
 
+/// How a stat is named and coloured everywhere it appears. The colour is the
+/// one on Home's vital ring, so a shop tile matches the ring it refills.
+extension CareCategoryStyle on CareCategory {
+  String get statLabel => switch (this) {
+    CareCategory.hunger => 'Fullness',
+    CareCategory.hygiene => 'Hygiene',
+    CareCategory.love => 'Happiness',
+  };
+
+  Color get statColor => switch (this) {
+    CareCategory.hunger => AppColors.terracotta,
+    CareCategory.hygiene => AppColors.skyBlue,
+    CareCategory.love => AppColors.moss,
+  };
+}
+
 /// Consumable pet-care item sold in Shop and selected from Home's vital rings.
 /// Two tiers per stat provide a choice within the MVP's basic care economy.
 class CareItem {
@@ -12,7 +28,6 @@ class CareItem {
     required this.id,
     required this.name,
     required this.icon,
-    required this.color,
     required this.price,
     required this.category,
     required this.restoreAmount,
@@ -24,13 +39,15 @@ class CareItem {
   final String name;
   final IconData icon;
   final String? image;
-  final Color color;
   final int price;
   final CareCategory category;
 
+  /// Tile colour: the ring colour of the stat this item refills.
+  Color get color => category.statColor;
+
   /// Points the matching vital recovers per use. Pricier items restore
   /// more — an INFERRED rule (valevasqc's own suggestion, not a tuned
-  /// balance decision); see docs/OPEN_DECISIONS.md "Economy".
+  /// balance decision); see docs/product/OPEN_DECISIONS.md "Economy".
   final double restoreAmount;
 
   /// Uses granted per purchase.
@@ -43,7 +60,6 @@ const List<CareItem> kCareItemCatalog = [
     name: 'Food',
     icon: Icons.restaurant,
     image: 'assets/images/accessories/food.png',
-    color: AppColors.blush,
     price: 10,
     category: CareCategory.hunger,
     restoreAmount: 25,
@@ -54,7 +70,6 @@ const List<CareItem> kCareItemCatalog = [
     name: 'Cake',
     icon: Icons.cake,
     image: 'assets/images/accessories/cake.png',
-    color: AppColors.blush,
     price: 18,
     category: CareCategory.hunger,
     restoreAmount: 50,
@@ -65,7 +80,6 @@ const List<CareItem> kCareItemCatalog = [
     name: 'Shampoo',
     icon: Icons.soap,
     image: 'assets/images/accessories/shampoo.png',
-    color: AppColors.sky,
     price: 10,
     category: CareCategory.hygiene,
     restoreAmount: 25,
@@ -76,7 +90,6 @@ const List<CareItem> kCareItemCatalog = [
     name: 'Hair Brush',
     icon: Icons.brush,
     image: 'assets/images/accessories/hair-brush.png',
-    color: AppColors.sky,
     price: 18,
     category: CareCategory.hygiene,
     restoreAmount: 50,
@@ -87,7 +100,6 @@ const List<CareItem> kCareItemCatalog = [
     name: 'Plushie',
     icon: Icons.sports_baseball,
     image: 'assets/images/accessories/plushie.png',
-    color: AppColors.mustardLight,
     price: 10,
     category: CareCategory.love,
     restoreAmount: 25,
@@ -98,7 +110,6 @@ const List<CareItem> kCareItemCatalog = [
     name: 'Blanket',
     icon: Icons.bed,
     image: 'assets/images/accessories/blanket.png',
-    color: AppColors.mustardLight,
     price: 18,
     category: CareCategory.love,
     restoreAmount: 50,

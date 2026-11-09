@@ -41,7 +41,7 @@ abstract class SocialRepository {
   Future<List<SocialUser>> searchUsers(String query);
 
   /// Friends-of-friends you could add (mutual friends only — no stranger
-  /// discovery, per docs/FEATURES.md §10).
+  /// discovery, per docs/product/FEATURES.md §10).
   Future<List<SocialUser>> getSuggestions();
   Future<bool> hasPendingRequestTo(String userId);
 

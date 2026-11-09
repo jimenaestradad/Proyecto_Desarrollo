@@ -4,6 +4,7 @@ import 'package:nori/utils/formatting.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/screens/social/social_load_state.dart';
+import 'package:nori/screens/social/widgets/social_widgets.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
@@ -202,8 +203,30 @@ class _CompetitionCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: AppSpacing.stackSm),
-              Text(c.title, style: AppTextStyles.headlineLgMobile),
-              Text(c.description, style: AppTextStyles.bodyMd),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (c.coverAsset != null) ...[
+                    CoverBadge(
+                      icon: c.icon,
+                      background: AppColors.white,
+                      size: 56,
+                      iconSize: 28,
+                      asset: c.coverAsset,
+                    ),
+                    const SizedBox(width: AppSpacing.stackSm),
+                  ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(c.title, style: AppTextStyles.headlineLgMobile),
+                        Text(c.description, style: AppTextStyles.bodyMd),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: AppSpacing.stackSm),
               Text(
                 '${c.myProgress}/${c.targetCount} · ${(c.myFraction * 100).floor()}%',

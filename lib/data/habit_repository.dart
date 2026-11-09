@@ -41,7 +41,7 @@ abstract class HabitRepository {
   Future<HabitRewardResult> setHabitCompleted(String habitId, bool completed);
 
   /// Quantity/Duration/Cumulative/MultipleCompletion/Limit quick-log. Never
-  /// awards anything by itself — per docs/FEATURES.md §3, logging progress
+  /// awards anything by itself — per docs/product/FEATURES.md §3, logging progress
   /// alone doesn't earn XP, only claiming a completed habit does.
   Future<void> logProgress(String habitId, double amount);
 
@@ -103,7 +103,7 @@ abstract class HabitRepository {
   Future<List<Habit>> getArchivedHabits();
 
   /// Hides a habit from today onward, keeping all of its history. See
-  /// docs/BACKEND.md, "Deleting vs. archiving a habit".
+  /// docs/technical/BACKEND.md, "Deleting vs. archiving a habit".
   Future<void> archiveHabit(String habitId);
 
   /// Brings an archived habit back from today. The archived stretch stays
@@ -258,9 +258,13 @@ class MockHabitRepository implements HabitRepository {
       return HabitRewardResult(reward.xp, reward.coins);
     }
 
-    // Pay once per day: the reward stays paid (docs/BACKEND.md, unclaimHabit).
-    _habits[index] = habit.copyWith(isCompletedToday: false);
-    return HabitRewardResult.none;
+    // Undo takes back exactly what was paid (docs/technical/BACKEND.md, unclaimHabit).
+    _habits[index] = habit.copyWith(
+      isCompletedToday: false,
+      lastAwardedXp: 0,
+      lastAwardedCoins: 0,
+    );
+    return HabitRewardResult(-habit.lastAwardedXp, -habit.lastAwardedCoins);
   }
 
   @override
@@ -336,8 +340,12 @@ class MockHabitRepository implements HabitRepository {
     final habit = _habits[index];
     if (!habit.isCompletedToday) return HabitRewardResult.none;
 
-    _habits[index] = habit.copyWith(isCompletedToday: false);
-    return HabitRewardResult.none;
+    _habits[index] = habit.copyWith(
+      isCompletedToday: false,
+      lastAwardedXp: 0,
+      lastAwardedCoins: 0,
+    );
+    return HabitRewardResult(-habit.lastAwardedXp, -habit.lastAwardedCoins);
   }
 
   @override
@@ -420,8 +428,12 @@ class MockHabitRepository implements HabitRepository {
     }
 
     if (!previous.claimed) return HabitRewardResult.none;
-    history.write(habitId, day, previous.copyWith(claimed: false));
-    return HabitRewardResult.none;
+    history.write(
+      habitId,
+      day,
+      previous.copyWith(claimed: false, awardedXp: 0, awardedCoins: 0),
+    );
+    return HabitRewardResult(-previous.awardedXp, -previous.awardedCoins);
   }
 
   @override
@@ -590,7 +602,7 @@ class MockHabitRepository implements HabitRepository {
 /// across the log, user, pet and inventory.
 class FirestoreHabitRepository implements HabitRepository {
   /// Every document lives under the signed-in user — see
-  /// docs/BACKEND.md "Firestore schema". Throws if nobody's signed in.
+  /// docs/technical/BACKEND.md "Firestore schema". Throws if nobody's signed in.
   String get _uid => requireSignedInUid('FirestoreHabitRepository');
 
   /// A `CollectionReference` is just a *pointer* to a path — it does no
@@ -602,7 +614,7 @@ class FirestoreHabitRepository implements HabitRepository {
       .doc(_uid)
       .collection('habits');
 
-  /// Flat, not nested under `_habits` — see docs/BACKEND.md's "Why
+  /// Flat, not nested under `_habits` — see docs/technical/BACKEND.md's "Why
   /// `habitLogs` is a flat collection" for why: it's what makes [logsInRange]
   /// below a single range query instead of one query per habit.
   CollectionReference<Map<String, dynamic>> get _habitLogs => FirebaseFirestore
@@ -725,7 +737,7 @@ class FirestoreHabitRepository implements HabitRepository {
 
   // logProgress/setProgress are just logProgressForDate/setProgressForDate
   // for today — there's no separate "today" storage anymore (that was the
-  // midnight-rollover bug: see docs/KNOWN_ISSUES.md), so today needs no
+  // midnight-rollover bug: see docs/quality/KNOWN_ISSUES.md), so today needs no
   // special-cased transaction of its own.
   @override
   Future<void> logProgress(String habitId, double amount) =>
@@ -749,7 +761,7 @@ class FirestoreHabitRepository implements HabitRepository {
 
   /// Calls the claimHabit/unclaimHabit Cloud Function for [date]. The day is
   /// sent as the device-local key + local midnight, never derived on the
-  /// server (docs/BACKEND.md, "Dates and the day-rollover rule"). Throws
+  /// server (docs/technical/BACKEND.md, "Dates and the day-rollover rule"). Throws
   /// [CloudFunctionFailure] with a user-facing message on any failure.
   Future<HabitRewardResult> _callRewardFunction(
     String function,

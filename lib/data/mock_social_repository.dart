@@ -13,7 +13,7 @@ import 'social_repository.dart';
 
 /// In-memory stand-in for the Social backend: every list below is seed data
 /// that screens read and mutate through [SocialRepository]. Resets on app
-/// restart. See docs/BACKEND.md (social is a non-goal there) — swap this for
+/// restart. See docs/technical/BACKEND.md (social is a non-goal there) — swap this for
 /// a real implementation on `AppData.social` when it's built.
 class MockSocialRepository extends ChangeNotifier implements SocialRepository {
   /// [account], when given, makes "you" the signed-in user (name, username,

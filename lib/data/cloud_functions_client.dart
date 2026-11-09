@@ -51,7 +51,7 @@ Future<Map<String, dynamic>> callCloudFunction(
   } catch (e) {
     // Network failure, timeout, or anything else that isn't the
     // function's own expected rejection -- same generic message either
-    // way (docs/BACKEND.md, "Online only -- no offline mode": "everything
+    // way (docs/technical/BACKEND.md, "Online only -- no offline mode": "everything
     // fails the same way").
     debugPrint('$name failed: $e');
     throw const CloudFunctionFailure(serverUnreachableMessage);

@@ -1,4 +1,5 @@
 import { asNumber } from "./habitTransaction";
+import { LevelState, xpForLevel } from "./xpCurve";
 
 // What the demo account always starts a test session with: every care item
 // (food and cake for hunger, shampoo and hair brush for hygiene, plushie and
@@ -20,4 +21,19 @@ export function topUpCareItems(counts: unknown): Record<string, number> {
 
 export function topUpCoins(coins: number): number {
   return Math.max(coins, DEMO_MIN_COINS);
+}
+
+// Where a reset leaves the level: one level short of evolving, with just enough XP in the bar
+// that completing the single biggest bucket goal crosses the evolution line. Habit XP earned
+// since the last reset can't keep the pet evolved (reversing bucket payouts alone leaves it
+// evolved when habits alone got past the threshold).
+export function evolutionBaseline(evolutionLevelThreshold: number, largestGoalXp: number): LevelState {
+  const level = Math.max(1, Math.floor(evolutionLevelThreshold) - 1);
+  const xpIntoLevel = Math.min(
+    xpForLevel(level) - 1,
+    Math.max(0, xpForLevel(level) - Math.max(0, largestGoalXp)),
+  );
+  let totalXp = xpIntoLevel;
+  for (let l = 1; l < level; l++) totalXp += xpForLevel(l);
+  return { level, totalXp, xpIntoLevel };
 }

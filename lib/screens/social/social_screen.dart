@@ -37,7 +37,6 @@ import 'package:nori/widgets/nori_avatar.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_choice_chip.dart';
 import 'package:nori/widgets/nori_empty_state.dart';
-import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
@@ -592,11 +591,12 @@ class _SocialScreenState extends State<SocialScreen>
             children: [
               Row(
                 children: [
-                  NoriIconBadge(
+                  CoverBadge(
                     icon: competition.icon,
                     background: competition.color,
                     size: 48,
                     iconSize: 24,
+                    asset: competition.coverAsset,
                   ),
                   const SizedBox(width: AppSpacing.stackSm),
                   Expanded(
@@ -655,11 +655,12 @@ class _SocialScreenState extends State<SocialScreen>
                   padding: const EdgeInsets.all(AppSpacing.stackSm),
                   child: Row(
                     children: [
-                      NoriIconBadge(
+                      CoverBadge(
                         icon: circle.icon,
                         background: AppColors.white,
                         size: 40,
                         iconSize: 20,
+                        asset: circle.coverAsset,
                       ),
                       const SizedBox(width: AppSpacing.stackSm),
                       Expanded(

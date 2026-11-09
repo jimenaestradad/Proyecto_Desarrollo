@@ -18,7 +18,7 @@ import 'widgets/reward_burst.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // Online only (docs/BACKEND.md): with persistence on, direct Firestore
+  // Online only (docs/technical/BACKEND.md): with persistence on, direct Firestore
   // writes silently queue offline while Cloud Function calls fail, so half
   // the app would appear to work. Off, everything fails the same way and
   // RemoteLoadState's timeout surfaces it.

@@ -2,15 +2,15 @@
 
 Decided 2026-09-16: **Firebase Auth + Cloud Firestore + Cloud Functions (Node.js/TypeScript)**.
 This doc is the technical reference for the **Backend, Data, and GCP** phases in
-[ROADMAP.md](ROADMAP.md). It does not reopen product/scope questions;
-[FEATURES.md](FEATURES.md) stays the source of truth for *what* the app does, and
-[OPEN_DECISIONS.md](OPEN_DECISIONS.md) for unresolved game-balance numbers (XP curve, adaptive-XP
+[ROADMAP.md](../product/ROADMAP.md). It does not reopen product/scope questions;
+[FEATURES.md](../product/FEATURES.md) stays the source of truth for *what* the app does, and
+[OPEN_DECISIONS.md](../product/OPEN_DECISIONS.md) for unresolved game-balance numbers (XP curve, adaptive-XP
 formula, cadence multipliers, shop prices, etc). Backend implements whatever balance math already
 exists in the mock repos (`lib/data/*.dart`); it does not invent new balance numbers.
 
-[firestore.rules](../firestore.rules) is the source of truth for what clients may write. This doc
+[firestore.rules](../../firestore.rules) is the source of truth for what clients may write. This doc
 explains the intent behind it. History (bugs found, deploys, verification runs) lives in
-[RESOLVED_LOG.md](RESOLVED_LOG.md).
+[RESOLVED_LOG.md](../quality/RESOLVED_LOG.md).
 
 ## Starting point
 
@@ -194,7 +194,7 @@ notification, in the same transaction as the event when there is one:
 | Kind | Written by | When |
 |---|---|---|
 | `levelUp`, `petEvolved`, `gift` | `claimHabit`, `completeBucketListItem` (`functions/src/notifications.ts`) | The reward crosses a level, evolves the pet, or grants the first-completion gift |
-| `petCare` | `petCareCheck`, a scheduled function that runs every hour | A pet vital (after lazy decay) is below 30, at most once per 24h, and only while the pet was cared for within the last 7 days |
+| `petCare` | `petCareCheck`, a scheduled function that runs every 6 hours (changed from hourly 2026-11-08 in code; the deployed copy still runs hourly until the next `functions:petCareCheck` deploy) | A pet vital (after lazy decay) is below 30, at most once per 24h, and only while the pet was cared for within the last 7 days |
 | `achievement`, `streak` | The app (`FirestoreNotificationRepository`), when Notifications opens | A new unlocked achievement, or the streak reaches 3/7/14/30/60/100/180/365 |
 
 - **Streaks and achievements stay on the client** because only the client computes them today.
@@ -208,8 +208,8 @@ notification, in the same transaction as the event when there is one:
 - **Unread dot.** The bell on Habits listens to a `limit(1)` unread query, so server-written
   notifications show up live.
 - **Icon, label and color come from `kind`** on the client, so restyling needs no migration.
-- **Cost.** `petCareCheck` reads every pet once an hour (24 reads per user per day), fine at this
-  scale. `PET_DECAY_PER_HOUR` in `notifications.ts` must match
+- **Cost.** `petCareCheck` reads every pet, dormant ones included, once per run: 4 reads per account per
+  day at every 6 hours (24 at the old hourly schedule), fine at this scale. `PET_DECAY_PER_HOUR` in `notifications.ts` must match
   `FirestorePetRepository._decayPerHour`.
 
 **Mocks stay until their replacement works.** Swap one repository at a time in `app_data.dart`.
@@ -301,7 +301,7 @@ the user skips onboarding, the name stays `'Nori'`.
 
 ## Security rules
 
-[firestore.rules](../firestore.rules) is authoritative; this is the intent.
+[firestore.rules](../../firestore.rules) is authoritative; this is the intent.
 
 - Default deny everywhere.
 - `/users/{uid}` and everything under it: read/write only if `request.auth.uid == uid`.
@@ -378,17 +378,17 @@ Jimena's; 2, 3, 10, 11, 12 are Valeria's. Keep this list short.
      xpDelta, coinsDelta, previousLevel, level, previousPetStage, petStage, giftedAccessoryId}`
      so the client can fire level-up/evolution/gift celebrations without extra reads.
 3. `unclaimHabit({habitId, dayKey, dayStartMillis})` (`functions/src/unclaimHabit.ts`; shared
-   refs/result type/pet sync in `functions/src/habitTransaction.ts`) — **pay once per day:**
-   unclaim only sets `claimed: false` and keeps `awardedXp`/`awardedCoins` on the log, and
-   `claimHabit` pays nothing for a log that already paid (`rewardPaid` in `habitTransaction.ts`).
-   Exact reversal would let claim → spend → unclaim → re-claim mint coins. Keeps the log's
-   `value` (so progress stays editable), never revokes the sunglasses gift, and doesn't touch the
-   user or pet. Not claimed → no-op. Bucket-list complete/uncomplete follow the same rule.
-   Deletes (`deleteHabit`, `deleteBucketListItem`) still reverse every stored payout, and are
-   rejected if those coins were already spent (`coinsAfterReversal`), so create → claim → delete
-   can't mint either. Returns the same shape as `claimHabit`. (Whether Undo should claw back is
-   reopened in OPEN_DECISIONS.md; the client's auto-complete at target and session-only restore
-   of pre-Complete progress, `lib/data/habit_local_edits.dart`, change nothing server-side.)
+   refs/result type/pet sync in `functions/src/habitTransaction.ts`) — **Undo takes back exactly
+   what the claim paid** (decided 2026-11-08): it sets `claimed: false`, reverses the log's stored
+   `awardedXp`/`awardedCoins` on the user (level can drop, `syncPetStage` can de-evolve the pet) and
+   zeroes them on the log, so a re-claim pays in full again and claim → undo nets zero. It **rejects
+   when the coins were already spent** (`coinsAfterReversal(..., "undone")`, "You've already spent
+   the coins this earned, so it can't be undone."), the same rule as `deleteHabit`, instead of
+   flooring at 0 or going negative, so claim → spend → undo can't keep the purchase for free. Keeps
+   the log's `value` (so progress stays editable) and never revokes the sunglasses gift. Not
+   claimed → no-op. Returns the same shape as `claimHabit`, with negative `xpDelta`/`coinsDelta`.
+   *Legacy:* a log un-claimed before 2026-11-08 still holds its payout while unclaimed; `claimHabit`
+   re-marks it claimed and pays nothing (`rewardPaid`), and a later Undo then reverses it.
 4. *(unused: `setHabitCompleted` was removed as a duplicate; the binary checkbox calls
    `claimHabit`/`unclaimHabit` directly.)*
 5. `purchaseCareItem(itemId, quantity)` — validates cost ≤ coins, decrements coins, increments
@@ -400,15 +400,16 @@ Jimena's; 2, 3, 10, 11, 12 are Valeria's. Keep this list short.
    `awardedXp`/`awardedCoins`** on the item. Syncs `pet.stage` in the same transaction, like
    `claimHabit` (the client can't write `stage`, so otherwise a bucket-list reward could cross
    the evolution level without evolving the pet).
-8. `uncompleteBucketListItem(itemId)` — un-marks the item but keeps what it paid (pay once, see
-   #3); completing it again pays nothing.
+8. `uncompleteBucketListItem(itemId)` — un-marks the item and reverses what it paid, like #3
+   (rejects if the coins were already spent), zeroes `awardedXp`/`awardedCoins` and clears `paidAt`
+   so it stops counting toward the weekly paid-goal limit; completing it again pays again.
 9. `deleteBucketListItem(itemId)` — deletes the item, first reversing its stored payout if it
    ever paid one, in one transaction. `firestore.rules` only lets the client delete an item
    directly while it isn't completed and has never paid.
 10. `deleteHabit(habitId)` — deletes a habit with at most 2 active days plus all its logs,
     taking back what its claims paid, in one transaction. Rejects anything with more history
     with "archive it instead". See "Deleting vs. archiving a habit".
-11. `petCareCheck` (scheduled, hourly) — writes a "pet needs you" notification when a pet's
+11. `petCareCheck` (scheduled, every 6 hours) — writes a "pet needs you" notification when a pet's
     decayed vital is below 30, at most once per 24h. See "In-app notifications".
 12. `deleteAccount()` — deletes the caller's `/usernames` entries, the whole `/users/{uid}` tree
     (`recursiveDelete`), then the Auth user. Data goes first so a failure leaves a signed-in
@@ -553,18 +554,29 @@ npm run build && node lib/seedHistory.js --uid <uid> --days 30 --apply  # writes
 ```
 
 **Demo account reset: `resetDemoAccount`** (`functions/src/resetDemoAccount.ts`). A dev-only
-callable behind Settings → Developer → "Reset demo account", so the bucket-list evolution flow
-can be re-tested without scripts. It takes back every bucket-list payout (XP, coins, completed
-state — the stored `awardedXp`/`awardedCoins`, like `deleteBucketListItem`), drops the level and
-pet stage that XP had earned, and clears the `notificationState` level/evolved flags plus the old
-level-up / evolved notifications so they fire again. It then tops the account up to its test
-baseline (`functions/src/demoBaseline.ts`): every care item at least 3 (food, cake, shampoo, hair
-brush, plushie, blanket) and at least 500 coins, floors only, never lowering anything. The local
-`seedHistory` script applies the same top-up after seeding. Habits, logs, accessories and
-achievements are untouched. It rejects any caller whose verified token email isn't `demo@test.com`; the Settings
-row also hides itself for everyone else, but that is cosmetic. **Deployed 2026-11-07** (in
-`firebase functions:list`; answers a CORS preflight with 204), **without the baseline top-up, which
-needs a redeploy of `resetDemoAccount`**. Its callable behaviour has not yet been exercised from the Settings button.
+callable behind Settings → Developer → "Reset demo account", so the bucket-list evolution and
+habit-claim flows can be re-tested without scripts. It takes back every bucket-list payout
+(completed state, `awardedXp`/`awardedCoins`, `paidAt`, so the weekly limit clears too) and puts
+the level at one short of `EVOLUTION_LEVEL` with just enough XP in the bar that the biggest bucket
+goal evolves Nori (`evolutionBaseline` in `demoBaseline.ts`; reversing payouts alone left the pet
+evolved whenever habit XP had passed the threshold). It syncs the pet stage, sets the stored
+`evolutionLevelThreshold` to `EVOLUTION_LEVEL`, and clears the `notificationState` level/evolved
+flags plus the old level-up / evolved notifications so they fire again. The app also sends today's
+day, and that day's habit logs are deleted: a log remembers that it already paid, so otherwise
+undoing and redoing a habit the same day pays nothing. It also fills in the last 7 days of habit
+history (`demoHistory.ts`, which reuses `seedPlan.ts`; only days with no log yet, createdAt moved
+back as the seed script does). Those logs record what they paid but add no XP or coins, since the
+level baseline is the account's progress. Vacation mode is switched off (an open freeze is
+ended), the pet's vitals are set to 60 with hunger left at 0 (for the low-vital warning), and the
+pile of pet-care reminders is replaced by a single one.
+It then tops the account up to its test baseline (`demoBaseline.ts`): every care item at least 3
+and at least 500 coins, floors only. The local `seedHistory` script applies the same top-up after
+seeding. Days older than a week, accessories and achievements are untouched. It rejects any caller whose verified token email isn't
+`demo@test.com`; the Settings row also hides itself for everyone else, but that is cosmetic.
+**Deployed 2026-11-07** (in `firebase functions:list`; answers a CORS preflight with 204), but
+**the deployed copy predates the evolution baseline, today's-log reset and the top-up, which need a
+redeploy of `resetDemoAccount`**. The same logic (`resetDemoAccountFor`) was exercised against the
+demo account from a script on 2026-11-08, not yet from the Settings button.
 
 ## GCP sprint status
 
@@ -577,8 +589,15 @@ functions:list`). Left: CI/CD básico, and a release APK build (never run; it wo
 `functions/` folders, and a `firebase deploy` from either one deleted the other's live functions
 (it happened once, to `onUserCreate`; see RESOLVED_LOG.md, 2026-09-28). They were merged.
 
-**Cost** (checked 2026-10-26): a $5/month budget ("Firebase Project nori-pet") alerts at
-50/90/100%; `gcf-artifacts` has Firebase's 3-day cleanup policy (~0.56 GB, a cent or less a month
+**Cost** (checked 2026-10-26; budgets re-checked live 2026-11-08): a $5/month alert budget
+("Firebase Project nori-pet") at 50/90/100%, plus a $1/month "nori-pet early warning" budget
+(added 2026-11-08; alerts at 50% spent and when the month is forecast to pass $1, raise it as users
+grow) and the Console-generated service spend caps (Cloud Run Functions $5; Cloud Run, Gemini API,
+Vertex AI $1 each), configured and not enforced. Firebase spend caps are not hard caps (usage
+reporting lags by minutes) and exist only for AI Logic, App Hosting, Cloud Functions and Extensions:
+**Firestore and Auth have no cap, only alerts**, so App Check is the real protection against abuse
+(not set up; see docs/business/COTIZACION.md §8). Functions also set `maxInstances: 10`.
+ `gcf-artifacts` has Firebase's 3-day cleanup policy (~0.56 GB, a cent or less a month
 over the 0.5 GB free tier); the last 30 days peaked at ~1.2k Firestore reads/day (free tier 50k)
 and a few hundred writes total. `petCareCheck` is the only cost that grows with users unprompted.
 
@@ -614,6 +633,55 @@ into Jimena's data:
 Both only need the field *shapes* agreed upfront (fixed by the schema above). Jimena still owns
 everything else about the pet and inventory: stat values, care actions, decay, purchases,
 equip/unequip, and the threshold values.
+
+## Plan limits — designed 2026-11-08, not built
+
+Free / Nori Plus / Nori Duo are defined in [COTIZACION.md](../business/COTIZACION.md) Part 2, and the Nori
+Plus screens show them, but nothing is enforced. This is the design for enforcing the two numeric limits,
+**no payments**: Free allows **5 active habits** and **3 incomplete bucket-list goals**; Plus and Duo are
+unlimited. Not started; valevasqc wants it after the 2026-11-12 demo.
+
+**Why not rules alone.** Habits and bucket-list goals are created by direct client writes, and security
+rules can't count documents. A counter field kept by the client and checked with `getAfter()` would work on
+paper, but every archive, restore, delete and Cloud Function would have to keep it in step, and a forged
+counter would pass. Moving creation into Cloud Functions matches the rest of this doc (see
+`deleteHabit`) and is simpler.
+
+**Design.**
+1. **`users/{uid}.plan`**: `"free" | "plus" | "duo"`. A missing field means `free`, so existing accounts
+   need no migration. The user update rule already allows only a fixed list of fields, so clients can't
+   upgrade themselves. `onUserCreate` writes `"free"`. With no billing, the value is set by hand or Admin
+   SDK until Google Play Billing exists. **The demo account (`demo@test.com`) gets `"duo"`**: set it in
+   `resetDemoAccount` so a reset keeps it, plus a one-time Admin write.
+2. **`createHabit` and `createBucketListItem` callables.** One transaction: read the user's plan; for
+   `free`, read the active habits (`archived == false`) or incomplete goals (`isCompleted == false`), both
+   single-field queries, no index needed, and reject at the limit; premium plans skip the count. Reject
+   with an `HttpsError` the client can tell apart from a failure (suggested code `resource-exhausted`).
+   The function validates and writes the same fields the repositories write today.
+3. **Rules.** `create` becomes `false` for `habits` and `bucketList` (Admin SDK bypasses it). A client
+   `archived: true → false` update is blocked; restoring goes through a `restoreHabit` callable that counts
+   active habits like creation does.
+4. **Client.** Read `plan` in the user repository; point `addHabit`, bucket-list `addItem` and
+   `restoreHabit` at the callables; check the count before calling so the common case needs no round
+   trip; show a "you've reached 5 habits, see Nori Plus" sheet on a rejection; Settings' plan card shows
+   the real plan instead of always "Free Plan"; mock repositories and tests follow.
+5. **Deploy order:** functions first (nothing calls them yet), then the app build, then the rules last
+   (diff the live rules first, as in the GCP section). Flipping `create` to `false` breaks any app that
+   still writes directly, so installs of the old APK stop being able to add habits and goals the moment
+   the rules go live.
+
+**Behavior decisions made.** Archived habits and completed goals don't count; deleting frees a slot. An
+account already over a limit (or downgraded) keeps what it has and just can't create more: nothing is
+deleted. Duo's two-account linking is separate work and not needed for this.
+
+**Not enforceable yet:** ads, the daily coin bonus, the monthly accessory, advanced stats, themes and early
+pet access, because those features don't exist. They would read the same `plan` field.
+
+**Effort:** about 11 points (≈ 22 h): server side (field, two callables, restore, rules, unit tests for the
+limit helper in `node:test`, demo account) about 8 pts, client (plan read, callables, limit sheet,
+Settings card) about 3. Check afterwards with the demo account (Duo, unlimited) and a fresh Free account
+(rejects the 6th habit and the 4th goal). A client-only limit would be about 3 pts but anyone could bypass
+it, so it isn't worth building as a stopgap.
 
 ## Explicit non-goals this phase
 

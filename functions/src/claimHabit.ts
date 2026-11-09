@@ -92,7 +92,8 @@ export async function runClaimHabit(
       };
     }
 
-    // Already paid today (then unclaimed): mark it claimed again, pay nothing.
+    // Legacy only: a log un-claimed before 2026-11-08 kept its payout, so
+    // mark it claimed again and pay nothing. Undo now zeroes the payout.
     if (rewardPaid(logData)) {
       const habit = parseHabitDefinition(habitData);
       tx.update(refs.log, { claimed: true, value: claimValue(habit, asNumber(logData?.value, 0)) });

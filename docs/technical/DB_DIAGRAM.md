@@ -4,7 +4,7 @@ Logical entity-relationship view of the Firestore database on project `nori-pet`
 a document database, so there are no foreign-key constraints: every "relationship" below is
 either **containment** (a subcollection under `/users/{uid}`) or a **stored id** the app
 resolves itself. The field-by-field description, write rules and rationale are in
-[BACKEND.md](BACKEND.md) ("Firestore schema") and [firestore.rules](../firestore.rules).
+[BACKEND.md](BACKEND.md) ("Firestore schema") and [firestore.rules](../../firestore.rules).
 
 ```mermaid
 erDiagram

@@ -3,8 +3,8 @@
 The visual rules every Nori screen follows. Use it when building a new screen, reviewing one,
 or briefing a design tool (Stitch, Claude Design) so its output matches the app.
 
-**Source of truth is the code**, not this file: tokens live in [`lib/theme/`](../lib/theme/)
-and component shapes in [`lib/widgets/`](../lib/widgets/). This doc mirrors them in prose. If
+**Source of truth is the code**, not this file: tokens live in [`lib/theme/`](../../lib/theme)
+and component shapes in [`lib/widgets/`](../../lib/widgets). This doc mirrors them in prose. If
 you add or change a token, change it in `lib/theme/` and update the matching table here in the
 same commit. Everything below was checked against the code as of 2026-11-05.
 

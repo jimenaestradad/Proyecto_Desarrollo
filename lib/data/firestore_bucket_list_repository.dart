@@ -119,7 +119,7 @@ class FirestoreBucketListRepository implements BucketListRepository {
   Future<HabitRewardResult> completeItem(String id) {
     throw UnsupportedError(
       'FirestoreBucketListRepository.completeItem: awarding XP/coins is '
-      'Cloud-Function-only (docs/BACKEND.md, "Security rules") -- the '
+      'Cloud-Function-only (docs/technical/BACKEND.md, "Security rules") -- the '
       'deployed rules reject a direct client write to isCompleted/'
       'awardedXp/awardedCoins. Call the completeBucketListItem Cloud '
       'Function from the screen instead.',
@@ -130,7 +130,7 @@ class FirestoreBucketListRepository implements BucketListRepository {
   Future<HabitRewardResult> uncompleteItem(String id) {
     throw UnsupportedError(
       'FirestoreBucketListRepository.uncompleteItem: reversing XP/coins is '
-      'Cloud-Function-only (docs/BACKEND.md, "Security rules") -- the '
+      'Cloud-Function-only (docs/technical/BACKEND.md, "Security rules") -- the '
       'deployed rules reject a direct client write to isCompleted/'
       'awardedXp/awardedCoins. Call the uncompleteBucketListItem Cloud '
       'Function from the screen instead.',

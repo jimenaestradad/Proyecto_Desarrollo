@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 /// A one-time major life goal (travel a country, run a marathon, graduate)
 /// — distinct from a [Habit]: no schedule/streak, completed once, and worth
-/// a much larger one-off XP/coin reward. See docs/FEATURES.md §11.
+/// a much larger one-off XP/coin reward. See docs/product/FEATURES.md §11.
 class BucketListItem {
   const BucketListItem({
     required this.id,

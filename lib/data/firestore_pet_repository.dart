@@ -57,7 +57,7 @@ class FirestorePetRepository implements PetRepository {
   Never _missingDoc() {
     throw StateError(
       'No pet/main document for $_uid -- onUserCreate has not provisioned '
-      'one yet (see docs/BACKEND.md, Cloud Functions). '
+      'one yet (see docs/technical/BACKEND.md, Cloud Functions). '
       "FirestorePetRepository isn't safe to use until that exists.",
     );
   }

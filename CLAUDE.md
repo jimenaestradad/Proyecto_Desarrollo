@@ -12,11 +12,11 @@ Product scope, roadmap, and rationale live in `docs/`, not here — read them be
 product/scope decision. The feature set is still being defined incrementally, so check these
 before assuming anything is decided:
 
-- `docs/OVERVIEW.md` — what Nori is, the core loop, platform target
-- `docs/FEATURES.md` — the actual feature spec (habits, XP, streaks, pets, economy, social) and MVP boundary — source of truth for scope, not OVERVIEW.md
-- `docs/ROADMAP.md` — sprint structure and current phase
-- `docs/OPEN_DECISIONS.md` — unresolved product decisions (e.g. XP formulas) — check here before inventing a rule
-- `docs/DESIGN.md` — the "Flat Storybook" visual system (tokens, components, layout, checklist) — follow it for any UI work; tokens themselves live in `lib/theme/`
+- `docs/product/OVERVIEW.md` — what Nori is, the core loop, platform target
+- `docs/product/FEATURES.md` — the actual feature spec (habits, XP, streaks, pets, economy, social) and MVP boundary — source of truth for scope, not OVERVIEW.md
+- `docs/product/ROADMAP.md` — sprint structure and current phase
+- `docs/product/OPEN_DECISIONS.md` — unresolved product decisions (e.g. XP formulas) — check here before inventing a rule
+- `docs/product/DESIGN.md` — the "Flat Storybook" visual system (tokens, components, layout, checklist) — follow it for any UI work; tokens themselves live in `lib/theme/`
 
 ## Commands
 
@@ -38,10 +38,10 @@ the actual Android target.
   `docs/` — flag the gap instead.
 - When proposing non-trivial work, label claims **CONFIRMED** (backed by code/docs/requirements),
   **INFERRED** (implied but not stated), or **UNRESOLVED** (needs a decision — see
-  `docs/OPEN_DECISIONS.md`).
+  `docs/product/OPEN_DECISIONS.md`).
 - **Icons, never emoji**, anywhere in the UI — use `Icons.*` (Material Symbols) for every glyph
   (habit type badges, care actions, nav, empty states, etc.). Target platform is Android only for
-  now (this ships as an APK, not iOS — see `docs/OVERVIEW.md`), and emoji glyphs render
+  now (this ships as an APK, not iOS — see `docs/product/OVERVIEW.md`), and emoji glyphs render
   inconsistently across Android OEM keyboards/fonts in a way a bundled icon font doesn't.
 
 ## Working with valevasqc

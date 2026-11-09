@@ -70,7 +70,7 @@ class FirestoreUserRepository implements UserRepository {
       if (attempt == attempts) {
         throw StateError(
           'No /users/$_uid document -- onUserCreate has not provisioned one '
-          'yet (see docs/BACKEND.md, Cloud Functions). FirestoreUserRepository '
+          'yet (see docs/technical/BACKEND.md, Cloud Functions). FirestoreUserRepository '
           "isn't safe to use until that exists.",
         );
       }

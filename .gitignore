@@ -2,8 +2,8 @@
 *.local.md
 
 # Local course reference PDFs
-/docs/Programa_Desarrollo_de_Productos_de_Software1.pdf
-/docs/RubricaProyectoFinal.pdf
+/docs/course/Programa_Desarrollo_de_Productos_de_Software1.pdf
+/docs/course/RubricaProyectoFinal.pdf
 
 # Miscellaneous
 *.class
@@ -57,3 +57,9 @@ app.*.map.json
 
 # Playwright MCP session output (screenshots, page dumps): local scratch, never commit
 .playwright-mcp/
+
+# Course reference material (copyrighted textbook), local only
+docs/course/IngenieriadeSoftware1.pdf
+
+# Firebase CLI hosting deploy cache
+.firebase/

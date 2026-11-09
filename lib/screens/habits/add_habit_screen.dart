@@ -1287,7 +1287,7 @@ class _RewardPreview extends StatelessWidget {
 }
 
 /// Archive (always) and Delete (only for a habit with almost no history) at
-/// the bottom of the edit form. See docs/BACKEND.md, "Deleting vs.
+/// the bottom of the edit form. See docs/technical/BACKEND.md, "Deleting vs.
 /// archiving a habit".
 class _ManageHabitSection extends StatelessWidget {
   const _ManageHabitSection({

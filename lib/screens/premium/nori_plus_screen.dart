@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:nori/screens/premium/nori_plans.dart';
 import 'package:nori/screens/premium/payment_method_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
 import 'package:nori/widgets/nori_card.dart';
+import 'package:nori/widgets/nori_segmented_control.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
 class NoriPlusScreen extends StatefulWidget {
@@ -13,7 +15,8 @@ class NoriPlusScreen extends StatefulWidget {
 }
 
 class _NoriPlusScreenState extends State<NoriPlusScreen> {
-  int _selectedPlan = 1;
+  PlanTier _tier = PlanTier.plus;
+  BillingPeriod _period = BillingPeriod.yearly;
 
   void _showUnavailable() {
     ScaffoldMessenger.of(
@@ -24,7 +27,9 @@ class _NoriPlusScreenState extends State<NoriPlusScreen> {
   void _openPaymentMethod() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const PaymentMethodScreen()),
+      MaterialPageRoute(
+        builder: (_) => PaymentMethodScreen(plan: PlanChoice(_tier, _period)),
+      ),
     );
   }
 
@@ -58,20 +63,38 @@ class _NoriPlusScreenState extends State<NoriPlusScreen> {
                 const _PlusHero(),
                 const SizedBox(height: AppSpacing.stackLg),
                 const _FeatureComparisonCard(),
+                const SizedBox(height: AppSpacing.stackSm),
+                Text(
+                  'Everything social stays free on every plan.',
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.labelSm.copyWith(
+                    color: AppColors.inkMuted,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.stackMd),
+                NoriSegmentedControl(
+                  labels: const ['Monthly', 'Yearly'],
+                  selectedIndex: _period.index,
+                  onChanged: (i) =>
+                      setState(() => _period = BillingPeriod.values[i]),
+                ),
                 const SizedBox(height: AppSpacing.stackMd),
                 _PlanCard(
-                  title: 'Monthly',
-                  price: r'$4.99 / month',
-                  selected: _selectedPlan == 0,
-                  onTap: () => setState(() => _selectedPlan = 0),
+                  title: 'Nori Plus',
+                  price: PlanChoice(PlanTier.plus, _period).priceLabel,
+                  detail: 'For one person',
+                  badge: _period == BillingPeriod.yearly ? 'Save 37%' : null,
+                  selected: _tier == PlanTier.plus,
+                  onTap: () => setState(() => _tier = PlanTier.plus),
                 ),
                 const SizedBox(height: AppSpacing.gutter),
                 _PlanCard(
-                  title: 'Yearly',
-                  price: r'$39.99 / year',
-                  badge: 'Save 33%',
-                  selected: _selectedPlan == 1,
-                  onTap: () => setState(() => _selectedPlan = 1),
+                  title: 'Nori Duo',
+                  price: PlanChoice(PlanTier.duo, _period).priceLabel,
+                  detail: 'Two linked accounts, one bill',
+                  badge: _period == BillingPeriod.yearly ? 'Save 37%' : null,
+                  selected: _tier == PlanTier.duo,
+                  onTap: () => setState(() => _tier = PlanTier.duo),
                 ),
                 const SizedBox(height: AppSpacing.stackLg),
                 TactileButton(
@@ -137,7 +160,7 @@ class _PlusHero extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.unit),
         Text(
-          'Unlock exclusive pets, unlimited habits, and reach your goals faster.',
+          'No ads, unlimited habits and a new exclusive accessory for your Nori every month.',
           textAlign: TextAlign.center,
           style: AppTextStyles.bodyLg.copyWith(color: AppColors.inkMuted),
         ),
@@ -159,27 +182,49 @@ class _FeatureComparisonCard extends StatelessWidget {
           _ComparisonRow(
             label: 'Feature',
             free: Text('Free'),
-            plus: Text('Plus'),
+            plus: Text('Plus & Duo'),
             isHeader: true,
           ),
           _ComparisonRow(
             label: 'Active habits',
-            free: Text('Up to 3'),
+            free: Text('Up to 5'),
             plus: Text('Unlimited'),
           ),
           _ComparisonRow(
-            label: 'Exclusive pets',
+            label: 'Bucket list goals',
+            free: Text('Up to 3'),
+            plus: Text('Unlimited'),
+            alternate: true,
+          ),
+          _ComparisonRow(
+            label: 'No ads',
+            free: Icon(Icons.close),
+            plus: Icon(Icons.check_circle),
+          ),
+          _ComparisonRow(
+            label: 'Daily coin bonus',
             free: Icon(Icons.close),
             plus: Icon(Icons.check_circle),
             alternate: true,
           ),
           _ComparisonRow(
-            label: 'Advanced analytics',
+            label: 'Monthly accessory',
             free: Icon(Icons.close),
             plus: Icon(Icons.check_circle),
           ),
           _ComparisonRow(
-            label: 'Custom widgets',
+            label: 'Advanced stats',
+            free: Icon(Icons.close),
+            plus: Icon(Icons.check_circle),
+            alternate: true,
+          ),
+          _ComparisonRow(
+            label: 'Color themes',
+            free: Icon(Icons.close),
+            plus: Icon(Icons.check_circle),
+          ),
+          _ComparisonRow(
+            label: 'Early access to new pets',
             free: Icon(Icons.close),
             plus: Icon(Icons.check_circle),
             alternate: true,
@@ -275,6 +320,7 @@ class _PlanCard extends StatelessWidget {
     required this.price,
     required this.selected,
     required this.onTap,
+    this.detail,
     this.badge,
   });
 
@@ -282,6 +328,7 @@ class _PlanCard extends StatelessWidget {
   final String price;
   final bool selected;
   final VoidCallback onTap;
+  final String? detail;
   final String? badge;
 
   @override
@@ -320,6 +367,13 @@ class _PlanCard extends StatelessWidget {
                             color: AppColors.inkMuted,
                           ),
                         ),
+                        if (detail != null)
+                          Text(
+                            detail!,
+                            style: AppTextStyles.labelSm.copyWith(
+                              color: AppColors.inkMuted,
+                            ),
+                          ),
                       ],
                     ),
                   ),

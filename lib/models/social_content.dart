@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Reactions are Material icons, never emoji (docs/DESIGN.md §6).
+/// Reactions are Material icons, never emoji (docs/product/DESIGN.md §6).
 enum Reaction {
   love(Icons.favorite, Icons.favorite_border, 'Love'),
   celebrate(Icons.celebration, Icons.celebration_outlined, 'Celebrate'),

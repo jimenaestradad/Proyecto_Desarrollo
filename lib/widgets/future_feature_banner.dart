@@ -4,7 +4,7 @@ import 'nori_card.dart';
 
 /// Flags a screen that only exists as a visual preview — the mockup has a
 /// design for it, but the underlying product decision (economy, social,
-/// payments — see docs/OPEN_DECISIONS.md) hasn't been made, so nothing on
+/// payments — see docs/product/OPEN_DECISIONS.md) hasn't been made, so nothing on
 /// the screen is wired to real data or persists anything.
 class FutureFeatureBanner extends StatelessWidget {
   const FutureFeatureBanner({

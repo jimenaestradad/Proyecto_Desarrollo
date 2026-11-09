@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/auth_repository.dart';
 import 'package:nori/data/cloud_functions_client.dart';
+import 'package:nori/data/habit_history_store.dart';
 import 'package:nori/data/tips_store.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/habits/archived_habits_screen.dart';
@@ -167,7 +168,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   /// Dev-only: the `resetDemoAccount` function takes back every bucket-list
-  /// payout (de-evolving Nori) so that flow can be tested again. The server
+  /// payout (de-evolving Nori) and clears today's habit logs so those flows
+  /// can be tested again. The server
   /// refuses anyone but [kDemoAccountEmail]; this row just hides itself.
   bool _resettingDemo = false;
 
@@ -187,14 +189,18 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _runDemoReset() async {
     await guardedAction(() async {
       try {
-        await callCloudFunction('resetDemoAccount', {});
+        final today = dateOnly(DateTime.now());
+        await callCloudFunction('resetDemoAccount', {
+          'dayKey': dayKey(today),
+          'dayStartMillis': today.millisecondsSinceEpoch,
+        });
       } on CloudFunctionFailure catch (e) {
         if (mounted) _showMessage(e.message);
         return;
       }
       if (!mounted) return;
       _showMessage(
-        'Demo account reset — bucket list items pay out again, and care items and coins are topped up.',
+        'Demo account reset — bucket goals and today\'s habits pay out again, and care items and coins are topped up.',
       );
     });
   }

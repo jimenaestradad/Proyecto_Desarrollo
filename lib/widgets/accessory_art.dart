@@ -286,7 +286,7 @@ const Map<String, _EvolvedPlacement> _kEvolvedPlacements = {
 /// Whether [item] has a sensible spot on the evolved form. False means it is
 /// still equipped but not drawn there (currently just `tail-charm-clasp`;
 /// the plan is to replace it with a similar evolved-friendly accessory rather
-/// than place it -- see docs/KNOWN_ISSUES.md).
+/// than place it -- see docs/quality/KNOWN_ISSUES.md).
 bool accessoryFitsEvolved(AccessoryItem item) =>
     _kEvolvedPlacements.containsKey(item.id);
 
@@ -311,11 +311,23 @@ Widget? evolvedPositionedAccessoryArt({
 /// Reusable static Nori preview wearing [item], or bare when null.
 /// Shares [positionedAccessoryArt] and [_kPlacements] with Customization
 /// so Shop cards show the same fit and receive placement adjustments together.
+///
+/// With [evolved] it draws one still frame of the winged form instead (see
+/// [_kEvolvedPreviewFrame]), with the item placed by
+/// [evolvedPositionedAccessoryArt] -- so a Shop card matches the pet the
+/// player actually has. Items with no evolved placement (see
+/// [accessoryFitsEvolved]) show the bare evolved pet.
 class NoriAccessoryPreview extends StatelessWidget {
-  const NoriAccessoryPreview({super.key, required this.height, this.item});
+  const NoriAccessoryPreview({
+    super.key,
+    required this.height,
+    this.item,
+    this.evolved = false,
+  });
 
   final double height;
   final AccessoryItem? item;
+  final bool evolved;
 
   /// nori_front.png's own width/height ratio (742x800 -- see the pixel
   /// measurements in [_kPlacements]'s comments).
@@ -327,11 +339,14 @@ class NoriAccessoryPreview extends StatelessWidget {
       builder: (context, constraints) {
         // Size placements from Nori's actual rendered height when card width limits the image.
         // Shrink the widget to that height too, avoiding letterboxing that floats accessories.
+        final aspect = evolved ? _kEvolvedPreviewCrop.aspect : _imageAspect;
         final maxWidth = constraints.maxWidth;
-        final renderedHeight =
-            maxWidth.isFinite && maxWidth / _imageAspect < height
-            ? maxWidth / _imageAspect
+        final renderedHeight = maxWidth.isFinite && maxWidth / aspect < height
+            ? maxWidth / aspect
             : height;
+        if (evolved) {
+          return _EvolvedStillPreview(height: renderedHeight, item: item);
+        }
         return SizedBox(
           height: renderedHeight,
           width: renderedHeight * _imageAspect,
@@ -353,6 +368,69 @@ class NoriAccessoryPreview extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// The still evolved frame used for static previews: wings folded, eyes open
+/// (frame 50 of the loop), so the accessory is placed from that frame's own
+/// [kNoriEvolvedFrameAnchors] entry.
+const int _kEvolvedPreviewFrame = 50;
+
+/// The part of the 480x300 evolved canvas a static preview shows: the pet's
+/// body (frame 50's opaque bbox is x165-312, y38-286) with a little margin,
+/// since the full canvas is mostly empty wing room.
+const _kEvolvedPreviewCrop = (
+  left: 160.0,
+  top: 30.0,
+  width: 158.0,
+  height: 260.0,
+  aspect: 158.0 / 260.0,
+);
+
+class _EvolvedStillPreview extends StatelessWidget {
+  const _EvolvedStillPreview({required this.height, this.item});
+
+  final double height;
+  final AccessoryItem? item;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = height / _kEvolvedPreviewCrop.height;
+    final spriteWidth = kNoriEvolvedCanvasWidth * scale;
+    final frame = _kEvolvedPreviewFrame.toString().padLeft(2, '0');
+    final overlay = item == null
+        ? null
+        : evolvedPositionedAccessoryArt(
+            item: item!,
+            spriteWidth: spriteWidth,
+            anchors: kNoriEvolvedFrameAnchors[_kEvolvedPreviewFrame],
+          );
+    return SizedBox(
+      height: height,
+      width: _kEvolvedPreviewCrop.width * scale,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: -_kEvolvedPreviewCrop.left * scale,
+            top: -_kEvolvedPreviewCrop.top * scale,
+            width: spriteWidth,
+            height: spriteWidth * 300 / kNoriEvolvedCanvasWidth,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Image.asset(
+                  'assets/images/nori_evolved/frame_$frame.png',
+                  width: spriteWidth,
+                  fit: BoxFit.fill,
+                ),
+                ?overlay,
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:nori/data/care_item_catalog.dart';
 import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/models/pet.dart';
 import 'package:nori/utils/ordered_queue.dart';
 import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/accessory_art.dart';
@@ -90,6 +91,10 @@ class _ShopScreenState extends State<ShopScreen>
   NoriUser? _user;
   Inventory? _inventory;
 
+  /// Which form the Shop's accessory previews draw. Stays baby until the pet
+  /// loads, and keeps the last known stage if a later read fails.
+  PetEvolutionStage _stage = PetEvolutionStage.baby;
+
   /// Purchases and equips still waiting on the server; the screen re-syncs
   /// once the last one lands (or any one fails).
   int _pending = 0;
@@ -139,14 +144,20 @@ class _ShopScreenState extends State<ShopScreen>
 
   Future<void> _reloadData() async {
     final stamp = _edits;
-    final (user, inventory) = await (
+    final (user, inventory, stage) = await (
       AppData.user.getCurrentUser(),
       AppData.inventory.getInventory(),
+      // Only picks the preview art, so a failed read must not fail the Shop.
+      AppData.pet.getPet().then<PetEvolutionStage?>(
+        (pet) => pet.stage,
+        onError: (_) => null,
+      ),
     ).wait;
     if (!mounted || stamp != _edits) return;
     setState(() {
       _user = user;
       _inventory = inventory;
+      _stage = stage ?? _stage;
     });
   }
 
@@ -344,6 +355,7 @@ class _ShopScreenState extends State<ShopScreen>
           for (final item in kAccessoryCatalog)
             _AccessoryCard(
               item: item,
+              evolved: _stage != PetEvolutionStage.baby,
               coins: coins,
               owned: inventory.ownedAccessoryIds.contains(item.id),
               equipped: inventory.equippedAccessoryId == item.id,
@@ -655,6 +667,7 @@ String _needMore(int price, int coins) => 'Need ${price - coins} more';
 class _AccessoryCard extends StatelessWidget {
   const _AccessoryCard({
     required this.item,
+    required this.evolved,
     required this.coins,
     required this.owned,
     required this.equipped,
@@ -663,6 +676,9 @@ class _AccessoryCard extends StatelessWidget {
   });
 
   final AccessoryItem item;
+
+  /// Draw the preview on the evolved pet instead of the baby.
+  final bool evolved;
   final int coins;
   final bool owned;
   final bool equipped;
@@ -679,7 +695,7 @@ class _AccessoryCard extends StatelessWidget {
       worn: equipped,
       secondary: owned,
       previewBuilder: (height) =>
-          NoriAccessoryPreview(height: height, item: item),
+          NoriAccessoryPreview(height: height, item: item, evolved: evolved),
       // Owned items need no price, so the status pill takes the price row
       // instead of sitting on top of the item's picture.
       priceLabel: owned
@@ -722,6 +738,11 @@ class _CareItemCard extends StatelessWidget {
       image: item.image,
       color: item.color,
       name: item.name,
+      // Names the stat the item refills; the tile colour is that stat's
+      // ring colour on Home.
+      badge: item.category.statLabel,
+      badgeColor: AppColors.white,
+      badgeTextColor: AppColors.ink,
       priceLabel: _PriceRow(price: item.price, affordable: affordable),
       buttonLabel: affordable
           ? 'Buy · +${item.grants}'

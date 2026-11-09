@@ -14,12 +14,13 @@ class IconRegistry {
     'savings': Icons.savings,
     'bedtime': Icons.bedtime,
     // Not reachable from that picker, but used by MockHabitRepository's seed
-    // habits, which the seed script (see docs/BACKEND.md "Data sprint")
+    // habits, which the seed script (see docs/technical/BACKEND.md "Data sprint")
     // writes into real Firestore documents — so they need real keys too.
     'menu_book': Icons.menu_book,
     'code': Icons.code,
     'restaurant': Icons.restaurant,
     'smartphone': Icons.smartphone,
+    'church': Icons.church,
     // Bucket-list picker (_BucketItemDialogState._icons).
     'flight_takeoff': Icons.flight_takeoff,
     'directions_run': Icons.directions_run,

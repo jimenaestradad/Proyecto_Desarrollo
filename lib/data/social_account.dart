@@ -6,7 +6,7 @@ import 'pet_repository.dart';
 import 'user_repository.dart';
 
 /// Where the Social tab gets *your own* data from. Friends, posts,
-/// competitions and the rest are mock (docs/BACKEND.md lists social as a
+/// competitions and the rest are mock (docs/technical/BACKEND.md lists social as a
 /// non-goal), but "you" is the signed-in account, read from the repositories
 /// that already exist — reads only, nothing here writes or adds backend.
 abstract class SocialAccountSource {
@@ -78,7 +78,7 @@ class LiveSocialAccount implements SocialAccountSource {
     var xp = 0;
     for (final habits in days.values) {
       for (final habit in habits) {
-        // Paid XP stays paid after an unclaim, so it still counts.
+        // Undone days hold no XP, so only what is currently paid counts.
         xp += habit.lastAwardedXp;
       }
     }

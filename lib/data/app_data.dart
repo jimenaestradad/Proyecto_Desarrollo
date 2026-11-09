@@ -52,7 +52,7 @@ class AppData {
   static BucketListRepository bucketList = MockBucketListRepository();
   static NotificationRepository notifications = MockNotificationRepository();
 
-  /// Social tab data — frontend-only, in-memory (docs/BACKEND.md lists social
+  /// Social tab data — frontend-only, in-memory (docs/technical/BACKEND.md lists social
   /// as a non-goal). Friends/posts/competitions are seed data; "you" is the
   /// signed-in account (see [LiveSocialAccount]). Not rebuilt in
   /// [bindToUser]/[unbindUser] — just told the account changed.

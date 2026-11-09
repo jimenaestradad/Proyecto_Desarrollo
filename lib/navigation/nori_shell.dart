@@ -36,7 +36,7 @@ class _NoriShellState extends State<NoriShell> {
     return Scaffold(
       // The banner sits above the tabs (not inside any one of them) so it
       // shows regardless of which tab is active, without touching each
-      // tab's own — often visually fragile, see docs/KNOWN_ISSUES.md —
+      // tab's own — often visually fragile, see docs/quality/KNOWN_ISSUES.md —
       // layout.
       body: Column(
         children: [

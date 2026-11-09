@@ -91,8 +91,8 @@ mixin HabitDayActions<T extends StatefulWidget> on OptimisticHabits<T> {
   DateTime get actionDate;
 
   /// Called inside the guarded block after every claim or unclaim, which can
-  /// move XP, coins and the streak (an unclaim keeps its payout but can still
-  /// break the day). A screen that shows the user's totals refreshes them here
+  /// move XP, coins and the streak (an unclaim takes the payout back and can
+  /// also break the day). A screen that shows the user's totals refreshes them here
   /// and returns the fresh user (reused if a celebration needs the level); the
   /// default leaves them alone.
   Future<NoriUser?> onRewardApplied(HabitRewardResult reward) async => null;
@@ -211,8 +211,9 @@ mixin HabitDayActions<T extends StatefulWidget> on OptimisticHabits<T> {
   }
 
   /// Un-marks the day's claim — the claim button turns into this once a
-  /// habit is completed. The day keeps what it paid, and a progress habit
-  /// goes back to where it was before Complete.
+  /// habit is completed. It takes back what the day paid (the server refuses
+  /// if those coins were already spent), and a progress habit goes back to
+  /// where it was before Complete.
   Future<void> unclaim(Habit habit) {
     final date = actionDate;
     final restore = PreClaimValues.take(habit.id, date);

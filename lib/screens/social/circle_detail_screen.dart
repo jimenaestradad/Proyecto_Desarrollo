@@ -397,11 +397,12 @@ class _CircleCompetitionCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                NoriIconBadge(
+                CoverBadge(
                   icon: competition.icon,
                   background: AppColors.white,
                   size: 40,
                   iconSize: 20,
+                  asset: competition.coverAsset,
                 ),
                 const SizedBox(width: AppSpacing.stackSm),
                 Expanded(

@@ -1,6 +1,56 @@
 # Nori — Resolved Log
 
-Trimmed historical fix log for Nori, split out of `docs/KNOWN_ISSUES.md` on 2026-09-16 to keep the working file scannable. Full narrative detail from before the split was intentionally condensed; this log favors terse entries going forward.
+Trimmed historical fix log for Nori, split out of `docs/quality/KNOWN_ISSUES.md` on 2026-09-16 to keep the working file scannable. Full narrative detail from before the split was intentionally condensed; this log favors terse entries going forward.
+
+### 2026-11-08 — Undo takes back XP and coins (Redo pays again)
+
+- **Why:** Undo cleared "completed" but kept the payout, so the XP pill and coins looked free, a stray
+  tap at a progress target couldn't be taken back, and claim → undo kept adaptive XP at its maximum.
+  Decided with valevasqc: exact clawback, Redo pays again.
+- **Change:** `unclaimHabit` and `uncompleteBucketListItem` reverse the stored `awardedXp`/`awardedCoins`
+  (level and pet stage follow) and zero them, so a re-claim pays in full; bucket Uncomplete also clears
+  `paidAt` so it leaves the weekly limit. If the coins were already spent the Undo is refused ("can't be
+  undone", `coinsAfterReversal`), the `deleteHabit` rule, so claim → spend → undo can't mint. The Dart
+  mock, `unclaimedLocally` and the bucket screen clear the payout too. Logs un-claimed before today keep
+  their old pay-once behaviour until re-claimed. Needs a deploy of `unclaimHabit` and
+  `uncompleteBucketListItem`. 67 function tests, 124 Dart tests and `flutter analyze` pass; the
+  transactions themselves are untested (no emulator), so try Complete → Undo, and Complete → buy → Undo,
+  on the demo account after deploying.
+
+### 2026-11-08 — Shop accessory previews follow the pet's stage
+
+- **Why:** every Shop accessory card drew the item on the baby even after Nori evolved (seen on a
+  moto g 20), so shoppers saw a different pet from the one on Home.
+- **Change:** the Shop now reads the pet's stage (a failed read keeps the baby art rather than
+  failing the Shop). `NoriAccessoryPreview` has an `evolved` mode that draws a still evolved frame
+  (frame 50: wings folded, eyes open) cropped to the body, with the item placed by the same
+  `evolvedPositionedAccessoryArt` and per-frame anchors as Home. Tail Charm Clasp shows a bare
+  evolved pet, as it has no evolved placement. `flutter analyze` clean; rendered all six items in
+  card-sized previews in Chrome. The Shop screen itself was not run live (needs a signed-in session).
+
+### 2026-11-08 — Nori Plus and payment screens show the real plans
+
+- **Nori Plus screen:** the $4.99/$39.99 Monthly/Yearly cards are now a Monthly | Yearly switch over a
+  Plus card ($3.99 / $29.99) and a Duo card ($5.99 / $44.99), "Save 37%" on yearly. The Free vs. Plus & Duo
+  table matches COTIZACION.md Part 2 (5 habits and 3 bucket-list goals on Free, no ads, daily coin bonus,
+  monthly accessory, advanced stats, themes, early pet access); "Exclusive pets" and "Custom widgets" are gone,
+  and a line says Social is free on every plan.
+- **Payment preview:** it was hardcoded to "Nori Plus yearly $39.99" whatever you picked; it now takes the
+  chosen plan (`PlanChoice` in `lib/screens/premium/nori_plans.dart`, the one place the prices live).
+- **Still mock:** no Free limits, billing or ads (KNOWN_ISSUES.md). `flutter analyze` and all 124 tests pass.
+
+### 2026-11-08 — `petCareCheck` every 6 hours; early-warning budget
+
+- **Why:** it reads every pet document (dormant accounts included) on each run, so its cost grows with
+  registered users, not active ones, and the notification is an in-app inbox entry that nobody sees before
+  opening the app. A vital takes ~70 hours to fall from 100 to 30, so hourly bought nothing.
+- **Change:** schedule `every 60 minutes` → `every 6 hours` (24 → 4 reads per account per day). Lint and
+  all 66 function tests pass. **Not deployed:** production keeps running hourly until
+  `firebase deploy --only functions:petCareCheck`.
+- **Billing (live):** added an alert-only `nori-pet early warning (1 USD)` budget (50% spent, and forecast
+  over $1). Existing live state, checked the same day: $5 alert budget plus Console service spend caps
+  (Cloud Run Functions $5, Cloud Run / Gemini API / Vertex AI $1), none enforced. Firestore and Auth can't
+  be capped, which stays open in KNOWN_ISSUES.md.
 
 ### 2026-11-08 — Phone pass follow-ups: nav hit area, Shop badge, Clothes banner, habit card layout
 
@@ -13,9 +63,26 @@ Trimmed historical fix log for Nori, split out of `docs/KNOWN_ISSUES.md` on 2026
 - **Habit cards (Quantity/Duration/Cumulative/Multiple/Limit):** title with the category directly under
   it (no chip in the title line any more); reward pill top right beside the ⋮ menu; under the progress
   bar, the status chip on the left and the tappable value on the right. Limit habits still show no
-  reward pill. Not yet seen on the phone (analyze clean, 124 tests pass).
+  reward pill.
+- **Scroll edge fade:** new `ScrollEdgeFade` (`lib/widgets/scroll_edge_fade.dart`) fades a horizontal
+  scroller's left/right edge, only on a side that has more to scroll. Applied to the Social highlight
+  cards, streak strip, circle strip and quick-action chips, the Activity and Leaderboard filter chips,
+  the Shop category chips and the Add Habit icon row. Use it for any new horizontal scroller.
+- Verified on the moto g 20 (2026-11-08): nav tap above the pill switches tab, Habits header and card
+  layout, Shop chip order / default tab / Owned pill / Clothes banner, edge fades on Social and Shop
+  (both edges while scrolled). Not looked at on device: Add Habit icon row, Activity and Leaderboard chips.
 - Dropped as agreed: the "+ button covers a card" item and "rows with no category" (intentional, the
   category is optional).
+
+### 2026-11-08 — Cover thumbnails on circle and competition list rows
+
+The Circles list, the Social hub (circle strip and competition cards) and the competition rows inside
+a circle showed only a colored icon; the cover photo appeared only on the detail screen. A new
+`CoverBadge` in `social_widgets.dart` shows the cover as a small ink-bordered square and falls back to
+the old icon badge when a circle or competition has no cover. The Competitions tab cards had no icon at
+all, so they now get a 56 px thumbnail beside the title, only when a cover exists. Checked on screen for
+the Circles and Competitions lists; the hub and circle-detail rows use the same widget but were not
+seen (the preview harness kept rendering blank).
 
 ### 2026-11-08 — Friend pets show the real Nori; 22 new achievement badges in one style
 
@@ -454,7 +521,7 @@ finished competition's format and people on the review step. Binary habits on th
 the reward chip and a 0/1 progress bar like the others. Every login-only route is guarded and any
 unknown address goes to Home or Login. From the external QA audit: Login now resumes a sign-up
 that never claimed a username, and its button says "Log In". See KNOWN_ISSUES.md for the triage.
-`functions/src` comments were condensed like `lib/` (the notes worth keeping are in `docs/CODE_NOTES.md`).
+`functions/src` comments were condensed like `lib/` (the notes worth keeping are in `docs/technical/CODE_NOTES.md`).
 
 ### 2026-11-05 — Quick-fix batch: instant habit actions, autocomplete, Undo, sign-up checks
 
@@ -468,7 +535,7 @@ swatch left the habit color picker, Ideal Target takes digits only, Home's Today
 under the header when scrolled, Delete Account moved below Plan, `/home` while signed out redirects
 to Login, and sign-up/choose-username/edit-profile validate name, username, email and password
 (`lib/utils/validators.dart`, tested). Long code comments were condensed, with the removed rationale
-moved to `docs/CODE_NOTES.md`. Not browser-tested; `flutter analyze` clean, 88 tests pass.
+moved to `docs/technical/CODE_NOTES.md`. Not browser-tested; `flutter analyze` clean, 88 tests pass.
 
 ### 2026-11-05 — Account & pet audit: Set a Password rule and pet-name limits
 
@@ -828,7 +895,7 @@ The screen used to show 4 hardcoded notifications for every account, and "Mark a
 
 ### 2026-10-21 — Social tab: placeholder mock replaced with a full frontend on mock data
 
-The 2026-09-10 `SocialScreen` (static feed/leaderboard/competition/circle cards behind a "Preview only" banner, every button a "Coming soon" snackbar) is now a navigable ~25-screen frontend backed by an in-memory `SocialRepository` (`AppData.social`): hub, feed/post/proof composer, friends/add/invite/profile/pet visit, leaderboard, competitions (create wizard, detail, invite, results, proof), circles, friend streaks, notifications, badges, privacy/blocking. Layouts follow two Stitch exports but are rebuilt on our tokens and shared widgets (new: choice chip, segmented control, empty state, bottom sheet, post/reaction/proof widgets) and documented in the new `docs/DESIGN.md`. Frontend only: no new backend, rules shown are mock placeholders. Later the same day "you" was wired to the signed-in account (reads only, existing repositories): real name/username/level/XP/streak/pet, last-7-days XP on the leaderboard, and today's completed habits in the proof composer; friends and everything else stay seeded. Also closes the 2026-09-10 "Social should read like a dashboard" note. Verified with `flutter analyze` (clean for social) and a release web build rendered at 412×915; not run on a device.
+The 2026-09-10 `SocialScreen` (static feed/leaderboard/competition/circle cards behind a "Preview only" banner, every button a "Coming soon" snackbar) is now a navigable ~25-screen frontend backed by an in-memory `SocialRepository` (`AppData.social`): hub, feed/post/proof composer, friends/add/invite/profile/pet visit, leaderboard, competitions (create wizard, detail, invite, results, proof), circles, friend streaks, notifications, badges, privacy/blocking. Layouts follow two Stitch exports but are rebuilt on our tokens and shared widgets (new: choice chip, segmented control, empty state, bottom sheet, post/reaction/proof widgets) and documented in the new `docs/product/DESIGN.md`. Frontend only: no new backend, rules shown are mock placeholders. Later the same day "you" was wired to the signed-in account (reads only, existing repositories): real name/username/level/XP/streak/pet, last-7-days XP on the leaderboard, and today's completed habits in the proof composer; friends and everything else stay seeded. Also closes the 2026-09-10 "Social should read like a dashboard" note. Verified with `flutter analyze` (clean for social) and a release web build rendered at 412×915; not run on a device.
 
 ### 2026-10-06 — adaptive XP built (the UI promised it, nothing adjusted it)
 

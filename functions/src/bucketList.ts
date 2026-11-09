@@ -44,7 +44,8 @@ export const completeBucketListItem = onCall(async (request) => {
     if (itemData.isCompleted === true) {
       return { xpDelta: 0, coinsDelta: 0 };
     }
-    // Paid once already (then un-completed): mark done again, pay nothing.
+    // Legacy only: an item un-completed before 2026-11-08 kept its payout, so
+    // mark it done again and pay nothing. Undo now takes the payout back.
     if (rewardPaid(itemData)) {
       tx.update(itemRef, { isCompleted: true, completedAt: FieldValue.serverTimestamp() });
       return { xpDelta: 0, coinsDelta: 0 };
@@ -119,20 +120,21 @@ async function readBucketListDocs(
   return { userData, itemData, petData: petSnap.data() };
 }
 
-// Reverses the stored payout and syncs pet.stage for deletion only.
-// Caller must check rewardPaid; uncompleting keeps the payout.
+// Reverses the stored payout and syncs pet.stage, for deleting or un-completing.
+// Caller must check rewardPaid.
 function reverseBucketListReward(
   tx: Transaction,
   refs: { userRef: DocumentReference; petRef: DocumentReference },
   userData: DocumentData,
   itemData: DocumentData,
   petData: DocumentData | undefined,
+  action: "deleted" | "undone" = "deleted",
 ) {
   const xpToReverse = asNumber(itemData.awardedXp, 0);
   const coinsToReverse = asNumber(itemData.awardedCoins, 0);
 
   const nextLevelState = applyXpDelta(readLevelState(userData), -xpToReverse);
-  const newCoins = coinsAfterReversal(userData, coinsToReverse);
+  const newCoins = coinsAfterReversal(userData, coinsToReverse, action);
 
   tx.update(refs.userRef, { ...levelFields(nextLevelState), coins: newCoins });
   syncPetStage(tx, refs.petRef, petData, nextLevelState.level);
@@ -140,24 +142,34 @@ function reverseBucketListReward(
   return { xpDelta: -xpToReverse, coinsDelta: -coinsToReverse };
 }
 
-// Unmarks completion but keeps the payout; completing again pays nothing.
-// No-op when the item is not completed.
+// Unmarks completion and takes back what the item paid (XP, coins, level, pet
+// stage), so completing it again pays again. Rejects if the coins were already
+// spent, like deleting. paidAt is cleared so it stops counting toward the weekly
+// paid-goal limit. No-op when the item is not completed.
 export const uncompleteBucketListItem = onCall(async (request) => {
   const { uid, itemId } = requireBucketListCall(request);
   const refs = bucketListRefs(uid, itemId);
 
   return getFirestore().runTransaction(async (tx) => {
-    const itemData = (await tx.get(refs.itemRef)).data();
-    if (!itemData) {
-      throw new HttpsError("not-found", "Bucket list item not found.");
-    }
+    const { userData, itemData, petData } = await readBucketListDocs(
+      tx, refs.userRef, refs.itemRef, refs.petRef
+    );
 
     if (itemData.isCompleted !== true) {
       return { xpDelta: 0, coinsDelta: 0 };
     }
 
-    tx.update(refs.itemRef, { isCompleted: false, completedAt: null });
-    return { xpDelta: 0, coinsDelta: 0 };
+    const result = rewardPaid(itemData)
+      ? reverseBucketListReward(tx, refs, userData, itemData, petData, "undone")
+      : { xpDelta: 0, coinsDelta: 0 };
+    tx.update(refs.itemRef, {
+      isCompleted: false,
+      completedAt: null,
+      awardedXp: 0,
+      awardedCoins: 0,
+      paidAt: FieldValue.delete(),
+    });
+    return result;
   });
 });
 
@@ -172,7 +184,7 @@ export const deleteBucketListItem = onCall(async (request) => {
       tx, refs.userRef, refs.itemRef, refs.petRef
     );
 
-    // rewardPaid, not isCompleted: an un-completed item keeps its payout.
+    // rewardPaid, not isCompleted: a legacy un-completed item still holds its payout.
     const result = rewardPaid(itemData)
       ? reverseBucketListReward(tx, refs, userData, itemData, petData)
       : { xpDelta: 0, coinsDelta: 0 };

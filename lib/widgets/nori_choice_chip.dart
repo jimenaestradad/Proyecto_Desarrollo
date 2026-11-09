@@ -4,7 +4,7 @@ import '../theme/app_theme.dart';
 /// Selectable pill for filters and single/multi-choice rows (feed filters,
 /// leaderboard scope, wizard options). Selected = mossLight fill with the
 /// heavier ink border, matching how choice tiles show selection elsewhere
-/// (docs/DESIGN.md §4).
+/// (docs/product/DESIGN.md §4).
 class NoriChoiceChip extends StatelessWidget {
   const NoriChoiceChip({
     super.key,

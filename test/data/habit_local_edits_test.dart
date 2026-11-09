@@ -27,7 +27,9 @@ void main() {
     final undone = claimed.unclaimedLocally(restoreValue: 1);
     expect(undone.isCompletedToday, isFalse);
     expect(undone.currentValue, 1);
-    expect(undone.rewardPaid, isTrue);
+    // Undo takes the payout back, so Complete pays again.
+    expect(undone.rewardPaid, isFalse);
+    expect(undone.claimedLocally().rewardPaid, isTrue);
   });
 
   test('logging is capped at the target', () {

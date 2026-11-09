@@ -15,7 +15,7 @@ import 'package:nori/widgets/tactile_button.dart';
 
 /// Every archived habit, with Restore (and Delete, for one with almost no
 /// history). Pops `true` if anything changed, so the Habits list reloads.
-/// See docs/BACKEND.md, "Deleting vs. archiving a habit".
+/// See docs/technical/BACKEND.md, "Deleting vs. archiving a habit".
 class ArchivedHabitsScreen extends StatefulWidget {
   const ArchivedHabitsScreen({super.key});
 

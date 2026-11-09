@@ -16,19 +16,15 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Retroactive logging — **shipped default:** any past day since the habit was created can be logged
   and claimed from the calendar or the Habits date strip (`claimHabit` only rejects days before
   `createdAt`, outside start/end, or archived). Open: whether to cap how far back.
-- **Complete / Undo and what happens to XP and coins — reopened 2026-11-05, waiting on a decision.**
-  *Today:* a habit-day pays once. Undo (un-claim) clears the "completed" mark but keeps the XP/coins
-  and the first-habit accessory; re-completing the same day pays 0. Chosen 2026-10-26 because exact
-  reversal lets claim → spend → undo → re-claim mint coins (BACKEND.md, Cloud Functions #3). Since
-  2026-11-05 reaching a progress habit's target completes it automatically, and Undo puts progress
-  back to where it was before Complete (session-only), so a stray tap that hits the target now
-  pays at once and Undo does not take it back. *Options:* (A) keep as is, and say so on the Undo
-  button; (B) Undo claws back exactly what was paid, which is consistent with deleting a habit or
-  bucket item, but needs a rule for coins already spent (floor at 0, or allow a negative balance
-  that blocks purchases) and can drop a level or de-evolve the pet; (C) Undo only claws back within
-  a short window (e.g. the same day, or a few minutes), then locks in; (D) credit rewards at day's
-  end instead of on tap, so Undo is free until then (biggest change: streak, level-up
-  celebration and notifications all fire on claim today). Not decided; nothing changed in code.
+- **Complete / Undo and what happens to XP and coins — decided 2026-11-08 (valevasqc).** Undo
+  takes back exactly what the claim paid (XP, coins, and any level / pet-stage change that followed)
+  and Redo pays again, so claim → undo nets zero and the "undo just for the coins" loop is gone.
+  If the coins were already spent, the Undo is **refused** with "You've already spent the coins this
+  earned, so it can't be undone." (the same rule as deleting a habit or bucket item) rather than
+  flooring at 0 or allowing a negative balance, either of which keeps a purchase for free or adds a
+  "you owe coins" state to every coin display. Bucket-list Uncomplete follows the same rule. The
+  one-time first-habit accessory is never taken back. Replaces the pay-once rule of 2026-10-26;
+  options considered: keep and label, clawback within a window, pay at day's end.
 - Editing an active habit's schedule/target — effect on history/streak?
 - Negative/limit-habit implementation details
 
@@ -65,7 +61,7 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Resolved 2026-09-16: **`xpForNextLevel = 100 × currentLevel`** (cumulative to reach level n is
   `50 × n × (n − 1)`). New accounts start at level 1 / 0 XP / 100 to next. The formula lives only
   in the Cloud Function, which writes level/xpIntoLevel/xpForNextLevel to the user doc — the
-  client displays stored values and never recomputes. See [BACKEND.md](BACKEND.md).
+  client displays stored values and never recomputes. See [BACKEND.md](../technical/BACKEND.md).
 
 ## Streaks
 - Exact behavior for flexible/any-day-in-period schedules ("5x any day this week")
@@ -88,7 +84,7 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Whether only one pet can progress at a time
 - How inactive pets' stats/needs behave
 - Whether Vacation Mode should pause pet decay. FEATURES.md §2 says paused time shouldn't hurt
-  the pet, but only streaks and the calendar are frozen today: decay and the hourly `petCareCheck`
+  the pet, but only streaks and the calendar are frozen today: decay and the scheduled `petCareCheck`
   notification keep running (shipped default, 2026-09-15). Pausing would mean skipping the frozen
   span in `applyPetDecay` and in `petCareCheck`.
 - Resolved 2026-11-07: pet-care stat decay is **1 point/hour** per stat, clamped 0–100
@@ -132,7 +128,7 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
   - Old decision, superseded in part: 2026-09-16 "0 coins and `{food: 3, shampoo: 2, plushie: 1}`";
     coins stay 0, the items are now 3 / 3 / 3. The `sunglasses` accessory is unlocked on the user's
     **first habit completion** and is the **only** free accessory ever granted. See
-    [BACKEND.md](BACKEND.md).
+    [BACKEND.md](../technical/BACKEND.md).
 - Coins earned per habit completion — **shipped default, kept in the 2026-11-07 pass:** XP ÷ 2 at the
   base tier (5/10/15), not adapted (see XP balancing above)
 - Consumable vs. permanent items
@@ -147,6 +143,7 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
 - Leaderboard period/scoring
 - Friend-streak rules
 - Privacy rules for feed/proof posts
+- Profile avatars as an option instead of photos (idea only, 2026-11-08; see FEATURES.md §10)
 
 ## Health wearable integration (vision-only — out of scope, see FEATURES.md §12)
 - Which route: Android's Health Connect (one integration, many brands) vs. a Wear OS companion app
@@ -183,14 +180,18 @@ Grouped to match [FEATURES.md](FEATURES.md)'s sections.
   events).
 
 ## Monetization
-- **Plans and pricing — listed as an important item in KNOWN_ISSUES.md (2026-11-07), needs a
-  decision.** Which model, what Free vs. Plus include, the real prices, and what to do with the
-  preview screens. The note below has the current contradiction.
-- End-user pricing model (free/premium/subscription/cosmetic purchases) — none chosen; don't
-  build billing/paywalls without this. Note (external QA, 2026-11-05): the Nori Plus preview
-  already shows $4.99/month and $39.99/year, and the course homework compares Finch/Habitica
-  (freemium + subscription). Those are mockups, not a committed decision — confirm whether to
-  record freemium + subscription as chosen here so code and docs stop contradicting each other.
+- **Proposal 2026-11-08, prices approved by valevasqc, rest not yet confirmed:** freemium with
+  ads, three plans: Free (5 habits, 3 bucket-list goals, ads), Nori Plus ($3.99/mo, $29.99/yr) and
+  Nori Duo ($5.99/mo, $44.99/yr, two linked accounts). All Social features are free on every plan.
+  Tiers, ad rules and reasoning are in [COTIZACION.md](../business/COTIZACION.md) Part 2. The Nori Plus and
+  payment preview screens show these plans since 2026-11-08 (still mock: no limits, billing or ads).
+  Enforcing the Free limits is designed (BACKEND.md, "Plan limits") and planned for after the 2026-11-12 demo;
+  the demo account would be on Duo.
+- **iOS / App Store later (2026-11-08):** wanted after the Android launch, but costs more (Apple Developer
+  $99/year vs. $25 once on Google Play, 15–30% commission, a Sign in with Apple requirement to verify,
+  stricter review, ~52 h of extra work). Still out of scope for the semester (OVERVIEW.md); estimate in
+  [COTIZACION.md](../business/COTIZACION.md) §7.
+- Don't build billing, paywalls or the Free limits until valevasqc and Jimena confirm the proposal above.
 
 ## User flows / screens
 All MVP screens are built (onboarding, habit creation, Home, logging, pet care, shop, profile —
@@ -200,12 +201,12 @@ evolution have one — KNOWN_ISSUES.md "No reward feedback on claim itself") and
 
 - Decided 2026-09-16: the user **names their pet during onboarding** (default "Nori" if they
   skip). The name is written client-side after sign-up, not by the auth trigger — see
-  [BACKEND.md](BACKEND.md). The surrounding first-pet flow is still undesigned.
+  [BACKEND.md](../technical/BACKEND.md). The surrounding first-pet flow is still undesigned.
 
 ## Technical rules / edge cases
 - Timezone / day-rollover handling — partially resolved 2026-09-16 for backend purposes: the
   canonical day key is computed **device-local** by `dayKey()` and passed explicitly to Cloud
-  Functions, which never derive the day from (UTC) server time. See [BACKEND.md](BACKEND.md).
+  Functions, which never derive the day from (UTC) server time. See [BACKEND.md](../technical/BACKEND.md).
   Still open: what happens when a user travels across timezones, and DST edges.
 - Resolved 2026-09-30 (supersedes 2026-09-16's "deleting always archives"): a habit with
   history is **archived** (hidden from today on, restorable, `habitLogs` kept); one with at most
@@ -216,14 +217,14 @@ evolution have one — KNOWN_ISSUES.md "No reward feedback on claim itself") and
 - Missed-period handling
 - Cheating / duplicate-completion prevention — mostly resolved: every claim goes through
   `claimHabit` (one claim per habit per day, rewards computed server-side), and since 2026-10-26
-  each habit-day and bucket-list item pays once (unclaim keeps the reward, re-claim pays 0).
+  each habit-day and bucket-list item holds one payout at a time (Undo takes it back, since 2026-11-08, and is refused if the coins were spent).
   Remaining known gaps are bounded and logged in KNOWN_ISSUES.md (backdated `createdAt`, pet
   vitals as a direct client write).
 - Data history retention
 
 ## Infrastructure
 - Resolved 2026-09-16: Firebase (Auth + Firestore + Cloud Functions, Node.js/TypeScript) — see
-  [BACKEND.md](BACKEND.md) for schema, security-rules approach, and the Cloud Functions list.
+  [BACKEND.md](../technical/BACKEND.md) for schema, security-rules approach, and the Cloud Functions list.
 - Resolved 2026-09-21, extended 2026-09-28: Auth is Firebase Auth with **email/password and
   Google Sign-In**, linkable in both directions — see `FirebaseAuthRepository` in
   `lib/data/firebase_auth_repository.dart` and BACKEND.md, "Auth" (account linking).

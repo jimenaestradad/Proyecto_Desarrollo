@@ -72,7 +72,7 @@ class FirestoreVacationLog implements VacationLog {
       await _loadFuture;
     } catch (_) {
       // Don't let a failed fetch (e.g. the user doc not existing yet — see
-      // docs/BACKEND.md) poison the cache forever; the next call retries.
+      // docs/technical/BACKEND.md) poison the cache forever; the next call retries.
       _loadFuture = null;
       _loadedUid = null;
       rethrow;

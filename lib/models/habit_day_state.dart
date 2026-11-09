@@ -17,9 +17,8 @@ class HabitDayState {
   /// Whether the reward was claimed on this date.
   final bool claimed;
 
-  /// What this date's first claim paid out. Kept after an unclaim: each
-  /// day pays once, so a re-claim pays nothing — same contract as
-  /// [Habit.lastAwardedXp].
+  /// What this date's claim paid out, zeroed by an unclaim — same contract
+  /// as [Habit.lastAwardedXp].
   final int awardedXp;
   final int awardedCoins;
 
@@ -42,7 +41,7 @@ class HabitDayState {
   /// Just the state fields — `habitId`/`dayKey`/`date` aren't part of the
   /// state itself (this class has no notion of "which day" it is), so the
   /// repository writing to Firestore adds those on top. See
-  /// docs/BACKEND.md "Firestore schema" for the full `habitLogs` doc shape.
+  /// docs/technical/BACKEND.md "Firestore schema" for the full `habitLogs` doc shape.
   Map<String, dynamic> toJson() => {
     'value': value,
     'claimed': claimed,

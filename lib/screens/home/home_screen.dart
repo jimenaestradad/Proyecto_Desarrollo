@@ -569,99 +569,103 @@ class _RoomHudState extends State<_RoomHud> {
             NoriAvatar(imageUrl: user.avatarUrl, size: 46),
             const SizedBox(width: AppSpacing.stackSm),
             Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.white.withValues(alpha: 0.88),
+              // The whole pill toggles the evolution details, not just the
+              // little arrow. Material + InkWell (not a decorated Container)
+              // so the ripple paints over the white fill.
+              child: Material(
+                color: AppColors.white.withValues(alpha: 0.88),
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppRadius.sm),
-                  border: Border.all(
+                  side: const BorderSide(
                     color: AppColors.ink,
                     width: AppBorder.standard,
                   ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      pet.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.headlineMd.copyWith(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => setState(() => _showEvolution = !_showEvolution),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 5,
                     ),
-                    const SizedBox(height: 2),
-                    InkWell(
-                      onTap: () =>
-                          setState(() => _showEvolution = !_showEvolution),
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'LEVEL ${user.level}',
-                            style: AppTextStyles.labelSm,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          pet.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.headlineMd.copyWith(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
                           ),
-                          const SizedBox(width: AppSpacing.unit),
-                          Flexible(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 44),
-                              child: ProgressBarPill(
-                                progress: user.levelProgress,
-                                height: 6,
-                                color: AppColors.moss,
-                                trackColor: AppColors.linen,
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'LEVEL ${user.level}',
+                              style: AppTextStyles.labelSm,
+                            ),
+                            const SizedBox(width: AppSpacing.unit),
+                            Flexible(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 44),
+                                child: ProgressBarPill(
+                                  progress: user.levelProgress,
+                                  height: 6,
+                                  color: AppColors.moss,
+                                  trackColor: AppColors.linen,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          SyncingIcon(
-                            icon: Icons.star,
-                            size: 11,
-                            color: AppColors.mustardDark,
-                            syncing: widget.syncing,
-                          ),
-                          const SizedBox(width: 2),
-                          Text(
-                            formatThousands(user.totalXp),
-                            style: AppTextStyles.labelSm.copyWith(
-                              color: AppColors.ink,
+                            const SizedBox(width: 6),
+                            SyncingIcon(
+                              icon: Icons.star,
+                              size: 11,
+                              color: AppColors.mustardDark,
+                              syncing: widget.syncing,
                             ),
-                          ),
-                          const SizedBox(width: 3),
-                          Icon(
-                            _showEvolution
-                                ? Icons.expand_less
-                                : Icons.expand_more,
-                            size: 14,
-                            color: AppColors.inkFaint,
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Expands the card itself (not a separate chip below
-                    // it) to show the evolution stage — XP now lives
-                    // inline next to the level bar above, always visible.
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOut,
-                      alignment: Alignment.topLeft,
-                      child: _showEvolution
-                          ? Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: _EvolutionDetails(
-                                pet: pet,
-                                userLevel: user.level,
+                            const SizedBox(width: 2),
+                            Text(
+                              formatThousands(user.totalXp),
+                              style: AppTextStyles.labelSm.copyWith(
+                                color: AppColors.ink,
                               ),
-                            )
-                          : const SizedBox(width: double.infinity),
+                            ),
+                            const SizedBox(width: 3),
+                            Icon(
+                              _showEvolution
+                                  ? Icons.expand_less
+                                  : Icons.expand_more,
+                              size: 14,
+                              color: AppColors.inkFaint,
+                            ),
+                          ],
+                        ),
+                        // Expands the card itself (not a separate chip below
+                        // it) to show the evolution stage — XP now lives
+                        // inline next to the level bar above, always visible.
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOut,
+                          alignment: Alignment.topLeft,
+                          child: _showEvolution
+                              ? Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: _EvolutionDetails(
+                                    pet: pet,
+                                    userLevel: user.level,
+                                  ),
+                                )
+                              : const SizedBox(width: double.infinity),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -686,7 +690,7 @@ class _RoomHudState extends State<_RoomHud> {
               color: AppColors.moss,
               onTap: () => _showCare(
                 icon: Icons.favorite,
-                iconBg: AppColors.mossLight,
+                iconBg: AppColors.moss,
                 vitalLabel: 'Happiness',
                 vitalValue: pet.happiness,
                 vitalColor: AppColors.moss,
@@ -701,7 +705,7 @@ class _RoomHudState extends State<_RoomHud> {
               color: AppColors.terracotta,
               onTap: () => _showCare(
                 icon: Icons.restaurant,
-                iconBg: AppColors.sky,
+                iconBg: AppColors.terracotta,
                 vitalLabel: 'Fullness',
                 vitalValue: pet.hunger,
                 vitalColor: AppColors.terracotta,
@@ -716,7 +720,7 @@ class _RoomHudState extends State<_RoomHud> {
               color: AppColors.skyBlue,
               onTap: () => _showCare(
                 icon: Icons.soap,
-                iconBg: AppColors.mossLight,
+                iconBg: AppColors.skyBlue,
                 vitalLabel: 'Hygiene',
                 vitalValue: pet.hygiene,
                 vitalColor: AppColors.skyBlue,
