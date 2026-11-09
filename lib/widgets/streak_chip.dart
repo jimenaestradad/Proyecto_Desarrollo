@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import 'nori_card.dart';
 
 /// Small "12d" flame badge for the current streak — paired with the XP pill
 /// in screen headers (Home, Habits, Calendar).
@@ -10,13 +11,11 @@ class StreakChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.mustardLight,
-        borderRadius: BorderRadius.circular(AppRadius.full),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
+      color: AppColors.mustardLight,
+      radius: AppRadius.full,
+      borderWidth: AppBorder.thin,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

@@ -1,10 +1,11 @@
 import { getFirestore } from "firebase-admin/firestore";
-import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { onCall } from "firebase-functions/v2/https";
 import { applyXpDelta } from "./xpCurve";
 import { DayArgs, parseDayArgs, parseHabitId, requireAuth } from "./requestArgs";
 import {
   HabitRewardResult,
   asNumber,
+  coinsAfterReversal,
   currentPetStage,
   habitDocRefs,
   levelFields,
@@ -12,9 +13,11 @@ import {
   syncPetStage,
 } from "./habitTransaction";
 
-// Reverses exactly what the log says the claim paid (awardedXp/awardedCoins),
-// never a recomputation. Leaves the sunglasses gift and firstHabitCompletedAt
-// alone — the gift is deliberately one-way (docs/BACKEND.md).
+// Unmarks the claim and takes back exactly what it paid (XP, coins, and the
+// level / pet stage that follow), so claim → undo nets zero and a re-claim
+// pays again. Rejects, instead of clamping at 0, if the coins were already
+// spent: otherwise claim → spend → undo would keep the purchase for free
+// (the same rule as deleteHabit). The sunglasses gift is never taken back.
 export async function runUnclaimHabit(
   uid: string,
   habitId: string,
@@ -30,52 +33,48 @@ export async function runUnclaimHabit(
       tx.get(refs.pet),
     ]);
 
-    const userData = userSnap.data();
-    if (!userData) {
-      throw new HttpsError("failed-precondition", "User profile hasn't been provisioned yet.");
-    }
-
+    const userData = userSnap.data() ?? {};
     const previousState = readLevelState(userData);
-    const previousLevel = previousState.level;
     const petData = petSnap.data();
     const previousPetStage = currentPetStage(petData);
-
     const logData = logSnap.data();
+
+    // Not claimed → nothing to undo. The claimed value stays on the log so the
+    // user can keep editing from it.
     if (logData?.claimed !== true) {
       return {
         changed: false,
         xpDelta: 0,
         coinsDelta: 0,
-        previousLevel,
-        level: previousLevel,
+        previousLevel: previousState.level,
+        level: previousState.level,
         previousPetStage,
         petStage: previousPetStage,
         giftedAccessoryId: null,
       };
     }
 
-    const awardedXp = asNumber(logData.awardedXp, 0);
-    const awardedCoins = asNumber(logData.awardedCoins, 0);
+    const xpToReverse = asNumber(logData.awardedXp, 0);
+    const coinsToReverse = asNumber(logData.awardedCoins, 0);
+    const levelState = applyXpDelta(previousState, -xpToReverse);
+    // Checked before any write so a rejection leaves the log untouched.
+    const newCoins = coinsAfterReversal(userData, coinsToReverse, "undone");
 
-    // The claimed value stays on the log so the user can keep editing from it.
     tx.update(refs.log, { claimed: false, awardedXp: 0, awardedCoins: 0 });
-
-    const levelState = applyXpDelta(previousState, -awardedXp);
-    // Clamped at 0 like MockUserRepository.addCoins — coins already spent
-    // can't be taken back. See docs/KNOWN_ISSUES.md for the exploit this allows.
-    const previousCoins = asNumber(userData.coins, 0);
-    const coins = Math.max(0, previousCoins - awardedCoins);
-
-    tx.update(refs.user, { ...levelFields(levelState), coins });
+    let petStage = previousPetStage;
+    if (xpToReverse !== 0 || coinsToReverse !== 0) {
+      tx.update(refs.user, { ...levelFields(levelState), coins: newCoins });
+      petStage = syncPetStage(tx, refs.pet, petData, levelState.level);
+    }
 
     return {
       changed: true,
-      xpDelta: levelState.totalXp - previousState.totalXp,
-      coinsDelta: coins - previousCoins,
-      previousLevel,
+      xpDelta: -xpToReverse,
+      coinsDelta: -coinsToReverse,
+      previousLevel: previousState.level,
       level: levelState.level,
       previousPetStage,
-      petStage: syncPetStage(tx, refs.pet, petData, levelState.level),
+      petStage,
       giftedAccessoryId: null,
     };
   });

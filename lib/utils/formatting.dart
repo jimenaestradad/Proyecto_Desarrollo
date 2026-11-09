@@ -9,3 +9,14 @@ String formatThousands(int value) =>
 String formatTrimmedNumber(double value) => value == value.roundToDouble()
     ? value.round().toString()
     : value.toString();
+
+/// `1` → `'1st'`, `12` → `'12th'`, `23` → `'23rd'`.
+String ordinal(int n) {
+  if (n % 100 >= 11 && n % 100 <= 13) return '${n}th';
+  return '$n${switch (n % 10) {
+    1 => 'st',
+    2 => 'nd',
+    3 => 'rd',
+    _ => 'th',
+  }}';
+}

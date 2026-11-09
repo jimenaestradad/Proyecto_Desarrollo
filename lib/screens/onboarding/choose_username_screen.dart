@@ -1,26 +1,20 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/username_repository.dart';
+import 'package:nori/screens/onboarding/username_availability.dart';
 import 'package:nori/theme/app_theme.dart';
-import 'package:nori/widgets/loading_overlay.dart';
+import 'package:nori/utils/app_log.dart';
+import 'package:nori/utils/validators.dart';
+import 'package:nori/widgets/auth_card_screen.dart';
 import 'package:nori/widgets/nori_text_field.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
-enum _UsernameStatus { idle, checking, available, taken }
-
-/// Second step of Google Sign-In (see docs/OPEN_DECISIONS.md): shown after
-/// Google auth succeeds for a uid that hasn't claimed a Nori username yet
-/// — either a brand-new sign-up, or a previous attempt that authenticated
-/// with Google and then got interrupted before finishing this step.
-///
-/// Pushed from login_screen.dart's _completeGoogleSignIn, which passes the
-/// already-authenticated uid/email and a suggested starting username. Pops
-/// with the claimed username string on success; this screen has no back
-/// button because canceling here would leave a signed-in Google account
-/// with no username and nowhere else in the app to resolve that — see
-/// docs/OPEN_DECISIONS.md if "abandon sign-up here" needs a real answer.
+/// Claims a username after Google auth for new or interrupted sign-ups.
+/// Receives the authenticated uid/email and suggestion; pops with the claimed name.
+/// No back button: cancellation would strand an account without a username.
+/// The one way out is [_useDifferentAccount]: it signs out, which leaves the
+/// account (and its empty profile) behind, harmless and picked up again if
+/// that account ever signs in.
 class ChooseUsernameScreen extends StatefulWidget {
   const ChooseUsernameScreen({
     super.key,
@@ -37,26 +31,27 @@ class ChooseUsernameScreen extends StatefulWidget {
   State<ChooseUsernameScreen> createState() => _ChooseUsernameScreenState();
 }
 
-class _ChooseUsernameScreenState extends State<ChooseUsernameScreen> {
+class _ChooseUsernameScreenState extends State<ChooseUsernameScreen>
+    with UsernameAvailability<ChooseUsernameScreen> {
   late final _usernameController = TextEditingController(
     text: widget.suggestedUsername,
   );
 
+  @override
+  TextEditingController get usernameController => _usernameController;
+
   bool _loading = false;
-  Timer? _usernameDebounce;
-  _UsernameStatus _usernameStatus = _UsernameStatus.idle;
 
   @override
   void initState() {
     super.initState();
     // Check the pre-filled suggestion right away instead of waiting for a
     // keystroke that may never come if the person likes the suggestion.
-    _onUsernameChanged(widget.suggestedUsername);
+    onUsernameChanged(widget.suggestedUsername);
   }
 
   @override
   void dispose() {
-    _usernameDebounce?.cancel();
     _usernameController.dispose();
     super.dispose();
   }
@@ -67,43 +62,17 @@ class _ChooseUsernameScreenState extends State<ChooseUsernameScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _onUsernameChanged(String value) {
-    _usernameDebounce?.cancel();
-    final username = value.trim();
-    if (username.length < 3) {
-      setState(() => _usernameStatus = _UsernameStatus.idle);
-      return;
-    }
-
-    setState(() => _usernameStatus = _UsernameStatus.checking);
-    _usernameDebounce = Timer(const Duration(milliseconds: 400), () async {
-      bool available;
-      try {
-        available = await AppData.usernames.isAvailable(username);
-      } catch (_) {
-        if (!mounted || _usernameController.text.trim() != username) return;
-        setState(() => _usernameStatus = _UsernameStatus.idle);
-        return;
-      }
-      if (!mounted || _usernameController.text.trim() != username) return;
-      setState(
-        () => _usernameStatus = available
-            ? _UsernameStatus.available
-            : _UsernameStatus.taken,
-      );
-    });
-  }
-
   Future<void> _submit() async {
     if (_loading) return;
     FocusScope.of(context).unfocus();
 
     final username = _usernameController.text.trim();
-    if (username.length < 3) {
-      _showMessage('Username must be at least 3 characters.');
+    final problem = validateUsername(username);
+    if (problem != null) {
+      _showMessage(problem);
       return;
     }
-    if (_usernameStatus == _UsernameStatus.taken) {
+    if (usernameStatus == UsernameStatus.taken) {
       _showMessage('That username is already taken — please choose another.');
       return;
     }
@@ -117,58 +86,35 @@ class _ChooseUsernameScreenState extends State<ChooseUsernameScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _usernameStatus = _UsernameStatus.taken;
+        usernameStatus = UsernameStatus.taken;
       });
       _showMessage('That username was just taken — please pick another.');
-    } catch (_) {
+    } catch (error, stackTrace) {
+      logError('claimUsername', error, stackTrace);
       if (!mounted) return;
       setState(() => _loading = false);
       _showMessage('Unable to claim that username. Please try again.');
     }
   }
 
-  Widget? get _suffixIcon {
-    switch (_usernameStatus) {
-      case _UsernameStatus.idle:
-        return null;
-      case _UsernameStatus.checking:
-        return const Padding(
-          padding: EdgeInsets.all(14),
-          child: SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        );
-      case _UsernameStatus.available:
-        return const Icon(Icons.check_circle, color: AppColors.moss);
-      case _UsernameStatus.taken:
-        return const Icon(Icons.cancel, color: AppColors.error);
+  /// For someone who got here with the wrong account (the wrong Google
+  /// account in the picker, say): without this the only way out was to kill
+  /// the app, which reopened on this same screen because the session persists.
+  Future<void> _useDifferentAccount() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      await AppData.auth.logOut();
+    } catch (error, stackTrace) {
+      logError('logOut (username picker)', error, stackTrace);
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage("Couldn't sign out. Please try again.");
+      return;
     }
-  }
-
-  String? get _helperText {
-    switch (_usernameStatus) {
-      case _UsernameStatus.idle:
-      case _UsernameStatus.checking:
-        return null;
-      case _UsernameStatus.available:
-        return 'Username is available';
-      case _UsernameStatus.taken:
-        return 'Username is already taken';
-    }
-  }
-
-  Color? get _helperColor {
-    switch (_usernameStatus) {
-      case _UsernameStatus.taken:
-        return AppColors.error;
-      case _UsernameStatus.available:
-        return AppColors.mossDark;
-      case _UsernameStatus.idle:
-      case _UsernameStatus.checking:
-        return null;
-    }
+    AppData.unbindUser();
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false);
   }
 
   @override
@@ -179,106 +125,60 @@ class _ChooseUsernameScreenState extends State<ChooseUsernameScreen> {
       // gesture/button is disabled the same way the missing AppBar back
       // button is.
       canPop: false,
-      child: Scaffold(
-        body: Stack(
-          children: [
-            SafeArea(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.containerPaddingMobile,
-                      vertical: AppSpacing.stackMd,
-                    ),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight:
-                            constraints.maxHeight - (AppSpacing.stackMd * 2),
-                      ),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 420),
-                          child: Container(
-                            padding: const EdgeInsets.all(AppSpacing.stackMd),
-                            decoration: BoxDecoration(
-                              color: AppColors.white,
-                              borderRadius: BorderRadius.circular(
-                                AppRadius.lg,
-                              ),
-                              border: Border.all(
-                                color: AppColors.ink,
-                                width: AppBorder.standard,
-                              ),
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 64,
-                                  height: 64,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: AppColors.ink,
-                                      width: AppBorder.thick,
-                                    ),
-                                  ),
-                                  child: ClipOval(
-                                    child: Image.asset(
-                                      'assets/images/nori_closeup.png',
-                                      width: 64,
-                                      height: 64,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: AppSpacing.stackSm),
-                                Text(
-                                  'Pick a username',
-                                  style: AppTextStyles.headlineLgMobile,
-                                ),
-                                const SizedBox(height: AppSpacing.unit),
-                                Text(
-                                  'Signed in as ${widget.email}. Choose a '
-                                  'username to finish setting up your Nori '
-                                  'account.',
-                                  style: AppTextStyles.bodyMd.copyWith(
-                                    color: AppColors.inkMuted,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: AppSpacing.stackMd),
-                                NoriTextField(
-                                  controller: _usernameController,
-                                  label: 'Username',
-                                  hint: 'alex_habits',
-                                  icon: Icons.alternate_email,
-                                  textInputAction: TextInputAction.done,
-                                  onChanged: _onUsernameChanged,
-                                  onSubmitted: (_) => _submit(),
-                                  suffixIcon: _suffixIcon,
-                                  helperText: _helperText,
-                                  helperColor: _helperColor,
-                                ),
-                                const SizedBox(height: AppSpacing.unit),
-                                TactileButton(
-                                  label: 'Continue',
-                                  icon: Icons.arrow_forward,
-                                  onPressed: _loading ? null : _submit,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
+      child: AuthCardScreen(
+        loading: _loading,
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.ink, width: AppBorder.thick),
+            ),
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/nori_closeup.png',
+                width: 64,
+                height: 64,
+                fit: BoxFit.cover,
               ),
             ),
-            if (_loading) const LoadingOverlay(),
-          ],
-        ),
+          ),
+          const SizedBox(height: AppSpacing.stackSm),
+          Text('Pick a username', style: AppTextStyles.headlineLgMobile),
+          const SizedBox(height: AppSpacing.unit),
+          Text(
+            'Signed in as ${widget.email}. Choose a '
+            'username to finish setting up your Nori '
+            'account.',
+            style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppSpacing.stackMd),
+          NoriTextField(
+            controller: _usernameController,
+            label: 'Username',
+            hint: 'alex_habits',
+            icon: Icons.alternate_email,
+            textInputAction: TextInputAction.done,
+            inputFormatters: usernameInputFormatters,
+            onChanged: onUsernameChanged,
+            onSubmitted: (_) => _submit(),
+            suffixIcon: usernameSuffixIcon,
+            helperText: usernameHelperText,
+            helperColor: usernameHelperColor,
+          ),
+          const SizedBox(height: AppSpacing.unit),
+          TactileButton(
+            label: 'Continue',
+            icon: Icons.arrow_forward,
+            onPressed: _loading ? null : _submit,
+          ),
+          TextButton(
+            onPressed: _loading ? null : _useDifferentAccount,
+            child: const Text('Not you? Use a different account'),
+          ),
+        ],
       ),
     );
   }

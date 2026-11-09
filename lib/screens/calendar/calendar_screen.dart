@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
-import 'package:nori/data/cloud_functions_client.dart';
-import 'package:nori/data/habit_repository.dart';
+import 'package:nori/data/tips_store.dart';
 import 'package:nori/models/calendar_day.dart';
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/screens/habits/add_habit_screen.dart';
-import 'package:nori/screens/pet/evolution_screen.dart';
-import 'package:nori/screens/pet/level_up_screen.dart';
+import 'package:nori/screens/habits/habit_day_actions.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/date_labels.dart';
+import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/habit_progress_card.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_avatar.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
+import 'package:nori/widgets/one_time_hint.dart';
 import 'package:nori/widgets/streak_chip.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
@@ -28,9 +29,13 @@ class CalendarScreen extends StatefulWidget {
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class _CalendarScreenState extends State<CalendarScreen>
+    with RemoteLoadState<CalendarScreen> {
   NoriUser? _user;
-  CalendarMonthStats? _stats;
+
+  /// Every month read so far, so stepping back to one shows it at once and
+  /// refreshes it behind the scenes.
+  final Map<int, CalendarMonthStats> _months = {};
   late int _year;
   late int _month;
 
@@ -46,16 +51,34 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void didUpdateWidget(covariant CalendarScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.active && widget.active) _loadData();
+    if (!oldWidget.active && widget.active) {
+      // Show the newest XP/coins at once; the reload below still has the last word.
+      _user = AppData.user.lastKnownUser ?? _user;
+      _loadData();
+    }
   }
 
-  Future<void> _loadData() async {
-    final user = await AppData.user.getCurrentUser();
-    final stats = await AppData.calendar.getMonth(_year, _month);
+  static int _monthKey(int year, int month) => year * 100 + month;
+
+  /// The viewed month, or null while it is still being read.
+  CalendarMonthStats? get _stats => _months[_monthKey(_year, _month)];
+
+  Future<void> _loadData() =>
+      guardedLoad(_fetchData, hasData: _user != null && _stats != null);
+
+  Future<void> _fetchData() async {
+    // Captured because the viewer may step to another month mid-fetch; this
+    // result still belongs to the month it was asked for.
+    final year = _year;
+    final month = _month;
+    final (user, stats) = await (
+      AppData.user.getCurrentUser(),
+      AppData.calendar.getMonth(year, month),
+    ).wait;
     if (!mounted) return;
     setState(() {
       _user = user;
-      _stats = stats;
+      _months[_monthKey(year, month)] = stats;
     });
   }
 
@@ -81,7 +104,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     setState(() {
       _year = year;
       _month = month;
-      _stats = null;
     });
     _loadData();
   }
@@ -102,11 +124,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget build(BuildContext context) {
     final user = _user;
     final stats = _stats;
+    final error = loadError;
 
     return Scaffold(
       body: SafeArea(
-        child: user == null || stats == null
-            ? const Center(child: CircularProgressIndicator())
+        child: user == null
+            ? error != null
+                  ? LoadErrorView(error: error, onRetry: _loadData)
+                  : const Center(child: CircularProgressIndicator())
             : NoriScrollScaffold(
                 maxWidth: 1200,
                 children: [
@@ -115,6 +140,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   Row(
                     children: [
                       IconButton(
+                        tooltip: 'Previous month',
                         onPressed: () => _changeMonth(-1),
                         icon: const Icon(
                           Icons.chevron_left,
@@ -123,12 +149,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                       Expanded(
                         child: Text(
-                          '${stats.monthLabel} ${stats.year}',
+                          '${monthFull(_month)} $_year',
                           textAlign: TextAlign.center,
                           style: AppTextStyles.headlineLgMobile,
                         ),
                       ),
                       IconButton(
+                        tooltip: 'Next month',
                         onPressed: _isCurrentMonth
                             ? null
                             : () => _changeMonth(1),
@@ -150,45 +177,78 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                   ),
                   const SizedBox(height: AppSpacing.stackMd),
-                  GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    crossAxisSpacing: AppSpacing.gutter,
-                    mainAxisSpacing: AppSpacing.gutter,
-                    childAspectRatio: 1.7,
-                    children: [
-                      _CalendarStatCard(
-                        icon: Icons.local_fire_department,
-                        iconColor: AppColors.terracottaDark,
-                        value: '${stats.currentStreak}',
-                        label: 'Current Streak',
-                      ),
-                      _CalendarStatCard(
-                        icon: Icons.star,
-                        iconColor: AppColors.mustardDark,
-                        value: '${stats.perfectDays}',
-                        label: 'Perfect Days',
-                      ),
-                      _CalendarStatCard(
-                        icon: Icons.check_circle,
-                        iconColor: AppColors.mossDark,
-                        value: '${stats.habitsDone}',
-                        label: 'Habits Done',
-                      ),
-                      _CalendarStatCard(
-                        icon: Icons.sentiment_dissatisfied,
-                        iconColor: AppColors.inkMuted,
-                        value: '${stats.missedDays}',
-                        label: 'Missed Days',
-                      ),
-                    ],
+                  const OneTimeHint(
+                    tip: Tip.calendarDays,
+                    icon: Icons.edit_calendar,
+                    message: 'Tap a past day to log or edit its habits.',
                   ),
-                  const SizedBox(height: AppSpacing.stackMd),
-                  _CalendarCard(days: stats.days, onDayTap: _openDayDetail),
+                  if (stats == null)
+                    _MonthLoading(error: error, onRetry: _loadData)
+                  else ...[
+                    GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: 2,
+                      crossAxisSpacing: AppSpacing.gutter,
+                      mainAxisSpacing: AppSpacing.gutter,
+                      childAspectRatio: 1.7,
+                      children: [
+                        _CalendarStatCard(
+                          icon: Icons.local_fire_department,
+                          iconColor: AppColors.terracottaDark,
+                          value: '${stats.currentStreak}',
+                          label: 'Current streak',
+                        ),
+                        _CalendarStatCard(
+                          icon: Icons.star,
+                          iconColor: AppColors.mustardDark,
+                          value: '${stats.perfectDays}',
+                          label: 'Perfect days',
+                        ),
+                        _CalendarStatCard(
+                          icon: Icons.check_circle,
+                          iconColor: AppColors.mossDark,
+                          value: '${stats.habitsDone}',
+                          label: 'Habits done',
+                        ),
+                        _CalendarStatCard(
+                          icon: Icons.event_busy,
+                          iconColor: AppColors.inkMuted,
+                          value: '${stats.missedDays}',
+                          label: 'Missed days',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.stackMd),
+                    _CalendarCard(days: stats.days, onDayTap: _openDayDetail),
+                  ],
                 ],
               ),
       ),
+    );
+  }
+}
+
+/// Stands in for a month's stats and grid while it is being read, so the
+/// month title and arrows stay put and respond to the tap.
+class _MonthLoading extends StatelessWidget {
+  const _MonthLoading({required this.error, required this.onRetry});
+
+  /// Set when reading this month failed; shows a retry instead of spinning.
+  final Object? error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (error != null) {
+      return SizedBox(
+        height: 320,
+        child: LoadErrorView(error: error!, onRetry: onRetry),
+      );
+    }
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: AppSpacing.stackLg * 2),
+      child: Center(child: CircularProgressIndicator()),
     );
   }
 }
@@ -335,6 +395,16 @@ class _CalendarCard extends StatelessWidget {
                 borderColor: AppColors.ink,
                 label: 'Missed',
               ),
+              _LegendItem(
+                color: AppColors.moss,
+                borderColor: AppColors.ink,
+                label: 'Today',
+              ),
+              _LegendItem(
+                color: Colors.transparent,
+                borderColor: AppColors.inkFaint,
+                label: 'Upcoming',
+              ),
             ],
           ),
         ],
@@ -385,9 +455,12 @@ class _CalendarDayCell extends StatelessWidget {
         AppBorder.thick,
         AppColors.ink,
       ),
+      // Upcoming days sit on the page (no fill, faint outline) so they read
+      // as "not yet" instead of as missed days, which used to differ from
+      // them by ~1% of fill color (linenAlt vs linen).
       CalendarDayStatus.future => (
-        AppColors.linen,
-        AppColors.ink,
+        Colors.transparent,
+        AppColors.inkFaint,
         AppBorder.thin,
         AppColors.inkFaint,
       ),
@@ -484,113 +557,55 @@ class _DayDetailSheet extends StatefulWidget {
   State<_DayDetailSheet> createState() => _DayDetailSheetState();
 }
 
-class _DayDetailSheetState extends State<_DayDetailSheet> {
+class _DayDetailSheetState extends State<_DayDetailSheet>
+    with
+        RemoteLoadState<_DayDetailSheet>,
+        OptimisticHabits<_DayDetailSheet>,
+        HabitDayActions<_DayDetailSheet> {
   List<Habit>? _habits;
 
   @override
   void initState() {
     super.initState();
-    _reload();
+    _load();
   }
 
+  Future<void> _load() => guardedLoad(_reload, hasData: _habits != null);
+
   Future<void> _reload() async {
+    final stamp = editStamp;
     final habits = await AppData.habits.getHabitsForDate(widget.date);
-    if (!mounted) return;
+    if (!mounted || stamp != editStamp) return;
     setState(() => _habits = habits);
   }
 
-  /// The claimHabit/unclaimHabit Cloud Function already applied this
-  /// server-side — [reward]'s own flags say whether to celebrate, so there's
-  /// no need to hold user/pet state here just to diff before vs. after.
-  Future<void> _applyReward(HabitRewardResult reward) async {
-    if (!mounted || !(reward.leveledUp || reward.evolved)) return;
-    final pet = await AppData.pet.getPet();
-    if (!mounted) return;
-    if (reward.evolved) {
-      await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
-    } else {
-      final user = await AppData.user.getCurrentUser();
-      if (!mounted) return;
-      await showLevelUpCelebration(context, level: user.level, petName: pet.name);
-    }
-  }
+  @override
+  DateTime get actionDate => widget.date;
 
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
+  @override
+  Future<void> reloadActionHabits() => _reload();
 
-  Future<void> _toggleBinary(Habit habit, bool completed) async {
-    try {
-      final reward = await AppData.habits.setHabitCompletedForDate(
-        habit.id,
-        widget.date,
-        completed,
-      );
-      await _applyReward(reward);
-      await _reload();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
-  }
+  @override
+  Object? snapshotHabits() => _habits;
 
-  Future<void> _logProgress(Habit habit, double amount) async {
-    await AppData.habits.logProgressForDate(habit.id, widget.date, amount);
-    await _reload();
-  }
+  @override
+  void restoreHabitSnapshot(Object snapshot) =>
+      _habits = snapshot as List<Habit>;
 
-  Future<void> _claim(Habit habit) async {
-    try {
-      final reward = await AppData.habits.claimHabitForDate(
-        habit.id,
-        widget.date,
-      );
-      await _applyReward(reward);
-      await _reload();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
-  }
-
-  Future<void> _unclaim(Habit habit) async {
-    try {
-      final reward = await AppData.habits.unclaimHabitForDate(
-        habit.id,
-        widget.date,
-      );
-      await _applyReward(reward);
-      await _reload();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
-  }
-
-  Future<void> _editProgress(Habit habit, double value) async {
-    try {
-      if (habit.isCompletedToday) {
-        final reward = await AppData.habits.unclaimHabitForDate(
-          habit.id,
-          widget.date,
-        );
-        await _applyReward(reward);
-      }
-      await AppData.habits.setProgressForDate(habit.id, widget.date, value);
-      await _reload();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
+  @override
+  void applyHabitChange(String habitId, Habit Function(Habit) change) {
+    final habits = _habits;
+    if (habits == null) return;
+    setState(() {
+      _habits = [for (final h in habits) h.id == habitId ? change(h) : h];
+    });
   }
 
   Future<void> _editHabitDefinition(Habit habit) async {
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => AddHabitScreen(habit: habit)),
     );
-    await _reload();
+    await _load();
   }
 
   String get _title {
@@ -601,6 +616,7 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
   @override
   Widget build(BuildContext context) {
     final habits = _habits;
+    final error = loadError;
     return DraggableScrollableSheet(
       initialChildSize: 0.62,
       minChildSize: 0.35,
@@ -624,7 +640,9 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
             AppSpacing.gutter,
           ),
           child: habits == null
-              ? const Center(child: CircularProgressIndicator())
+              ? error != null
+                    ? LoadErrorView(error: error, onRetry: _load)
+                    : const Center(child: CircularProgressIndicator())
               : ListView(
                   controller: scrollController,
                   children: [
@@ -668,14 +686,12 @@ class _DayDetailSheetState extends State<_DayDetailSheet> {
                         HabitProgressCard(
                           habit: habit,
                           onToggleBinary: (completed) =>
-                              _toggleBinary(habit, completed),
-                          onLogProgress: (amount) =>
-                              _logProgress(habit, amount),
-                          onClaim: () => _claim(habit),
-                          onUnclaim: () => _unclaim(habit),
+                              toggleBinary(habit, completed),
+                          onLogProgress: (amount) => logProgress(habit, amount),
+                          onClaim: () => claim(habit),
+                          onUnclaim: () => unclaim(habit),
                           onEditHabit: () => _editHabitDefinition(habit),
-                          onEditProgress: (value) =>
-                              _editProgress(habit, value),
+                          onEditProgress: (value) => editProgress(habit, value),
                         ),
                         const SizedBox(height: AppSpacing.stackSm),
                       ],

@@ -4,18 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/auth_repository.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/app_log.dart';
 
-/// Non-blocking "please verify your email" banner shown above every tab in
-/// [NoriShell], for a signed-in email/password account whose email
-/// Firebase hasn't recorded as verified yet. Never shown for a Google
-/// account or in the mock repository — see
-/// [AuthRepository.needsEmailVerification].
-///
-/// Dismissing hides it for the rest of this app session only. There's no
-/// "seen this, don't show again" persistence wired up (a bigger piece of
-/// per-user state than this needs — see docs/OPEN_DECISIONS.md), and
-/// re-showing it next launch if the email is still unverified is an
-/// acceptable nag for something that costs nothing to ignore.
+/// Non-blocking banner for unverified password accounts in NoriShell.
+/// Hidden for Google/mock accounts; dismissal lasts only for this app session.
 class EmailVerificationBanner extends StatefulWidget {
   const EmailVerificationBanner({super.key});
 
@@ -24,7 +16,8 @@ class EmailVerificationBanner extends StatefulWidget {
       _EmailVerificationBannerState();
 }
 
-class _EmailVerificationBannerState extends State<EmailVerificationBanner> {
+class _EmailVerificationBannerState extends State<EmailVerificationBanner>
+    with WidgetsBindingObserver {
   bool _needsVerification = false;
   bool _dismissed = false;
   bool _sending = false;
@@ -34,11 +27,21 @@ class _EmailVerificationBannerState extends State<EmailVerificationBanner> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _check();
+  }
+
+  /// People verify in their mail app and come back, so the banner re-checks
+  /// when the app returns to the foreground. Only while it's showing: a
+  /// verified account never needs another check.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _needsVerification) _check();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _cooldownTimer?.cancel();
     super.dispose();
   }
@@ -81,7 +84,8 @@ class _EmailVerificationBannerState extends State<EmailVerificationBanner> {
     } on AuthException catch (e) {
       if (!mounted) return;
       _showMessage(e.message);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      logError('sendEmailVerification', error, stackTrace);
       if (!mounted) return;
       _showMessage('Unable to send the verification email.');
     } finally {
@@ -104,10 +108,7 @@ class _EmailVerificationBannerState extends State<EmailVerificationBanner> {
           ),
           child: Row(
             children: [
-              const Icon(
-                Icons.mark_email_unread,
-                color: AppColors.mustardDark,
-              ),
+              const Icon(Icons.mark_email_unread, color: AppColors.mustardDark),
               const SizedBox(width: AppSpacing.unit),
               Expanded(
                 child: Text(

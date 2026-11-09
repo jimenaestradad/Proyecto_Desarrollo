@@ -7,7 +7,8 @@ import 'package:nori/screens/achievements/achievements_screen.dart';
 import 'package:nori/screens/profile/edit_profile_screen.dart';
 import 'package:nori/screens/settings/settings_screen.dart';
 import 'package:nori/theme/app_theme.dart';
-import 'package:nori/utils/formatting.dart';
+import 'package:nori/utils/remote_errors.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_avatar.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
@@ -16,7 +17,6 @@ import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
 import 'package:nori/widgets/section_header.dart';
-import 'package:nori/widgets/tactile_button.dart';
 import 'package:nori/widgets/xp_pill.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -29,11 +29,11 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen>
+    with RemoteLoadState<ProfileScreen> {
   NoriUser? _user;
   List<Achievement>? _achievementPreview;
   double? _weeklyCompletion;
-  int? _currentStreak;
   List<HabitStat>? _habitStats;
 
   @override
@@ -45,27 +45,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void didUpdateWidget(covariant ProfileScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.active && widget.active) _loadData();
+    if (!oldWidget.active && widget.active) {
+      // Show the newest XP/coins at once; the reload below still has the last word.
+      _user = AppData.user.lastKnownUser ?? _user;
+      _loadData();
+    }
   }
 
-  Future<void> _loadData() async {
-    final user = await AppData.user.getCurrentUser();
-    final achievementsByCategory = await AppData.achievements
-        .getAchievementsByCategory();
-    final achievements = achievementsByCategory.values
-        .expand((category) => category)
+  Future<void> _loadData() => guardedLoad(_fetchData, hasData: _user != null);
+
+  /// Latest [_fetchData] call; an older one finishing late is dropped.
+  int _loadSeq = 0;
+
+  Future<void> _fetchData() async {
+    final seq = ++_loadSeq;
+    // Independent reads, fired together instead of one round trip after
+    // another.
+    final (user, achievementsByCategory, weeklyCompletion, habitStats) = await (
+      AppData.user.getCurrentUser(),
+      AppData.achievements.getAchievementsByCategory(),
+      _computeWeeklyCompletion(),
+      AppData.calendar.getHabitStats(),
+    ).wait;
+    // Earned trophies first, then the ones closest to done, so "My
+    // Achievements" never leads with locked ones the user hasn't touched.
+    final all = achievementsByCategory.values.expand((c) => c).toList();
+    int rank(Achievement a) => switch (a.status) {
+      AchievementStatus.unlocked => 0,
+      AchievementStatus.inProgress => 1,
+      AchievementStatus.locked => 2,
+      AchievementStatus.comingSoon => 3,
+    };
+    final achievements = (all..sort((a, b) => rank(a).compareTo(rank(b))))
         .take(4)
         .toList(growable: false);
-    final weeklyCompletion = await _computeWeeklyCompletion();
-    final monthStats = await AppData.calendar.getCurrentMonth();
-    final habitStats = await AppData.calendar.getHabitStats();
 
-    if (!mounted) return;
+    if (!mounted || seq != _loadSeq) return;
     setState(() {
       _user = user;
       _achievementPreview = achievements;
       _weeklyCompletion = weeklyCompletion;
-      _currentStreak = monthStats.currentStreak;
+      // getCurrentUser already computed it — no second month fetch.
       _habitStats = habitStats;
     });
   }
@@ -78,9 +98,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final today = DateTime.now();
     var scheduled = 0;
     var completed = 0;
-    for (var i = 0; i < 7; i++) {
-      final date = today.subtract(Duration(days: i));
-      final habits = await AppData.habits.getHabitsForDate(date);
+    final byDay = await AppData.habits.getHabitsForRange(
+      today.subtract(const Duration(days: 6)),
+      today,
+    );
+    for (final habits in byDay.values) {
       scheduled += habits.length;
       completed += habits.where((h) => h.isCompletedToday).length;
     }
@@ -116,7 +138,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Actually end the Firebase session (not just navigate away) — see
     // AuthRepository.logOut doc: otherwise relaunching the app would read
     // the still-signed-in Firebase user and skip straight back to Home.
-    await AppData.auth.logOut();
+    final ok = await guardedAction(AppData.auth.logOut);
+    if (!ok) return;
     // Un-point AppData.user (etc.) from this account's Firestore data so a
     // different account signing in next doesn't start out reading it —
     // see AppData.unbindUser.
@@ -130,8 +153,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = _user;
     final achievementPreview = _achievementPreview;
     final weeklyCompletion = _weeklyCompletion;
-    final currentStreak = _currentStreak;
     final habitStats = _habitStats;
+    final error = loadError;
 
     return Scaffold(
       body: SafeArea(
@@ -139,9 +162,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             user == null ||
                 achievementPreview == null ||
                 weeklyCompletion == null ||
-                currentStreak == null ||
                 habitStats == null
-            ? const Center(child: CircularProgressIndicator())
+            ? error != null
+                  ? LoadErrorView(error: error, onRetry: _loadData)
+                  : const Center(child: CircularProgressIndicator())
             : NoriScrollScaffold(
                 maxWidth: 1000,
                 children: [
@@ -156,19 +180,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: AppSpacing.stackMd),
                   _HabitStatisticsCard(
                     weeklyCompletion: weeklyCompletion,
-                    currentStreak: currentStreak,
                     habitStats: habitStats,
                   ),
                   const SizedBox(height: AppSpacing.stackMd),
-                  _AccountCard(onSettings: _openSettings),
-                  const SizedBox(height: AppSpacing.stackMd),
-                  TactileButton(
-                    label: 'Log Out',
-                    icon: Icons.logout,
-                    backgroundColor: AppColors.errorContainer,
-                    foregroundColor: AppColors.onErrorContainer,
-                    onPressed: _logOut,
-                  ),
+                  _AccountCard(onSettings: _openSettings, onLogOut: _logOut),
                 ],
               ),
       ),
@@ -221,6 +236,7 @@ class _ProfileHero extends StatelessWidget {
                 right: -4,
                 bottom: 2,
                 child: IconButton.filled(
+                  tooltip: 'Edit profile',
                   onPressed: onEdit,
                   style: IconButton.styleFrom(
                     backgroundColor: AppColors.moss,
@@ -254,13 +270,8 @@ class _ProfileHero extends StatelessWidget {
                 color: AppColors.mossDark,
               ),
               _ProfilePill(
-                icon: Icons.diamond,
-                label: '${formatThousands(user.totalXp)} XP',
-                color: AppColors.terracottaDark,
-              ),
-              _ProfilePill(
                 icon: Icons.local_fire_department,
-                label: '${user.currentStreak} Day Streak',
+                label: '${user.currentStreak} day streak',
                 color: AppColors.mustardDark,
               ),
             ],
@@ -322,7 +333,7 @@ class _AchievementsPreviewCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SectionHeader(
-            title: 'My Achievements',
+            title: 'My achievements',
             titleStyle: AppTextStyles.headlineMd,
             trailing: TextButton(
               onPressed: onViewAll,
@@ -336,7 +347,7 @@ class _AchievementsPreviewCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppRadius.full),
                 ),
               ),
-              child: const Text('View All'),
+              child: const Text('View all'),
             ),
           ),
           const SizedBox(height: AppSpacing.stackSm),
@@ -372,17 +383,27 @@ class _AchievementPreview extends StatelessWidget {
 
     return NoriCard(
       padding: const EdgeInsets.all(AppSpacing.unit),
-      color: AppColors.linenAlt,
+      // White once it's earned or in progress, like the full Achievements
+      // screen; only locked and coming-soon tiles stay muted.
+      color: isDimmed ? AppColors.linenAlt : AppColors.white,
       borderWidth: AppBorder.thin,
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        // Top-aligned so the icons line up across tiles whose titles and
+        // subtitles wrap to different heights.
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
+          const SizedBox(height: AppSpacing.unit),
           if (achievement.imageAsset != null)
-            Image.asset(
-              achievement.imageAsset!,
-              width: 80,
-              height: 80,
-              fit: BoxFit.contain,
+            // Locked art is faded; the illustration alone otherwise reads as
+            // earned (only the icon fallback below shows a lock).
+            Opacity(
+              opacity: isDimmed ? 0.4 : 1,
+              child: Image.asset(
+                achievement.imageAsset!,
+                width: 80,
+                height: 80,
+                fit: BoxFit.contain,
+              ),
             )
           else
             NoriIconBadge(
@@ -413,6 +434,15 @@ class _AchievementPreview extends StatelessWidget {
             textAlign: TextAlign.center,
             style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted),
           ),
+          // Earned trophies say so, so they don't read like the in-progress
+          // ones beside them.
+          if (achievement.status == AchievementStatus.unlocked) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Completed',
+              style: AppTextStyles.labelSm.copyWith(color: AppColors.mossDark),
+            ),
+          ],
         ],
       ),
     );
@@ -422,15 +452,11 @@ class _AchievementPreview extends StatelessWidget {
 class _HabitStatisticsCard extends StatelessWidget {
   const _HabitStatisticsCard({
     required this.weeklyCompletion,
-    required this.currentStreak,
     required this.habitStats,
   });
 
   /// Fraction 0-1, from [_ProfileScreenState._computeWeeklyCompletion].
   final double weeklyCompletion;
-
-  /// Consecutive-day streak, from [CalendarMonthStats.currentStreak].
-  final int currentStreak;
 
   /// Per-habit completion rate over the last 30 days, from
   /// [CalendarRepository.getHabitStats]. Sorted here (not by the
@@ -439,12 +465,6 @@ class _HabitStatisticsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Daily Quests aren't part of the MVP (see docs/FEATURES.md §11 — vision
-    // only), so the second row is the streak instead of a quest-completion
-    // rate. The /30 here is purely a visual fill for the progress pill (a
-    // month reads as "full") — not a game rule, unlike the streak count
-    // itself.
-    final streakProgress = (currentStreak / 30).clamp(0, 1).toDouble();
     final sortedStats = [...habitStats]
       ..sort((a, b) => b.completionRate.compareTo(a.completionRate));
 
@@ -452,24 +472,18 @@ class _HabitStatisticsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Habit Statistics', style: AppTextStyles.headlineMd),
+          Text('Habit statistics', style: AppTextStyles.headlineMd),
           const SizedBox(height: AppSpacing.stackMd),
           _StatisticRow(
-            label: 'Weekly Completion',
+            label: 'Weekly completion',
             value: '${(weeklyCompletion * 100).round()}%',
             progress: weeklyCompletion,
             color: AppColors.moss,
-          ),
-          const SizedBox(height: AppSpacing.stackMd),
-          _StatisticRow(
-            label: 'Current Streak',
-            value: currentStreak == 1 ? '1 day' : '$currentStreak days',
-            progress: streakProgress,
-            color: AppColors.terracotta,
+            textColor: AppColors.mossDark,
           ),
           if (sortedStats.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.stackMd),
-            Text('Habit Breakdown', style: AppTextStyles.labelLg),
+            Text('Habit breakdown', style: AppTextStyles.labelLg),
             const SizedBox(height: 2),
             Text(
               'Last 30 days',
@@ -482,11 +496,15 @@ class _HabitStatisticsCard extends StatelessWidget {
                 tagLabel: sortedStats.length > 1 && stat == sortedStats.first
                     ? 'Easiest'
                     : sortedStats.length > 1 && stat == sortedStats.last
-                    ? 'Most Missed'
+                    ? 'Most missed'
                     : null,
                 tagColor: sortedStats.length > 1 && stat == sortedStats.first
                     ? AppColors.moss
                     : AppColors.terracotta,
+                tagTextColor:
+                    sortedStats.length > 1 && stat == sortedStats.first
+                    ? AppColors.mossDark
+                    : AppColors.terracottaDark,
               ),
               if (stat != sortedStats.last)
                 const SizedBox(height: AppSpacing.stackSm),
@@ -504,12 +522,16 @@ class _StatisticRow extends StatelessWidget {
     required this.value,
     required this.progress,
     required this.color,
+    required this.textColor,
   });
 
   final String label;
   final String value;
   final double progress;
+
+  /// Bar fill. Too light to read as text, so the value uses [textColor].
   final Color color;
+  final Color textColor;
 
   @override
   Widget build(BuildContext context) {
@@ -518,7 +540,10 @@ class _StatisticRow extends StatelessWidget {
         Row(
           children: [
             Expanded(child: Text(label, style: AppTextStyles.labelLg)),
-            Text(value, style: AppTextStyles.labelLg.copyWith(color: color)),
+            Text(
+              value,
+              style: AppTextStyles.labelLg.copyWith(color: textColor),
+            ),
           ],
         ),
         const SizedBox(height: AppSpacing.unit),
@@ -533,6 +558,7 @@ class _HabitStatRow extends StatelessWidget {
     required this.stat,
     this.tagLabel,
     required this.tagColor,
+    required this.tagTextColor,
   });
 
   final HabitStat stat;
@@ -541,6 +567,7 @@ class _HabitStatRow extends StatelessWidget {
   /// one, and only when there's more than one habit to compare against).
   final String? tagLabel;
   final Color tagColor;
+  final Color tagTextColor;
 
   @override
   Widget build(BuildContext context) {
@@ -549,10 +576,11 @@ class _HabitStatRow extends StatelessWidget {
       children: [
         NoriIconBadge(
           icon: stat.icon,
-          background: stat.color.withValues(alpha: 0.16),
+          // The habit's color as the badge fill with an ink icon, like every
+          // other NoriIconBadge. A pastel icon on a tint of itself vanished.
+          background: stat.color,
           size: 36,
           iconSize: 18,
-          iconColor: stat.color,
         ),
         const SizedBox(width: AppSpacing.stackSm),
         Expanded(
@@ -586,7 +614,9 @@ class _HabitStatRow extends StatelessWidget {
                       ),
                       child: Text(
                         tagLabel!,
-                        style: AppTextStyles.labelSm.copyWith(color: tagColor),
+                        style: AppTextStyles.labelSm.copyWith(
+                          color: tagTextColor,
+                        ),
                       ),
                     ),
                   ],
@@ -600,11 +630,9 @@ class _HabitStatRow extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 4),
-              ProgressBarPill(
-                progress: stat.completionRate,
-                height: 8,
-                color: stat.color,
-              ),
+              // Default moss fill: a pastel habit color barely showed against
+              // the linen track.
+              ProgressBarPill(progress: stat.completionRate, height: 8),
             ],
           ),
         ),
@@ -614,9 +642,10 @@ class _HabitStatRow extends StatelessWidget {
 }
 
 class _AccountCard extends StatelessWidget {
-  const _AccountCard({required this.onSettings});
+  const _AccountCard({required this.onSettings, required this.onLogOut});
 
   final VoidCallback onSettings;
+  final VoidCallback onLogOut;
 
   @override
   Widget build(BuildContext context) {
@@ -631,6 +660,8 @@ class _AccountCard extends StatelessWidget {
             label: 'Settings',
             onTap: onSettings,
           ),
+          const SizedBox(height: AppSpacing.unit),
+          NoriListRow(icon: Icons.logout, label: 'Log out', onTap: onLogOut),
         ],
       ),
     );

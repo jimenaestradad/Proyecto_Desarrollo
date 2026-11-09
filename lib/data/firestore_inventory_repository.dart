@@ -3,22 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/inventory.dart';
 import 'inventory_repository.dart';
 
-/// Real Firestore-backed [InventoryRepository] for
-/// `/users/{uid}/inventory/main` -- see docs/BACKEND.md, "Firestore
-/// schema" and the Architecture table.
-///
-/// [consumeCareItem] and [setEquippedAccessory] are direct, rules-guarded
-/// client writes -- no currency involved (Architecture table:
-/// "`consumeCareItem` as part of feed/groom/play" and "Equip/unequip an
-/// already-owned accessory"). [addCareItem] and [addAccessory] are the two
-/// places a client write could otherwise mint an owned item for free, so
-/// per the same table they're Cloud-Function-only
-/// (`purchaseCareItem`/`purchaseAccessory` in functions/src/index.ts) --
-/// this repository deliberately doesn't attempt a direct write for
-/// either, matching FirestoreUserRepository.addXp's UnsupportedError
-/// idiom. Screens call the Cloud Function directly instead (see
-/// shop_screen.dart's `_buyCareItem`/`_buyAccessory`, via
-/// cloud_functions_client.dart's shared helper).
+/// Firestore inventory at `/users/{uid}/inventory/main`.
+/// Consumes owned care items and equips accessories through guarded client writes;
+/// purchases require Cloud Functions to prevent free item creation.
 class FirestoreInventoryRepository implements InventoryRepository {
   FirestoreInventoryRepository({
     required String uid,
@@ -55,7 +42,7 @@ class FirestoreInventoryRepository implements InventoryRepository {
     if (data == null) {
       throw StateError(
         'No inventory/main document for $_uid -- onUserCreate has not '
-        'provisioned one yet (see docs/BACKEND.md, Cloud Functions). '
+        'provisioned one yet (see docs/technical/BACKEND.md, Cloud Functions). '
         "FirestoreInventoryRepository isn't safe to use until that exists.",
       );
     }
@@ -80,34 +67,13 @@ class FirestoreInventoryRepository implements InventoryRepository {
   }
 
   @override
-  Future<void> addCareItem(String careItemId, int amount) {
-    throw UnsupportedError(
-      'FirestoreInventoryRepository.addCareItem: careItemCounts may only '
-      'be INCREASED via the purchaseCareItem Cloud Function '
-      '(docs/BACKEND.md, "Security rules") -- the deployed rules reject a '
-      'direct client increase. Call purchaseCareItem from the screen '
-      'instead.',
-    );
-  }
-
-  @override
-  Future<void> addAccessory(String accessoryId) {
-    throw UnsupportedError(
-      'FirestoreInventoryRepository.addAccessory: ownedAccessoryIds may '
-      'only grow via the purchaseAccessory Cloud Function '
-      '(docs/BACKEND.md, "Security rules") -- the deployed rules reject a '
-      'direct client addition. Call purchaseAccessory from the screen '
-      'instead.',
-    );
-  }
-
-  @override
   Future<void> setEquippedAccessory(String? accessoryId) async {
     final snapshot = await _doc.get();
     final data = snapshot.data();
     if (data == null) return;
     final owned = {
-      for (final id in (data['ownedAccessoryIds'] as List<dynamic>? ?? const []))
+      for (final id
+          in (data['ownedAccessoryIds'] as List<dynamic>? ?? const []))
         id as String,
     };
     if (accessoryId != null && !owned.contains(accessoryId)) return;

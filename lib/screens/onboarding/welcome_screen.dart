@@ -56,9 +56,9 @@ class WelcomeScreen extends StatelessWidget {
                       // smaller than the vertical padding below) on the
                       // very first layout pass -- clamp so minHeight never
                       // goes negative, which BoxConstraints asserts on.
-                      minHeight: (constraints.maxHeight -
-                              (AppSpacing.stackMd * 2))
-                          .clamp(0.0, double.infinity),
+                      minHeight:
+                          (constraints.maxHeight - (AppSpacing.stackMd * 2))
+                              .clamp(0.0, double.infinity),
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -72,7 +72,7 @@ class WelcomeScreen extends StatelessWidget {
                               TextSpan(
                                 style: AppTextStyles.display,
                                 children: [
-                                  const TextSpan(text: 'Meet Your\n'),
+                                  const TextSpan(text: 'Meet your\n'),
                                   TextSpan(
                                     text: 'Nori',
                                     style: AppTextStyles.display.copyWith(
@@ -104,12 +104,33 @@ class WelcomeScreen extends StatelessWidget {
                           child: FractionallySizedBox(
                             widthFactor: 0.8,
                             child: TactileButton(
-                              label: 'Get Started',
+                              label: 'Get started',
                               icon: Icons.arrow_forward,
                               onPressed: () =>
                                   Navigator.pushNamed(context, '/signup'),
                             ),
                           ),
+                        ),
+                        // Returning users (e.g. after logging out) land here
+                        // too; without this the only way to Log In was via
+                        // the sign-up form's footer link.
+                        const SizedBox(height: AppSpacing.unit),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              'Already have an account?',
+                              style: AppTextStyles.bodyMd.copyWith(
+                                color: AppColors.inkMuted,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/login'),
+                              child: const Text('Log in'),
+                            ),
+                          ],
                         ),
                       ],
                     ),

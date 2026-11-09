@@ -1,90 +1,49 @@
 import '../models/pet.dart';
+import 'care_item_catalog.dart';
+import 'inventory_repository.dart';
 
 abstract class PetRepository {
   Future<Pet> getPet();
 
-  /// [amount] is the calling [CareItem]'s `restoreAmount` (see
-  /// care_item_catalog.dart) — different items restore different amounts.
-  Future<void> feed({required double amount});
-  Future<void> groom({required double amount});
-  Future<void> play({required double amount});
+  /// Atomically spends one [item] and restores its target vital after decay.
+  /// Returns false without changes when the item is out of stock.
+  Future<bool> useCareItem(CareItem item);
 
-  /// Keeps the pet's evolution stage in sync with [userLevel] against its
-  /// threshold — promotes on crossing it, demotes back if a claim gets
-  /// undone and the level drops below it again, so evolution never drifts
-  /// out of sync with the level it's derived from. Call after any action
-  /// that might change the user's level.
-  Future<void> syncEvolution(int userLevel);
-
-  /// Sets the pet's display name -- a direct client write, not
-  /// Cloud-Function-only (docs/BACKEND.md, "Onboarding answer (pet
-  /// name)": it's typed on a screen after sign-up, not currency, so an
-  /// auth trigger can't see it and it needs no Cloud Function). Called
-  /// once from the "name your pet" onboarding screen; skipping onboarding
-  /// just never calls this, leaving onUserCreate's default of 'Nori'.
+  /// Sets the pet's display name through a direct client write during onboarding.
+  /// Skipping keeps `onUserCreate`'s default name, 'Nori'.
   Future<void> renamePet(String name);
 }
 
 class MockPetRepository implements PetRepository {
+  MockPetRepository(this._inventory);
+
+  final InventoryRepository _inventory;
+
   // ADOPTED-FROM-STITCH demo numbers.
   Pet _pet = Pet(
     id: 'nori-pet',
     name: 'Nori',
     stage: PetEvolutionStage.baby,
-    evolutionLevelThreshold: 7,
+    evolutionLevelThreshold: kEvolutionLevel,
     hunger: 78,
     hygiene: 90,
     happiness: 88,
     lastDecayAt: DateTime.now(),
   );
 
-  static const double _decayPerHour = 2;
-
-  Pet _applyDecay(Pet pet) {
-    final elapsedHours =
-        DateTime.now().difference(pet.lastDecayAt).inMinutes / 60;
-    if (elapsedHours <= 0) return pet;
-    final drop = (elapsedHours * _decayPerHour).clamp(0, 100);
-    return pet.copyWith(
-      hunger: (pet.hunger - drop).clamp(0, 100),
-      hygiene: (pet.hygiene - drop).clamp(0, 100),
-      happiness: (pet.happiness - drop).clamp(0, 100),
-      lastDecayAt: DateTime.now(),
-    );
-  }
-
   @override
   Future<Pet> getPet() async {
-    _pet = _applyDecay(_pet);
+    _pet = applyPetDecay(_pet);
     return _pet;
   }
 
+  // In memory nothing can fail between the two steps, so consuming
+  // through the inventory and then restoring is already all-or-nothing.
   @override
-  Future<void> feed({required double amount}) async {
-    _pet = _applyDecay(_pet);
-    _pet = _pet.copyWith(hunger: (_pet.hunger + amount).clamp(0, 100));
-  }
-
-  @override
-  Future<void> groom({required double amount}) async {
-    _pet = _applyDecay(_pet);
-    _pet = _pet.copyWith(hygiene: (_pet.hygiene + amount).clamp(0, 100));
-  }
-
-  @override
-  Future<void> play({required double amount}) async {
-    _pet = _applyDecay(_pet);
-    _pet = _pet.copyWith(happiness: (_pet.happiness + amount).clamp(0, 100));
-  }
-
-  @override
-  Future<void> syncEvolution(int userLevel) async {
-    final shouldEvolve = userLevel >= _pet.evolutionLevelThreshold;
-    if (shouldEvolve && _pet.stage == PetEvolutionStage.baby) {
-      _pet = _pet.copyWith(stage: PetEvolutionStage.evolution1);
-    } else if (!shouldEvolve && _pet.stage == PetEvolutionStage.evolution1) {
-      _pet = _pet.copyWith(stage: PetEvolutionStage.baby);
-    }
+  Future<bool> useCareItem(CareItem item) async {
+    if (!await _inventory.consumeCareItem(item.id)) return false;
+    _pet = applyCareRestore(applyPetDecay(_pet), item);
+    return true;
   }
 
   @override
@@ -93,4 +52,48 @@ class MockPetRepository implements PetRepository {
     if (trimmed.isEmpty) return;
     _pet = _pet.copyWith(name: trimmed);
   }
+}
+
+/// How many points each vital loses per hour: 1 means a full vital reaches
+/// the "Pet needs you" line (30) in about 70 hours, and one cheap care item per
+/// vital a day keeps Nori fine (economy pass 2026-11-07, OPEN_DECISIONS.md).
+/// `PET_DECAY_PER_HOUR` in functions/src/notifications.ts mirrors it — change
+/// both together.
+const double kPetDecayPerHour = 1;
+
+/// The level at which Nori first evolves (1,000 XP in total). Every pet uses
+/// this: an `evolutionLevelThreshold` stored on older pet documents (7) is
+/// ignored. `EVOLUTION_LEVEL` in functions/src/rewards.ts mirrors it.
+const int kEvolutionLevel = 5;
+
+/// Applies equal decay to every vital since `lastDecayAt`, floored at zero.
+/// Uses whole minutes and resets `lastDecayAt` to [now]; shared by both repositories.
+Pet applyPetDecay(Pet pet, {DateTime? now}) {
+  final current = now ?? DateTime.now();
+  final elapsedHours = current.difference(pet.lastDecayAt).inMinutes / 60;
+  if (elapsedHours <= 0) return pet;
+  final drop = (elapsedHours * kPetDecayPerHour).clamp(0, 100);
+  return pet.copyWith(
+    hunger: (pet.hunger - drop).clamp(0, 100),
+    hygiene: (pet.hygiene - drop).clamp(0, 100),
+    happiness: (pet.happiness - drop).clamp(0, 100),
+    lastDecayAt: current,
+  );
+}
+
+/// [pet] with [item]'s vital raised by its restoreAmount, clamped to 100.
+/// Shared by both repositories so the category → vital mapping lives once.
+Pet applyCareRestore(Pet pet, CareItem item) {
+  final amount = item.restoreAmount;
+  return switch (item.category) {
+    CareCategory.hunger => pet.copyWith(
+      hunger: (pet.hunger + amount).clamp(0, 100),
+    ),
+    CareCategory.hygiene => pet.copyWith(
+      hygiene: (pet.hygiene + amount).clamp(0, 100),
+    ),
+    CareCategory.love => pet.copyWith(
+      happiness: (pet.happiness + amount).clamp(0, 100),
+    ),
+  };
 }

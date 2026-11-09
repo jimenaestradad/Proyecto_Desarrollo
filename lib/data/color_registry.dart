@@ -1,33 +1,40 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
-/// Maps the colors a user-created habit can actually have to stable string
-/// keys for Firestore storage — today that's just `AppColors.terracotta`
-/// (see `AddHabitScreen`, which has no color picker yet). New keys get added
-/// here if/when more colors become choosable, not speculatively ahead of it.
+/// Stable Firestore color keys shared by habit and bucket-list pickers.
+/// Palette changes then avoid stranding stored items on old hex values.
+///
+/// `linenAlt` (beige, too close to the page background) is retired: it is not
+/// registered, so items saved with that key load as [defaultColor] and are
+/// written back with its key the next time they are saved.
 class ColorRegistry {
   ColorRegistry._();
 
   static const Map<String, Color> byKey = {
     'terracotta': AppColors.terracotta,
-    // Not reachable from AddHabitScreen (no color picker exists), but used
-    // by MockHabitRepository's seed habits — see the same note in
-    // icon_registry.dart.
     'sky': AppColors.sky,
     'mossLight': AppColors.mossLight,
     'blushPink': AppColors.blushPink,
     'mustardLight': AppColors.mustardLight,
     'blush': AppColors.blush,
-    'linenAlt': AppColors.linenAlt,
   };
 
-  static Color colorFor(String key) =>
-      byKey[key] ?? (throw ArgumentError('Unknown color key: $key'));
+  static const Color defaultColor = AppColors.mossLight;
+  static const String defaultKey = 'mossLight';
 
-  static String keyFor(Color color) => byKey.entries
-      .firstWhere(
-        (entry) => entry.value == color,
-        orElse: () => throw ArgumentError('No registry key for color $color'),
-      )
-      .key;
+  /// Falls back instead of throwing, for the same reason as
+  /// [IconRegistry.iconFor].
+  static Color colorFor(String? key) => byKey[key] ?? defaultColor;
+
+  /// Null only if [color] isn't registered.
+  static String? tryKeyFor(Color color) {
+    for (final entry in byKey.entries) {
+      if (entry.value == color) return entry.key;
+    }
+    return null;
+  }
+
+  static String keyFor(Color color) =>
+      tryKeyFor(color) ??
+      (throw ArgumentError('No registry key for color $color'));
 }

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import 'nori_card.dart';
 
 /// Flags a screen that only exists as a visual preview — the mockup has a
 /// design for it, but the underlying product decision (economy, social,
-/// payments — see docs/OPEN_DECISIONS.md) hasn't been made, so nothing on
+/// payments — see docs/product/OPEN_DECISIONS.md) hasn't been made, so nothing on
 /// the screen is wired to real data or persists anything.
 class FutureFeatureBanner extends StatelessWidget {
   const FutureFeatureBanner({
@@ -52,13 +53,11 @@ class SoonBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.mustardLight,
-        borderRadius: BorderRadius.circular(AppRadius.full),
-        border: Border.all(color: AppColors.ink, width: AppBorder.thin),
-      ),
+      color: AppColors.mustardLight,
+      radius: AppRadius.full,
+      borderWidth: AppBorder.thin,
       child: Text(
         'Soon',
         style: AppTextStyles.labelSm.copyWith(color: AppColors.mustardDark),

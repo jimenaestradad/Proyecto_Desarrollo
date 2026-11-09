@@ -4,42 +4,48 @@ import 'package:flutter/material.dart';
 import 'package:nori/data/accessory_catalog.dart';
 import 'package:nori/data/app_data.dart';
 import 'package:nori/data/care_item_catalog.dart';
-import 'package:nori/data/cloud_functions_client.dart';
+import 'package:nori/data/habit_local_edits.dart';
 import 'package:nori/data/habit_repository.dart';
+import 'package:nori/data/pet_repository.dart';
+import 'package:nori/screens/habits/habit_day_actions.dart'
+    show OptimisticHabits;
 import 'package:nori/models/habit.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/models/pet.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
 import 'package:nori/screens/pet/evolution_screen.dart';
+import 'package:nori/screens/pet/gift_screen.dart';
 import 'package:nori/screens/pet/level_up_screen.dart';
 import 'package:nori/screens/shop/shop_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/utils/formatting.dart';
 import 'package:nori/widgets/circular_icon_button.dart';
 import 'package:nori/widgets/habit_tile.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_avatar.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_room_stage.dart';
 import 'package:nori/widgets/pet_vital_ring.dart';
 import 'package:nori/widgets/progress_bar_pill.dart';
+import 'package:nori/widgets/reward_burst.dart';
 import 'package:nori/widgets/streak_chip.dart';
+import 'package:nori/widgets/syncing_icon.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
-/// Home: Nori's room. The room is a true full-bleed background (edge to
-/// edge, not a padded/rounded card) with the HUD and the habit panel
-/// floating over it — habits get a single-line summary plus one actionable
-/// item, not the full list (that lives on the Habits tab, reached via
-/// [onOpenHabits] or by dragging the panel's handle up).
+/// Nori's full-bleed room with a floating HUD and habit summary/action panel.
+/// [onOpenHabits] or dragging the handle opens the full Habits tab.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.active, required this.onOpenHabits});
+  const HomeScreen({
+    super.key,
+    required this.active,
+    required this.onOpenHabits,
+  });
 
-  /// Whether this is the currently-shown tab in [NoriShell]'s [IndexedStack].
-  /// [IndexedStack] keeps every tab's state alive even while offstage, so
-  /// without this a habit claimed/logged on another tab (e.g. the Habits
-  /// tab) would leave this screen showing stale habits/XP until some
-  /// unrelated action here happened to reload it. Reload on the
-  /// false→true transition instead — see [_HomeScreenState.didUpdateWidget].
+  /// Whether this preserved IndexedStack tab is visible.
+  /// Reload on activation so changes from other tabs appear immediately.
   final bool active;
 
   /// Switches the shell to the Habits tab.
@@ -49,7 +55,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with RemoteLoadState<HomeScreen>, OptimisticHabits<HomeScreen> {
   NoriUser? _user;
   List<Habit>? _habits;
   Pet? _pet;
@@ -64,38 +71,74 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void didUpdateWidget(covariant HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.active && widget.active) _loadData();
+    if (!oldWidget.active && widget.active) {
+      // Show the newest XP/coins at once; the reload below still has the last word.
+      _user = AppData.user.lastKnownUser ?? _user;
+      _loadData();
+    }
   }
 
+  /// Which [_loadData] call is the latest; an older one finishing after a
+  /// newer one must not overwrite it.
+  int _loadSeq = 0;
+
   Future<void> _loadData() async {
+    final seq = ++_loadSeq;
+    // A claim, log or care item used while this load is in flight makes its
+    // result older than what's on screen; those actions re-read what they
+    // changed themselves, so the load then leaves the screen alone.
+    final habitEdits = editStamp;
+    final careEdits = _careEdits;
     // Captured before the reload so a stage change picked up here — e.g. a
     // claim made on another tab while Home was last loaded — still gets its
     // celebration on switching back, not just one earned via a Home action.
     final previousStage = _pet?.stage;
     final previousLevel = _user?.level;
-    final user = await AppData.user.getCurrentUser();
-    final habits = await AppData.habits.getTodayHabits();
-    await AppData.pet.syncEvolution(user.level);
-    final pet = await AppData.pet.getPet();
-    final inventory = await AppData.inventory.getInventory();
-    if (!mounted) return;
-    setState(() {
-      _user = user;
-      _habits = habits;
-      _pet = pet;
-      _inventory = inventory;
+    await guardedLoad(hasData: _user != null, () async {
+      // Started together, not one after another: each is its own Firestore
+      // round trip, and awaiting them in turn made Home take ~4s to appear.
+      final (user, habits, pet, inventory) = await (
+        AppData.user.getCurrentUser(),
+        AppData.habits.getHabitsForDate(DateTime.now()),
+        AppData.pet.getPet(),
+        AppData.inventory.getInventory(),
+      ).wait;
+      if (!mounted || seq != _loadSeq) return;
+      if (editStamp != habitEdits || _careEdits != careEdits) return;
+      setState(() {
+        _user = user;
+        _habits = habits;
+        _pet = pet;
+        _inventory = inventory;
+      });
     });
-    if (previousStage != null && pet.stage.index > previousStage.index) {
-      await showEvolutionCelebration(context, petName: pet.name, stage: pet.stage);
-    } else if (previousLevel != null && user.level > previousLevel) {
-      await showLevelUpCelebration(context, level: user.level, petName: pet.name);
-    }
+    await _celebrateChanges(previousStage, previousLevel);
   }
 
   Future<void> _reloadHabits() async {
-    final habits = await AppData.habits.getTodayHabits();
-    if (!mounted) return;
+    final stamp = editStamp;
+    final habits = await AppData.habits.getHabitsForDate(DateTime.now());
+    if (!mounted || stamp != editStamp) return;
     setState(() => _habits = habits);
+  }
+
+  @override
+  Future<void> reloadActionHabits() => _reloadHabits();
+
+  @override
+  Object? snapshotHabits() => _habits;
+
+  @override
+  void restoreHabitSnapshot(Object snapshot) =>
+      _habits = snapshot as List<Habit>;
+
+  @override
+  void applyHabitChange(String habitId, Habit Function(Habit) change) {
+    final habits = _habits;
+    if (habits == null) return;
+    setState(() {
+      _habits = [for (final h in habits) h.id == habitId ? change(h) : h];
+    });
   }
 
   Future<void> _reloadInventory() async {
@@ -105,20 +148,26 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _reloadUserAndPet() async {
-    final previousStage = _pet?.stage;
-    final previousLevel = _user?.level;
-    final user = await AppData.user.getCurrentUser();
-    await AppData.pet.syncEvolution(user.level);
-    final pet = await AppData.pet.getPet();
+    final (user, pet) = await (
+      AppData.user.getCurrentUser(),
+      AppData.pet.getPet(),
+    ).wait;
     if (!mounted) return;
     setState(() {
       _user = user;
       _pet = pet;
     });
-    // previousStage == null only on the very first load (no prior pet to
-    // compare against) — skip the celebration then so it only ever fires
-    // for a real, in-session evolution, not on app open. Same reasoning
-    // applies to previousLevel below.
+  }
+
+  /// Celebrates changes to pet stage or user level, skipping the first load.
+  /// Runs outside guarded actions because a dialog may outlast [remoteTimeout].
+  Future<void> _celebrateChanges(
+    PetEvolutionStage? previousStage,
+    int? previousLevel,
+  ) async {
+    final pet = _pet;
+    final user = _user;
+    if (!mounted || pet == null || user == null) return;
     if (previousStage != null && pet.stage.index > previousStage.index) {
       await showEvolutionCelebration(
         context,
@@ -126,56 +175,78 @@ class _HomeScreenState extends State<HomeScreen> {
         stage: pet.stage,
       );
     } else if (previousLevel != null && user.level > previousLevel) {
-      await showLevelUpCelebration(context, level: user.level, petName: pet.name);
+      await showLevelUpCelebration(
+        context,
+        level: user.level,
+        petName: pet.name,
+      );
     }
   }
 
-  /// The claimHabit/unclaimHabit Cloud Function already wrote XP, coins,
-  /// level and pet stage server-side — reload picks up the new values, and
-  /// [_reloadUserAndPet]'s own before/after diff (not [reward] directly)
-  /// decides whether to celebrate, since it also has to catch a change made
-  /// on another tab.
-  Future<void> _applyReward(HabitRewardResult reward) async {
-    if (reward.xpDelta == 0 && reward.coinsDelta == 0) return;
-    await _reloadUserAndPet();
-  }
-
-  Future<void> _toggleHabit(Habit habit, bool completed) async {
-    try {
-      final reward = await AppData.habits.setHabitCompleted(habit.id, completed);
-      await _applyReward(reward);
-      await _reloadHabits();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
+  /// Runs a server claim; [change] updates the tile and [then] follows the call.
+  /// Nonzero rewards reload user/pet; [_celebrateChanges] compares before/after
+  /// so changes made on other tabs can also celebrate.
+  Future<void> _runClaim(
+    Habit habit,
+    Habit Function(Habit) change,
+    Future<HabitRewardResult> Function() claim, {
+    Future<void> Function()? then,
+  }) async {
+    final previousStage = _pet?.stage;
+    final previousLevel = _user?.level;
+    String? giftedAccessoryId;
+    RewardBurst.showForClaim(context, before: habit, after: change(habit));
+    final ok = await optimisticHabitEdit(habit.id, change, () async {
+      final reward = await claim();
+      giftedAccessoryId = reward.giftedAccessoryId;
+      // Every time, not only when paying: Undo pays nothing but can still
+      // change the streak.
+      await _reloadUserAndPet();
+      if (reward.xpDelta != 0 || reward.coinsDelta != 0) {
+        // A paying claim can also grant (and auto-equip) the one-time
+        // first-completion accessory, which the pet stage shows.
+        await _reloadInventory();
+      }
+      if (then != null) await then();
+    }, paysReward: true);
+    if (!ok) return;
+    await _celebrateChanges(previousStage, previousLevel);
+    final gift = giftedAccessoryId;
+    final pet = _pet;
+    if (gift != null && pet != null && mounted) {
+      final tryItOn = await showGiftCelebration(
+        context,
+        accessoryId: gift,
+        petName: pet.name,
+      );
+      if (tryItOn && mounted) {
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const CustomizationScreen()));
+      }
     }
   }
 
-  Future<void> _claimHabit(Habit habit) async {
-    try {
-      final reward = await AppData.habits.claimHabit(habit.id);
-      await _applyReward(reward);
-      await _reloadHabits();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
-  }
-
-  Future<void> _unclaimHabit(Habit habit) async {
-    try {
-      final reward = await AppData.habits.unclaimHabit(habit.id);
-      await _applyReward(reward);
-      await _reloadHabits();
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
-  }
-
+  /// Quick-logs [amount]; reaching the target completes the habit.
   Future<void> _quickLog(Habit habit, double amount) async {
-    await AppData.habits.logProgress(habit.id, amount);
-    await _reloadHabits();
+    final today = DateTime.now();
+    if (habit.reachesTarget(habit.currentValue + amount)) {
+      PreClaimValues.remember(habit.id, today, habit.currentValue);
+      await _runClaim(
+        habit,
+        (h) => h.withLogged(amount).claimedLocally(),
+        () async {
+          await AppData.habits.logProgress(habit.id, amount);
+          return AppData.habits.claimHabit(habit.id);
+        },
+      );
+      return;
+    }
+    await optimisticHabitEdit(
+      habit.id,
+      (h) => h.withLogged(amount),
+      () => AppData.habits.logProgress(habit.id, amount),
+    );
   }
 
   /// The compact Today's Goal row uses [HabitTile], whose checkbox means
@@ -183,35 +254,96 @@ class _HomeScreenState extends State<HomeScreen> {
   /// type — partial progress itself is logged via the tile's separate
   /// quick-log button ([_quickLog]), not this checkbox.
   Future<void> _onHabitTileToggle(Habit habit, bool completed) async {
+    final today = DateTime.now();
     if (habit.type == HabitType.binary) {
-      await _toggleHabit(habit, completed);
+      await _runClaim(
+        habit,
+        (h) => completed ? h.claimedLocally() : h.unclaimedLocally(),
+        () => AppData.habits.setHabitCompleted(habit.id, completed),
+      );
       return;
     }
     if (completed) {
-      await _claimHabit(habit);
-    } else {
-      await _unclaimHabit(habit);
+      if (habit.completesAtTarget) {
+        PreClaimValues.remember(habit.id, today, habit.currentValue);
+      }
+      await _runClaim(
+        habit,
+        (h) => h.claimedLocally(),
+        () => AppData.habits.claimHabit(habit.id),
+      );
+      return;
+    }
+    final restore = PreClaimValues.take(habit.id, today);
+    final restoring = restore != null && restore != habit.currentValue;
+    await _runClaim(
+      habit,
+      (h) => h.unclaimedLocally(restoreValue: restoring ? restore : null),
+      () => AppData.habits.unclaimHabit(habit.id),
+      then: restoring
+          ? () => AppData.habits.setProgress(habit.id, restore)
+          : null,
+    );
+  }
+
+  int _carePending = 0;
+  int _careEdits = 0;
+
+  /// Stock and vitals before the first care item now in flight; restored if
+  /// the call fails, so the undo doesn't need the network. See [_useCareItem].
+  (Inventory, Pet)? _careBaseline;
+
+  /// Feeds, washes or plays at once (stock down, vital up) and confirms with
+  /// the server in the background. A refusal or failure re-reads both.
+  Future<void> _useCareItem(CareItem item) async {
+    final inventory = _inventory;
+    final pet = _pet;
+    if (inventory == null || pet == null) return;
+    if (inventory.countOf(item.id) <= 0) {
+      _showSnack('Out of stock — buy more in the shop.');
+      return;
+    }
+    _careEdits++;
+    if (_carePending == 0) _careBaseline = (inventory, pet);
+    _carePending++;
+    setState(() {
+      _inventory = inventory.copyWith(
+        careItemCounts: {
+          ...inventory.careItemCounts,
+          item.id: inventory.countOf(item.id) - 1,
+        },
+      );
+      _pet = applyCareRestore(pet, item);
+    });
+    var used = false;
+    final ok = await guardedAction(() async {
+      used = await AppData.pet.useCareItem(item);
+    });
+    _carePending--;
+    final baseline = _careBaseline;
+    if (_carePending == 0) _careBaseline = null;
+    if (!mounted) return;
+    if ((!ok || !used) && baseline != null) {
+      setState(() {
+        _inventory = baseline.$1;
+        _pet = baseline.$2;
+      });
+    }
+    if (ok && !used) {
+      _showSnack('Out of stock — buy more in the shop.');
+    }
+    if (!ok || !used || _carePending == 0) {
+      await guardedAction(() => _reloadCare(_careEdits));
     }
   }
 
-  Future<void> _useCareItem(CareItem item) async {
-    final ok = await AppData.inventory.consumeCareItem(item.id);
-    if (!mounted) return;
-    if (!ok) {
-      _showSnack('Out of stock — buy more in the Shop.');
-      return;
-    }
-    switch (item.category) {
-      case CareCategory.hunger:
-        await AppData.pet.feed(amount: item.restoreAmount);
-      case CareCategory.hygiene:
-        await AppData.pet.groom(amount: item.restoreAmount);
-      case CareCategory.love:
-        await AppData.pet.play(amount: item.restoreAmount);
-    }
-    final inventory = await AppData.inventory.getInventory();
-    final pet = await AppData.pet.getPet();
-    if (!mounted) return;
+  /// Re-reads stock and vitals, unless another care item was used meanwhile.
+  Future<void> _reloadCare(int stamp) async {
+    final (inventory, pet) = await (
+      AppData.inventory.getInventory(),
+      AppData.pet.getPet(),
+    ).wait;
+    if (!mounted || stamp != _careEdits) return;
     setState(() {
       _inventory = inventory;
       _pet = pet;
@@ -231,7 +363,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const CustomizationScreen()));
-    await _reloadInventory();
+    await guardedAction(_reloadInventory);
   }
 
   Future<void> _openShop() async {
@@ -239,8 +371,10 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
     ).push(MaterialPageRoute(builder: (_) => const ShopScreen()));
     // Purchases spend coins as well as changing inventory.
-    await _reloadUserAndPet();
-    await _reloadInventory();
+    await guardedAction(() async {
+      await _reloadUserAndPet();
+      await _reloadInventory();
+    });
   }
 
   @override
@@ -251,10 +385,17 @@ class _HomeScreenState extends State<HomeScreen> {
     final inventory = _inventory;
 
     if (user == null || habits == null || pet == null || inventory == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      final error = loadError;
+      return Scaffold(
+        body: error != null
+            ? LoadErrorView(error: error, onRetry: _loadData)
+            : const _HomeLoading(),
+      );
     }
 
-    final completedCount = habits.where((habit) => habit.isCompletedToday).length;
+    final completedCount = habits
+        .where((habit) => habit.isCompletedToday)
+        .length;
     final completion = habits.isEmpty ? 0.0 : completedCount / habits.length;
     final equippedAccessory = inventory.equippedAccessoryId == null
         ? null
@@ -268,12 +409,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ? AppSpacing.containerPaddingDesktop
               : AppSpacing.containerPaddingMobile;
 
-          // Align+SizedBox, not Center+ConstrainedBox: Center hands its
-          // child loose constraints, so the Stack below would size itself
-          // to its one non-positioned child (the HUD) instead of filling
-          // the screen — collapsing the whole layout to HUD-height and
-          // leaving the room background and the bottom-pinned habit panel
-          // with nothing to actually fill or pin against.
+          // Align+SizedBox makes the Stack fill the screen.
+          // Loose Center constraints would shrink it to the HUD and collapse the room/panel.
           return Align(
             alignment: Alignment.topCenter,
             child: SizedBox(
@@ -304,6 +441,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         user: user,
                         pet: pet,
                         inventory: inventory,
+                        syncing: rewardSyncing,
                         onUseCareItem: _useCareItem,
                         onShop: _openShop,
                       ),
@@ -333,6 +471,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+/// First-load placeholder: a spinner with a line saying what is happening.
+class _HomeLoading extends StatelessWidget {
+  const _HomeLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: AppSpacing.gutter),
+          Text(
+            'Waking up your Nori…',
+            style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Floats over the top of the room: avatar, a card with name/level (tap the
 /// level bar to reveal the evolution + XP readout), the three vital rings,
 /// a coins chip, and a small Shop shortcut so buying more care items or
@@ -342,9 +502,13 @@ class _RoomHud extends StatefulWidget {
     required this.user,
     required this.pet,
     required this.inventory,
+    required this.syncing,
     required this.onUseCareItem,
     required this.onShop,
   });
+
+  /// A claim is being confirmed, so XP and coins are about to change.
+  final bool syncing;
 
   final NoriUser user;
   final Pet pet;
@@ -405,83 +569,108 @@ class _RoomHudState extends State<_RoomHud> {
             NoriAvatar(imageUrl: user.avatarUrl, size: 46),
             const SizedBox(width: AppSpacing.stackSm),
             Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppColors.white.withValues(alpha: 0.88),
+              // The whole pill toggles the evolution details, not just the
+              // little arrow. Material + InkWell (not a decorated Container)
+              // so the ripple paints over the white fill.
+              child: Material(
+                color: AppColors.white.withValues(alpha: 0.88),
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppRadius.sm),
-                  border: Border.all(color: AppColors.ink, width: AppBorder.standard),
+                  side: const BorderSide(
+                    color: AppColors.ink,
+                    width: AppBorder.standard,
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Nori',
-                      style: AppTextStyles.headlineMd.copyWith(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => setState(() => _showEvolution = !_showEvolution),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 5,
                     ),
-                    const SizedBox(height: 2),
-                    InkWell(
-                      onTap: () => setState(() => _showEvolution = !_showEvolution),
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('LEVEL ${user.level}', style: AppTextStyles.labelSm),
-                          const SizedBox(width: AppSpacing.unit),
-                          SizedBox(
-                            width: 44,
-                            child: ProgressBarPill(
-                              progress: user.levelProgress,
-                              height: 6,
-                              color: AppColors.moss,
-                              trackColor: AppColors.linen,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          pet.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.headlineMd.copyWith(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'LEVEL ${user.level}',
+                              style: AppTextStyles.labelSm,
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Icon(Icons.star, size: 11, color: AppColors.mustardDark),
-                          const SizedBox(width: 2),
-                          Text(
-                            formatThousands(user.totalXp),
-                            style: AppTextStyles.labelSm.copyWith(color: AppColors.ink),
-                          ),
-                          const SizedBox(width: 3),
-                          Icon(
-                            _showEvolution
-                                ? Icons.expand_less
-                                : Icons.expand_more,
-                            size: 14,
-                            color: AppColors.inkFaint,
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Expands the card itself (not a separate chip below
-                    // it) to show the evolution stage — XP now lives
-                    // inline next to the level bar above, always visible.
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOut,
-                      alignment: Alignment.topLeft,
-                      child: _showEvolution
-                          ? Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: _EvolutionDetails(
-                                pet: pet,
-                                userLevel: user.level,
+                            const SizedBox(width: AppSpacing.unit),
+                            Flexible(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 44),
+                                child: ProgressBarPill(
+                                  progress: user.levelProgress,
+                                  height: 6,
+                                  color: AppColors.moss,
+                                  trackColor: AppColors.linen,
+                                ),
                               ),
-                            )
-                          : const SizedBox(width: double.infinity),
+                            ),
+                            const SizedBox(width: 6),
+                            SyncingIcon(
+                              icon: Icons.star,
+                              size: 11,
+                              color: AppColors.mustardDark,
+                              syncing: widget.syncing,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              formatThousands(user.totalXp),
+                              style: AppTextStyles.labelSm.copyWith(
+                                color: AppColors.ink,
+                              ),
+                            ),
+                            const SizedBox(width: 3),
+                            Icon(
+                              _showEvolution
+                                  ? Icons.expand_less
+                                  : Icons.expand_more,
+                              size: 14,
+                              color: AppColors.inkFaint,
+                            ),
+                          ],
+                        ),
+                        // Expands the card itself (not a separate chip below
+                        // it) to show the evolution stage — XP now lives
+                        // inline next to the level bar above, always visible.
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOut,
+                          alignment: Alignment.topLeft,
+                          child: _showEvolution
+                              ? Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: _EvolutionDetails(
+                                    pet: pet,
+                                    userLevel: user.level,
+                                  ),
+                                )
+                              : const SizedBox(width: double.infinity),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
             const SizedBox(width: AppSpacing.unit),
-            _CoinPill(coins: user.coins),
+            _CoinPill(coins: user.coins, syncing: widget.syncing),
             const SizedBox(width: AppSpacing.unit),
             CircularIconButton(
               icon: Icons.shopping_bag,
@@ -495,13 +684,13 @@ class _RoomHudState extends State<_RoomHud> {
           mainAxisSize: MainAxisSize.min,
           children: [
             PetVitalRing(
-              icon: const Icon(Icons.favorite, size: 16, color: AppColors.ink),
+              icon: const Icon(Icons.favorite, size: 16),
               label: 'Happy',
               value: pet.happiness,
               color: AppColors.moss,
               onTap: () => _showCare(
                 icon: Icons.favorite,
-                iconBg: AppColors.mossLight,
+                iconBg: AppColors.moss,
                 vitalLabel: 'Happiness',
                 vitalValue: pet.happiness,
                 vitalColor: AppColors.moss,
@@ -510,14 +699,14 @@ class _RoomHudState extends State<_RoomHud> {
             ),
             const SizedBox(width: 14),
             PetVitalRing(
-              icon: const Icon(Icons.restaurant, size: 16, color: AppColors.ink),
+              icon: const Icon(Icons.restaurant, size: 16),
               label: 'Fed',
               value: pet.hunger,
               color: AppColors.terracotta,
               onTap: () => _showCare(
                 icon: Icons.restaurant,
-                iconBg: AppColors.sky,
-                vitalLabel: 'Hunger',
+                iconBg: AppColors.terracotta,
+                vitalLabel: 'Fullness',
                 vitalValue: pet.hunger,
                 vitalColor: AppColors.terracotta,
                 category: CareCategory.hunger,
@@ -525,13 +714,13 @@ class _RoomHudState extends State<_RoomHud> {
             ),
             const SizedBox(width: 14),
             PetVitalRing(
-              icon: const Icon(Icons.wash, size: 16, color: AppColors.ink),
+              icon: const Icon(Icons.wash, size: 16),
               label: 'Clean',
               value: pet.hygiene,
               color: AppColors.skyBlue,
               onTap: () => _showCare(
                 icon: Icons.soap,
-                iconBg: AppColors.mossLight,
+                iconBg: AppColors.skyBlue,
                 vitalLabel: 'Hygiene',
                 vitalValue: pet.hygiene,
                 vitalColor: AppColors.skyBlue,
@@ -545,29 +734,34 @@ class _RoomHudState extends State<_RoomHud> {
   }
 }
 
-
 class _CoinPill extends StatelessWidget {
-  const _CoinPill({required this.coins});
+  const _CoinPill({required this.coins, required this.syncing});
 
   final int coins;
+  final bool syncing;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NoriCard(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.mustard,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.ink, width: AppBorder.standard),
-      ),
+      color: AppColors.mustard,
+      radius: 14,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.monetization_on, size: 14, color: AppColors.ink),
+          SyncingIcon(
+            icon: Icons.monetization_on,
+            size: 14,
+            color: AppColors.ink,
+            syncing: syncing,
+          ),
           const SizedBox(width: 4),
           Text(
             '$coins',
-            style: AppTextStyles.labelSm.copyWith(color: AppColors.ink, fontSize: 11),
+            style: AppTextStyles.labelSm.copyWith(
+              color: AppColors.ink,
+              fontSize: 11,
+            ),
           ),
         ],
       ),
@@ -641,17 +835,15 @@ class _CareActionSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final owned = items.where((item) => inventory.countOf(item.id) > 0).toList();
+    final owned = items
+        .where((item) => inventory.countOf(item.id) > 0)
+        .toList();
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.gutter),
-        child: Container(
+        child: NoriCard(
           padding: const EdgeInsets.all(AppSpacing.gutter),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: Border.all(color: AppColors.ink, width: AppBorder.standard),
-          ),
+          radius: AppRadius.lg,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -670,10 +862,17 @@ class _CareActionSheet extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(vitalLabel, style: AppTextStyles.headlineMd.copyWith(fontSize: 18)),
+                        Text(
+                          vitalLabel,
+                          style: AppTextStyles.headlineMd.copyWith(
+                            fontSize: 18,
+                          ),
+                        ),
                         Text(
                           '${vitalValue.round()}%',
-                          style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted),
+                          style: AppTextStyles.labelSm.copyWith(
+                            color: AppColors.inkMuted,
+                          ),
                         ),
                       ],
                     ),
@@ -685,12 +884,14 @@ class _CareActionSheet extends StatelessWidget {
               const SizedBox(height: AppSpacing.stackMd),
               if (owned.isEmpty) ...[
                 Text(
-                  'Out of stock — visit the Shop to buy more.',
-                  style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
+                  'Out of stock — visit the shop to buy more.',
+                  style: AppTextStyles.bodyMd.copyWith(
+                    color: AppColors.inkMuted,
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.stackMd),
                 TactileButton(
-                  label: 'Go to Shop',
+                  label: 'Go to shop',
                   icon: Icons.shopping_bag,
                   onPressed: onShop,
                 ),
@@ -701,7 +902,8 @@ class _CareActionSheet extends StatelessWidget {
                     usesLeft: inventory.countOf(item.id),
                     onTap: () => onUseItem(item),
                   ),
-                  if (item != owned.last) const SizedBox(height: AppSpacing.stackSm),
+                  if (item != owned.last)
+                    const SizedBox(height: AppSpacing.stackSm),
                 ],
             ],
           ),
@@ -749,7 +951,10 @@ class _CareItemChoiceRow extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppColors.white,
                   shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+                  border: Border.all(
+                    color: AppColors.ink,
+                    width: AppBorder.thin,
+                  ),
                 ),
                 child: item.image != null
                     ? Image.asset(item.image!, fit: BoxFit.contain)
@@ -763,14 +968,18 @@ class _CareItemChoiceRow extends StatelessWidget {
                     Text(item.name, style: AppTextStyles.labelLg),
                     Text(
                       'x$usesLeft left',
-                      style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted),
+                      style: AppTextStyles.labelSm.copyWith(
+                        color: AppColors.inkMuted,
+                      ),
                     ),
                   ],
                 ),
               ),
               Text(
                 '+${item.restoreAmount.round()}',
-                style: AppTextStyles.labelLg.copyWith(color: AppColors.mossDark),
+                style: AppTextStyles.labelLg.copyWith(
+                  color: AppColors.mossDark,
+                ),
               ),
               const SizedBox(width: 4),
               const Icon(Icons.chevron_right, color: AppColors.inkMuted),
@@ -782,11 +991,9 @@ class _CareItemChoiceRow extends StatelessWidget {
   }
 }
 
-/// Floats over the bottom of the room as frosted glass — not a section
-/// below it. Shows a single-line summary plus the one habit still open;
-/// dragging the handle/header up (past a small threshold) expands the panel
-/// in place to show every habit due today. Tapping the chevron still jumps
-/// to the full Habits tab.
+/// Frosted panel over the room with a summary and one open habit.
+/// Dragging the handle/header expands today's list in place;
+/// the chevron opens the full Habits tab.
 class _HabitPanel extends StatefulWidget {
   const _HabitPanel({
     required this.habits,
@@ -824,13 +1031,38 @@ class _HabitPanelState extends State<_HabitPanel> {
   // visible tile gets sliced mid-row with no indication it's scrollable.
   bool _listOverflows = false;
 
+  // Tiles scrolled up under the header get a fade there too, instead of a
+  // hard cut against the progress bar.
+  bool _scrolledDown = false;
+  final _listScroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _listScroll.addListener(() {
+      final scrolledDown = _listScroll.hasClients && _listScroll.offset > 2;
+      if (scrolledDown != _scrolledDown) {
+        setState(() => _scrolledDown = scrolledDown);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _listScroll.dispose();
+    super.dispose();
+  }
+
   void _onDragUpdate(DragUpdateDetails details) {
     _dragAccum += details.delta.dy;
     if (!_expanded && _dragAccum <= -_dragToggleDistance) {
       setState(() => _expanded = true);
       _dragAccum = 0;
     } else if (_expanded && _dragAccum >= _dragToggleDistance) {
-      setState(() => _expanded = false);
+      setState(() {
+        _expanded = false;
+        _scrolledDown = false;
+      });
       _dragAccum = 0;
     }
   }
@@ -852,189 +1084,213 @@ class _HabitPanelState extends State<_HabitPanel> {
     final maxExpandedListHeight = MediaQuery.sizeOf(context).height * 0.4;
 
     return ClipRRect(
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(26),
-          topRight: Radius.circular(26),
-        ),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(18, 20, 18, AppSpacing.stackMd),
-            decoration: BoxDecoration(
-              // Matches the design spec's rgba(255,255,255,.5) exactly —
-              // earlier "more transparent" tweaks had pushed this down to
-              // 0.18, which let too much of the warm blurred room floor
-              // show through and read as a flat tan card instead of
-              // frosted glass.
-              color: AppColors.white.withValues(alpha: 0.5),
-              // Top + sides only, no bottom: the panel sits flush against
-              // the bottom nav bar, which has its own top border right
-              // there — a bottom border on the panel doubled up with it
-              // and read as one extra-thick line. Top+left+right still
-              // share matching sides at both rounded top corners (the
-              // only rounded ones — bottom stays sharp), which is what
-              // avoids the tapering a mismatched single-side border
-              // caused before; the border here needs a borderRadius of
-              // its own to match the outer ClipRRect, since a
-              // BoxDecoration border with none draws as a sharp rectangle
-              // that gets clipped clean off at the curve otherwise.
-              border: Border(
-                top: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
-                left: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
-                right: const BorderSide(color: AppColors.ink, width: AppBorder.standard),
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(26),
+        topRight: Radius.circular(26),
+      ),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 20, 18, AppSpacing.stackMd),
+          decoration: BoxDecoration(
+            // Use the design spec's rgba(255,255,255,.5) for the frosted-glass surface.
+            color: AppColors.white.withValues(alpha: 0.5),
+            // Omit the bottom border where the navigation bar already supplies one.
+            // Match the top/side borders and borderRadius to the outer ClipRRect's corners.
+            border: Border(
+              top: const BorderSide(
+                color: AppColors.ink,
+                width: AppBorder.standard,
               ),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(26),
-                topRight: Radius.circular(26),
+              left: const BorderSide(
+                color: AppColors.ink,
+                width: AppBorder.standard,
+              ),
+              right: const BorderSide(
+                color: AppColors.ink,
+                width: AppBorder.standard,
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onVerticalDragUpdate: _onDragUpdate,
-                  onVerticalDragEnd: _onDragEnd,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 38,
-                          height: 5,
-                          margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(
-                            color: AppColors.ink.withValues(alpha: 0.4),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(26),
+              topRight: Radius.circular(26),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragUpdate: _onDragUpdate,
+                onVerticalDragEnd: _onDragEnd,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 38,
+                        height: 5,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.ink.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(3),
                         ),
                       ),
-                      Row(
-                        children: [
-                          Text(
-                            "Today's Goal",
-                            style: AppTextStyles.headlineMd.copyWith(fontSize: 19),
+                    ),
+                    Row(
+                      children: [
+                        Text(
+                          "Today's goal",
+                          style: AppTextStyles.headlineMd.copyWith(
+                            fontSize: 19,
                           ),
-                          if (widget.streak > 0) ...[
-                            const SizedBox(width: AppSpacing.unit),
-                            StreakChip(streak: widget.streak),
-                          ],
-                          const Spacer(),
-                          Text(
-                            '${widget.completedCount} / ${habits.length}',
-                            style: AppTextStyles.labelLg.copyWith(
-                              color: AppColors.terracottaDark,
+                        ),
+                        if (widget.streak > 0) ...[
+                          const SizedBox(width: AppSpacing.unit),
+                          StreakChip(streak: widget.streak),
+                        ],
+                        const Spacer(),
+                        Text(
+                          '${widget.completedCount} / ${habits.length}',
+                          style: AppTextStyles.labelLg.copyWith(
+                            color: AppColors.terracottaDark,
+                          ),
+                        ),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(AppRadius.full),
+                          onTap: widget.onOpenHabits,
+                          child: const Padding(
+                            padding: EdgeInsets.only(left: 2),
+                            child: Icon(
+                              Icons.chevron_right,
+                              color: AppColors.inkFaint,
                             ),
                           ),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(AppRadius.full),
-                            onTap: widget.onOpenHabits,
-                            child: const Padding(
-                              padding: EdgeInsets.only(left: 2),
-                              child: Icon(Icons.chevron_right, color: AppColors.inkFaint),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ProgressBarPill(
+                      progress: widget.completion,
+                      height: 8,
+                      color: AppColors.terracotta,
+                    ),
+                    const SizedBox(height: AppSpacing.stackSm),
+                  ],
+                ),
+              ),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                child: habits.isEmpty
+                    ? Text(
+                        'No habits scheduled for today. Add or review your '
+                        'habits in the Habits tab.',
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.bodyMd.copyWith(
+                          color: AppColors.inkFaint,
+                        ),
+                      )
+                    : _expanded
+                    ? ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: maxExpandedListHeight,
+                        ),
+                        child: ShaderMask(
+                          shaderCallback: (rect) => LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              _scrolledDown ? Colors.transparent : Colors.black,
+                              Colors.black,
+                              Colors.black,
+                              Colors.transparent,
+                            ],
+                            stops: const [0.0, 0.12, 0.88, 1.0],
+                          ).createShader(rect),
+                          blendMode: _listOverflows
+                              ? BlendMode.dstIn
+                              : BlendMode.dst,
+                          child:
+                              NotificationListener<ScrollMetricsNotification>(
+                                onNotification: (notification) {
+                                  final overflows =
+                                      notification.metrics.maxScrollExtent > 0;
+                                  if (overflows != _listOverflows) {
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                          if (mounted) {
+                                            setState(
+                                              () => _listOverflows = overflows,
+                                            );
+                                          }
+                                        });
+                                  }
+                                  return false;
+                                },
+                                child: SingleChildScrollView(
+                                  controller: _listScroll,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      for (
+                                        var i = 0;
+                                        i < habits.length;
+                                        i++
+                                      ) ...[
+                                        HabitTile(
+                                          habit: habits[i],
+                                          onToggle: (completed) => widget
+                                              .onToggle(habits[i], completed),
+                                          onQuickLog: (amount) => widget
+                                              .onQuickLog(habits[i], amount),
+                                          onEdit: widget.onOpenHabits,
+                                        ),
+                                        const SizedBox(
+                                          height: AppSpacing.stackSm,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                        ),
+                      )
+                    : nextHabit == null
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.celebration,
+                            size: 18,
+                            color: AppColors.mossDark,
+                          ),
+                          const SizedBox(width: AppSpacing.unit),
+                          Text(
+                            'All done for today!',
+                            style: AppTextStyles.bodyMd.copyWith(
+                              color: AppColors.mossDark,
                             ),
                           ),
                         ],
+                      )
+                    : HabitTile(
+                        habit: nextHabit,
+                        onToggle: (completed) =>
+                            widget.onToggle(nextHabit!, completed),
+                        onQuickLog: (amount) =>
+                            widget.onQuickLog(nextHabit!, amount),
+                        onEdit: widget.onOpenHabits,
                       ),
-                      const SizedBox(height: 6),
-                      ProgressBarPill(
-                        progress: widget.completion,
-                        height: 8,
-                        color: AppColors.terracotta,
-                      ),
-                      const SizedBox(height: AppSpacing.stackSm),
-                    ],
-                  ),
-                ),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOut,
-                  alignment: Alignment.topCenter,
-                  child: habits.isEmpty
-                      ? Text(
-                          'No habits scheduled for today.',
-                          textAlign: TextAlign.center,
-                          style: AppTextStyles.bodyMd.copyWith(
-                            color: AppColors.inkFaint,
-                          ),
-                        )
-                      : _expanded
-                      ? ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: maxExpandedListHeight,
-                          ),
-                          child: ShaderMask(
-                            shaderCallback: (rect) => LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: const [Colors.black, Colors.black, Colors.transparent],
-                              stops: const [0.0, 0.88, 1.0],
-                            ).createShader(rect),
-                            blendMode: _listOverflows ? BlendMode.dstIn : BlendMode.dst,
-                            child: NotificationListener<ScrollMetricsNotification>(
-                              onNotification: (notification) {
-                                final overflows = notification.metrics.maxScrollExtent > 0;
-                                if (overflows != _listOverflows) {
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    if (mounted) setState(() => _listOverflows = overflows);
-                                  });
-                                }
-                                return false;
-                              },
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    for (var i = 0; i < habits.length; i++) ...[
-                                      HabitTile(
-                                        habit: habits[i],
-                                        onToggle: (completed) =>
-                                            widget.onToggle(habits[i], completed),
-                                        onQuickLog: (amount) =>
-                                            widget.onQuickLog(habits[i], amount),
-                                        onEdit: widget.onOpenHabits,
-                                      ),
-                                      const SizedBox(height: AppSpacing.stackSm),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      : nextHabit == null
-                      ? Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.celebration,
-                              size: 18,
-                              color: AppColors.mossDark,
-                            ),
-                            const SizedBox(width: AppSpacing.unit),
-                            Text(
-                              'All done for today!',
-                              style: AppTextStyles.bodyMd.copyWith(
-                                color: AppColors.mossDark,
-                              ),
-                            ),
-                          ],
-                        )
-                      : HabitTile(
-                          habit: nextHabit,
-                          onToggle: (completed) =>
-                              widget.onToggle(nextHabit!, completed),
-                          onQuickLog: (amount) =>
-                              widget.onQuickLog(nextHabit!, amount),
-                          onEdit: widget.onOpenHabits,
-                        ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-      );
+      ),
+    );
   }
 }

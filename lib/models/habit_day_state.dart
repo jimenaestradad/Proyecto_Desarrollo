@@ -1,10 +1,5 @@
-/// One habit's logged state on one specific date.
-///
-/// This is the per-date half of a habit: [Habit] holds the *definition*
-/// (name, target, schedule) which is the same every day, while this holds
-/// what actually happened on a given day. Mirrors how a backend would store
-/// it — a row keyed by (habit id, date) — so swapping the mock for a real
-/// repository is a data-source change, not a model change.
+/// One habit's logged state on one date, separate from its [Habit] definition.
+/// Corresponds to storage keyed by habit id and date.
 class HabitDayState {
   const HabitDayState({
     this.value = 0,
@@ -22,11 +17,12 @@ class HabitDayState {
   /// Whether the reward was claimed on this date.
   final bool claimed;
 
-  /// What the claim actually paid out, so un-claiming reverses it exactly
-  /// rather than recomputing against since-changed state — same contract as
-  /// [Habit.lastAwardedXp].
+  /// What this date's claim paid out, zeroed by an unclaim — same contract
+  /// as [Habit.lastAwardedXp].
   final int awardedXp;
   final int awardedCoins;
+
+  bool get rewardPaid => awardedXp > 0 || awardedCoins > 0;
 
   HabitDayState copyWith({
     double? value,
@@ -45,7 +41,7 @@ class HabitDayState {
   /// Just the state fields — `habitId`/`dayKey`/`date` aren't part of the
   /// state itself (this class has no notion of "which day" it is), so the
   /// repository writing to Firestore adds those on top. See
-  /// docs/BACKEND.md "Firestore schema" for the full `habitLogs` doc shape.
+  /// docs/technical/BACKEND.md "Firestore schema" for the full `habitLogs` doc shape.
   Map<String, dynamic> toJson() => {
     'value': value,
     'claimed': claimed,

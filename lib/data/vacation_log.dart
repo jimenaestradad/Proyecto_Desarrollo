@@ -1,22 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 import '../utils/firestore_date.dart';
 import 'habit_history_store.dart' show dateOnly;
+import 'signed_in_uid.dart';
 
-/// Tracks Vacation Mode's on/off history by date, independent of whether the
-/// toggle is still on today — so a streak walk over past days can tell which
-/// of them were frozen even after the user has since turned it back off.
-///
-/// Kept as its own small store (same pattern as [HabitHistoryStore]) rather
-/// than living on [UserRepository] or [CalendarRepository]: both of those
-/// need to read/write this, and [UserRepository] already depends on
-/// [CalendarRepository] to compute the live streak, so a direct dependency
-/// the other way would be circular.
-///
-/// `Future`-returning even for [MockVacationLog] (which has no real I/O) to
-/// match every other repository interface's convention — see
-/// docs/BACKEND.md "Conventions locked".
+/// Tracks frozen dates even after Vacation Mode is disabled.
+/// Separate from user/calendar repositories to avoid a circular dependency;
+/// Future-based operations follow the repository convention.
 abstract class VacationLog {
   /// Starts (or extends, if already open) a frozen period as of [day].
   Future<void> startFreeze(DateTime day);
@@ -52,21 +42,8 @@ class MockVacationLog implements VacationLog {
       _isFrozenAt(_closed, _openStart, day);
 }
 
-/// Real Firestore-backed [VacationLog]. `vacationModeEnabled`/
-/// `vacationRanges` live directly on the `/users/{uid}` doc (see
-/// docs/BACKEND.md "Firestore schema") — a currently-open freeze is the
-/// last entry in `vacationRanges` with `end: null`; `vacationModeEnabled`
-/// mirrors that as a quick boolean so a settings toggle doesn't need to
-/// parse the array just to render itself. (This exact encoding wasn't
-/// pinned down in the schema doc before now — logged as resolved there.)
-///
-/// [isFrozen] gets called once per day in [FirestoreCalendarRepository]'s
-/// month grid and up-to-400-day streak walk — turning that into up to 400
-/// Firestore reads would reintroduce exactly the N+1 problem [logsInRange]
-/// exists to avoid on the habit side. So this fetches the ranges **once**
-/// (cached for as long as this object lives — in practice, the lifetime of
-/// the app, since `AppData.vacationLog` is a single long-lived instance)
-/// and answers every later call from that in-memory copy.
+/// Stores vacationRanges and vacationModeEnabled on `/users/{uid}`.
+/// An open range has `end: null`; cached ranges avoid per-day Firestore reads.
 class FirestoreVacationLog implements VacationLog {
   List<_FrozenRange> _closed = [];
   DateTime? _openStart;
@@ -76,20 +53,11 @@ class FirestoreVacationLog implements VacationLog {
   /// instead of each starting their own.
   Future<void>? _loadFuture;
 
-  /// Which uid [_loadFuture] was fetched for — [_ensureLoaded] compares this
-  /// against the currently signed-in uid on every call and refetches if
-  /// they differ, so a sign-out/sign-in during the same app session can't
-  /// leave one user reading (or, via [startFreeze]/[endFreeze], overwriting)
-  /// another user's vacation ranges.
+  /// Tracks which account owns the cached ranges.
+  /// [_ensureLoaded] refetches on uid changes to prevent cross-account reads or writes.
   String? _loadedUid;
 
-  String get _uid {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      throw StateError('FirestoreVacationLog used with no signed-in user');
-    }
-    return user.uid;
-  }
+  String get _uid => requireSignedInUid('FirestoreVacationLog');
 
   DocumentReference<Map<String, dynamic>> get _userDoc =>
       FirebaseFirestore.instance.collection('users').doc(_uid);
@@ -104,7 +72,7 @@ class FirestoreVacationLog implements VacationLog {
       await _loadFuture;
     } catch (_) {
       // Don't let a failed fetch (e.g. the user doc not existing yet — see
-      // docs/BACKEND.md) poison the cache forever; the next call retries.
+      // docs/technical/BACKEND.md) poison the cache forever; the next call retries.
       _loadFuture = null;
       _loadedUid = null;
       rethrow;
@@ -130,20 +98,26 @@ class FirestoreVacationLog implements VacationLog {
     _openStart = open;
   }
 
-  List<Map<String, dynamic>> _toRangesJson() => [
-    for (final range in _closed) {'start': range.start, 'end': range.end},
-    if (_openStart != null) {'start': _openStart, 'end': null},
+  List<Map<String, dynamic>> _rangesJson(
+    List<_FrozenRange> closed,
+    DateTime? open,
+  ) => [
+    for (final range in closed) {'start': range.start, 'end': range.end},
+    if (open != null) {'start': open, 'end': null},
   ];
 
+  // The cache changes only after the write succeeds, so a rejected write
+  // can't leave the calendar frozen (or a retry skipped) until a restart.
   @override
   Future<void> startFreeze(DateTime day) async {
     await _ensureLoaded();
     if (_openStart != null) return;
-    _openStart = dateOnly(day);
+    final start = dateOnly(day);
     await _userDoc.update({
       'vacationModeEnabled': true,
-      'vacationRanges': _toRangesJson(),
+      'vacationRanges': _rangesJson(_closed, start),
     });
+    _openStart = start;
   }
 
   @override
@@ -151,12 +125,13 @@ class FirestoreVacationLog implements VacationLog {
     await _ensureLoaded();
     final start = _openStart;
     if (start == null) return;
-    _closed = [..._closed, _FrozenRange(start, dateOnly(day))];
-    _openStart = null;
+    final closed = [..._closed, _FrozenRange(start, dateOnly(day))];
     await _userDoc.update({
       'vacationModeEnabled': false,
-      'vacationRanges': _toRangesJson(),
+      'vacationRanges': _rangesJson(closed, null),
     });
+    _closed = closed;
+    _openStart = null;
   }
 
   @override

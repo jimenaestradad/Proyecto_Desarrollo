@@ -10,12 +10,36 @@ export function requireAuth(uid: string | undefined): string {
   return uid;
 }
 
+// Requires recent authentication for account deletion.
+// Five minutes allows password entry while limiting exposure from an unattended session.
+export const RECENT_LOGIN_MAX_AGE_MS = 5 * 60 * 1000;
+
+// Checks auth_time against maxAgeMs; missing claims count as too old.
+// Token refresh preserves auth_time, so a long-lived session does not pass.
+export function requireRecentLogin(
+  token: { auth_time?: unknown } | undefined,
+  nowMs: number = Date.now(),
+  maxAgeMs: number = RECENT_LOGIN_MAX_AGE_MS,
+): void {
+  const authTime = token?.auth_time;
+  if (typeof authTime !== "number" || !Number.isFinite(authTime) || nowMs - authTime * 1000 > maxAgeMs) {
+    throw new HttpsError(
+      "failed-precondition",
+      "For your security, please log in again before deleting your account.",
+    );
+  }
+}
+
 // A "/" would let the id address a different document path.
-export function parseHabitId(value: unknown): string {
+export function parseDocId(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0 || value.length > 200 || value.includes("/")) {
-    throw new HttpsError("invalid-argument", "habitId must be a non-empty document id.");
+    throw new HttpsError("invalid-argument", `${field} must be a non-empty document id.`);
   }
   return value;
+}
+
+export function parseHabitId(value: unknown): string {
+  return parseDocId(value, "habitId");
 }
 
 export interface DayArgs {
@@ -25,7 +49,7 @@ export interface DayArgs {
   utcMidnightMillis: number;
 }
 
-// The client sends its device-local day (docs/BACKEND.md "Dates and the
+// The client sends its device-local day (docs/technical/BACKEND.md "Dates and the
 // day-rollover rule") — the server never derives it from UTC. dayStartMillis
 // is that day's local midnight, stored as the log's `date` for range queries.
 export function parseDayArgs(data: { dayKey?: unknown; dayStartMillis?: unknown }): DayArgs {
@@ -56,10 +80,8 @@ export function parseDayArgs(data: { dayKey?: unknown; dayStartMillis?: unknown 
   return { dayKey: match[0], dayStartMillis, utcMidnightMillis: utcMidnight };
 }
 
-// The client-local dayKey of a date-only habit field (startDate/endDate),
-// which the date picker stores as local midnight. Shifted by the caller's
-// offset, then rounded to the nearest UTC midnight so a DST hour of drift
-// can't tip it into the neighbouring day.
+// Converts a date-only local-midnight field to the caller’s local dayKey.
+// Rounds the shifted time to UTC midnight so DST drift cannot change the day.
 export function localDayKeyOf(dateOnlyMillis: number, day: DayArgs): string {
   const shifted = dateOnlyMillis + (day.utcMidnightMillis - day.dayStartMillis);
   return new Date(Math.round(shifted / DAY_MS) * DAY_MS).toISOString().slice(0, 10);

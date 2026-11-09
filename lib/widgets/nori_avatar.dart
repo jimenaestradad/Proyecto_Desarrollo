@@ -1,24 +1,24 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import '../data/session_photos.dart';
 import '../theme/app_theme.dart';
 
-/// User avatar. Renders [imageUrl] once profile photos exist server-side;
-/// today every repository returns `null`.
-///
-/// For the signed-in user (no [name] passed) that falls back to the
-/// illustrated default avatar art. For *other* mock people shown around the
-/// app — social feed authors, leaderboard rows — pass [name] instead: it
-/// picks a deterministic color + initials so a list of mock friends doesn't
-/// visually read as the same person repeated (see `social_screen.dart`).
+/// Renders [imageUrl], falling back to default art for the signed-in user.
+/// For mock people, [imageAsset] (a bundled photo) wins when set; otherwise
+/// [name] selects deterministic initials and color.
 class NoriAvatar extends StatelessWidget {
   const NoriAvatar({
     super.key,
     this.imageUrl,
+    this.imageAsset,
     this.name,
     this.size = 40,
     this.borderWidth = AppBorder.thick,
   });
 
   final String? imageUrl;
+  final String? imageAsset;
   final String? name;
   final double size;
   final double borderWidth;
@@ -45,13 +45,27 @@ class NoriAvatar extends StatelessWidget {
     return letters.isEmpty ? '?' : letters.join();
   }
 
+  Widget _fallback() => imageUrl != null
+      ? Image.network(imageUrl!, fit: BoxFit.cover)
+      : Image.asset('assets/images/default_avatar.png', fit: BoxFit.cover);
+
   @override
   Widget build(BuildContext context) {
     final seed = name;
     Widget child;
-    if (imageUrl != null) {
+    if (seed == null) {
+      // The signed-in user's avatar: a photo picked this session wins.
+      child = ValueListenableBuilder<Uint8List?>(
+        valueListenable: SessionPhotos.avatar,
+        builder: (context, bytes, _) => bytes != null
+            ? Image.memory(bytes, fit: BoxFit.cover)
+            : _fallback(),
+      );
+    } else if (imageAsset != null) {
+      child = Image.asset(imageAsset!, fit: BoxFit.cover);
+    } else if (imageUrl != null) {
       child = Image.network(imageUrl!, fit: BoxFit.cover);
-    } else if (seed != null && seed.isNotEmpty) {
+    } else if (seed.isNotEmpty) {
       child = Container(
         color: _colorFor(seed),
         alignment: Alignment.center,
@@ -65,7 +79,7 @@ class NoriAvatar extends StatelessWidget {
         ),
       );
     } else {
-      child = Image.asset('assets/images/default_avatar.png', fit: BoxFit.cover);
+      child = _fallback();
     }
 
     return Container(

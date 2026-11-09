@@ -20,13 +20,14 @@ class NoriShell extends StatefulWidget {
 class _NoriShellState extends State<NoriShell> {
   int _index = 0;
 
+  void _openHomeTab() => setState(() => _index = 0);
   void _openHabitsTab() => setState(() => _index = 1);
 
   List<Widget> get _tabs => [
     HomeScreen(active: _index == 0, onOpenHabits: _openHabitsTab),
-    HabitsListScreen(active: _index == 1),
+    HabitsListScreen(active: _index == 1, onOpenHome: _openHomeTab),
     CalendarScreen(active: _index == 2),
-    const SocialScreen(),
+    SocialScreen(active: _index == 3, onOpenHome: _openHomeTab),
     ProfileScreen(active: _index == 4),
   ];
 
@@ -35,12 +36,14 @@ class _NoriShellState extends State<NoriShell> {
     return Scaffold(
       // The banner sits above the tabs (not inside any one of them) so it
       // shows regardless of which tab is active, without touching each
-      // tab's own — often visually fragile, see docs/KNOWN_ISSUES.md —
+      // tab's own — often visually fragile, see docs/quality/KNOWN_ISSUES.md —
       // layout.
       body: Column(
         children: [
           const EmailVerificationBanner(),
-          Expanded(child: IndexedStack(index: _index, children: _tabs)),
+          Expanded(
+            child: IndexedStack(index: _index, children: _tabs),
+          ),
         ],
       ),
       bottomNavigationBar: NoriBottomNav(

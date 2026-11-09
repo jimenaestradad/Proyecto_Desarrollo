@@ -1,19 +1,29 @@
-import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
+import { DocumentData, FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { claimValue, computeReward, parseHabitDefinition } from "./rewards";
+import { FIRST_COMPLETION_GIFT, claimValue, computeReward, parseHabitDefinition } from "./rewards";
 import { applyXpDelta } from "./xpCurve";
+import { habitLogId } from "./docRefs";
 import { DayArgs, localDayKeyOf, parseDayArgs, parseHabitId, requireAuth } from "./requestArgs";
+import {
+  WINDOW_DAYS,
+  adaptiveMultiplier,
+  completionRate,
+  isScheduledOnKey,
+  previousDayKeys,
+} from "./adaptiveXp";
 import {
   HabitRewardResult,
   asNumber,
   currentPetStage,
   habitDocRefs,
+  isArchivedOn,
   levelFields,
   readLevelState,
+  rewardPaid,
   syncPetStage,
 } from "./habitTransaction";
+import { notificationRefs, petNameOf, progressNotifications, writeNotifications } from "./notifications";
 
-const FIRST_COMPLETION_GIFT = "sunglasses";
 // Lenient on purpose: a DST day can be 25h long.
 const LONGEST_DAY_MS = 25 * 60 * 60 * 1000;
 
@@ -27,16 +37,17 @@ export async function runClaimHabit(
 
   return db.runTransaction(async (tx) => {
     // Firestore transactions require every read before any write.
-    const [habitSnap, logSnap, userSnap, petSnap, inventorySnap] = await Promise.all([
+    const [habitSnap, logSnap, userSnap, petSnap, inventorySnap, notifiedSnap] = await Promise.all([
       tx.get(refs.habit),
       tx.get(refs.log),
       tx.get(refs.user),
       tx.get(refs.pet),
       tx.get(refs.inventory),
+      tx.get(notificationRefs(refs.user).state),
     ]);
 
     const habitData = habitSnap.data();
-    if (!habitData || habitData.archived === true) {
+    if (!habitData) {
       throw new HttpsError("not-found", "Habit not found.");
     }
     const userData = userSnap.data();
@@ -53,7 +64,11 @@ export async function runClaimHabit(
     const { startDate, endDate } = habitData;
     if (
       (startDate instanceof Timestamp && day.dayKey < localDayKeyOf(startDate.toMillis(), day)) ||
-      (endDate instanceof Timestamp && day.dayKey > localDayKeyOf(endDate.toMillis(), day))
+      (endDate instanceof Timestamp && day.dayKey > localDayKeyOf(endDate.toMillis(), day)) ||
+      // Archived days are off too, but days before the archive stay
+      // claimable — archiving hides a habit going forward, it doesn't
+      // freeze its history.
+      isArchivedOn(habitData.archivedRanges, day.dayKey)
     ) {
       throw new HttpsError("failed-precondition", "Habit isn't active on that day.");
     }
@@ -77,9 +92,43 @@ export async function runClaimHabit(
       };
     }
 
+    // Legacy only: a log un-claimed before 2026-11-08 kept its payout, so
+    // mark it claimed again and pay nothing. Undo now zeroes the payout.
+    if (rewardPaid(logData)) {
+      const habit = parseHabitDefinition(habitData);
+      tx.update(refs.log, { claimed: true, value: claimValue(habit, asNumber(logData?.value, 0)) });
+      return {
+        changed: true,
+        xpDelta: 0,
+        coinsDelta: 0,
+        previousLevel,
+        level: previousLevel,
+        previousPetStage,
+        petStage: previousPetStage,
+        giftedAccessoryId: null,
+      };
+    }
+
+    // Adaptive XP: recomputed from the last WINDOW_DAYS of this habit's
+    // history on every claim, ignoring whatever multiplier the doc holds
+    // (the client can write that field). Reads stay before any write.
+    const scheduledKeys = recentScheduledDays(habitData, userData, day);
+    const windowLogs = scheduledKeys.length === 0 ? [] : await tx.getAll(
+      ...scheduledKeys.map((key) => refs.habitLogs.doc(habitLogId(key, habitId))),
+    );
+    const claimedKeys = new Set(
+      windowLogs.filter((snap) => snap.get("claimed") === true).map((snap) => snap.get("dayKey") as string),
+    );
     const habit = parseHabitDefinition(habitData);
+    habit.adaptiveMultiplier = adaptiveMultiplier(
+      habit.difficulty,
+      completionRate(scheduledKeys, claimedKeys),
+    );
     const value = claimValue(habit, asNumber(logData?.value, 0));
     const reward = computeReward(habit, value);
+
+    // Stored so the app's reward preview shows what the next claim pays.
+    tx.update(refs.habit, { adaptiveMultiplier: habit.adaptiveMultiplier });
 
     tx.set(refs.log, {
       habitId,
@@ -113,6 +162,18 @@ export async function runClaimHabit(
       tx.update(refs.inventory, inventoryUpdate);
     }
     tx.update(refs.user, userUpdate);
+    const petStage = syncPetStage(tx, refs.pet, petData, levelState.level);
+
+    const { notifications, stateUpdate } = progressNotifications({
+      previousLevel,
+      level: levelState.level,
+      previousPetStage,
+      petStage,
+      giftedAccessoryId,
+      petName: petNameOf(petData),
+      notified: notifiedSnap.data(),
+    });
+    writeNotifications(tx, refs.user, notifications, stateUpdate);
 
     return {
       changed: true,
@@ -121,7 +182,7 @@ export async function runClaimHabit(
       previousLevel,
       level: levelState.level,
       previousPetStage,
-      petStage: syncPetStage(tx, refs.pet, petData, levelState.level),
+      petStage,
       giftedAccessoryId,
     };
   });
@@ -139,3 +200,32 @@ export const claimHabit = onCall<ClaimHabitRequest>((request) => {
   const day = parseDayArgs(request.data);
   return runClaimHabit(uid, habitId, day);
 });
+
+// The window's days on which this habit was due: its schedule, minus days
+// before it existed, outside its start/end, archived, or frozen by Vacation
+// Mode (those count as safe in the calendar, so they don't count here either).
+function recentScheduledDays(
+  habitData: DocumentData,
+  userData: DocumentData,
+  day: DayArgs,
+): string[] {
+  const toKey = (value: unknown) =>
+    value instanceof Timestamp ? localDayKeyOf(value.toMillis(), day) : null;
+  const schedule = {
+    repeat: habitData.repeat,
+    customDays: habitData.customDays,
+    createdKey: toKey(habitData.createdAt),
+    startKey: toKey(habitData.startDate),
+    endKey: toKey(habitData.endDate),
+    archivedRanges: habitData.archivedRanges,
+  };
+  const vacations = (Array.isArray(userData.vacationRanges) ? userData.vacationRanges : [])
+    .map((range: { start?: unknown; end?: unknown }) => ({ start: toKey(range?.start), end: toKey(range?.end) }))
+    .filter((range: { start: string | null }) => range.start !== null);
+  const onVacation = (key: string) => vacations.some(
+    (range: { start: string | null; end: string | null }) =>
+      key >= range.start! && (range.end === null || key <= range.end),
+  );
+  return previousDayKeys(day.dayKey, WINDOW_DAYS)
+    .filter((key) => isScheduledOnKey(schedule, key) && !onVacation(key));
+}

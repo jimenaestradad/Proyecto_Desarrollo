@@ -4,6 +4,8 @@ import 'package:nori/models/achievement.dart';
 import 'package:nori/models/nori_user.dart';
 import 'package:nori/navigation/reloadable.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/remote_errors.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
@@ -19,6 +21,7 @@ class AchievementsScreen extends StatefulWidget {
 }
 
 class _AchievementsScreenState extends State<AchievementsScreen>
+    with RemoteLoadState<AchievementsScreen>
     implements Reloadable {
   NoriUser? _user;
   Map<String, List<Achievement>>? _achievementsByCategory;
@@ -32,9 +35,13 @@ class _AchievementsScreenState extends State<AchievementsScreen>
   @override
   Future<void> reload() => _loadData();
 
-  Future<void> _loadData() async {
-    final user = await AppData.user.getCurrentUser();
-    final achievements = await AppData.achievements.getAchievementsByCategory();
+  Future<void> _loadData() => guardedLoad(_fetchData, hasData: _user != null);
+
+  Future<void> _fetchData() async {
+    final (user, achievements) = await (
+      AppData.user.getCurrentUser(),
+      AppData.achievements.getAchievementsByCategory(),
+    ).wait;
     if (!mounted) return;
     setState(() {
       _user = user;
@@ -46,17 +53,20 @@ class _AchievementsScreenState extends State<AchievementsScreen>
   Widget build(BuildContext context) {
     final user = _user;
     final achievementsByCategory = _achievementsByCategory;
+    final error = loadError;
 
     return Scaffold(
       body: SafeArea(
         child: user == null || achievementsByCategory == null
-            ? const Center(child: CircularProgressIndicator())
+            ? error != null
+                  ? LoadErrorView(error: error, onRetry: _loadData)
+                  : const Center(child: CircularProgressIndicator())
             : NoriScrollScaffold(
                 maxWidth: 1200,
                 children: [
                   _AchievementsHeader(user: user),
                   const SizedBox(height: AppSpacing.stackLg),
-                  Text('Your Trophies', style: AppTextStyles.headlineLgMobile),
+                  Text('Your trophies', style: AppTextStyles.headlineLgMobile),
                   const SizedBox(height: AppSpacing.stackSm),
                   Text(
                     'Track your progress and show off your consistency. Every habit brings you closer to your next milestone.',
@@ -160,7 +170,7 @@ class _AchievementCard extends StatelessWidget {
     AchievementStatus.unlocked => 'Completed',
     AchievementStatus.inProgress => 'Progress',
     AchievementStatus.locked => 'Locked',
-    AchievementStatus.comingSoon => 'Coming Soon',
+    AchievementStatus.comingSoon => 'Coming soon',
   };
 
   @override
@@ -250,7 +260,8 @@ class _AchievementCard extends StatelessWidget {
                 ),
                 if (achievement.progressTarget > 0)
                   Text(
-                    '${achievement.progressCurrent}/${achievement.progressTarget}',
+                    // Capped so a done "add 1 friend" reads 1/1, not 6/1.
+                    '${achievement.progressCurrent.clamp(0, achievement.progressTarget)}/${achievement.progressTarget}',
                     style: AppTextStyles.labelSm.copyWith(color: accentColor),
                   ),
               ],

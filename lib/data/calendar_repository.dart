@@ -3,7 +3,7 @@ import '../models/habit.dart';
 import '../models/habit_day_state.dart';
 import '../models/habit_stat.dart';
 import '../utils/date_labels.dart';
-import 'habit_history_store.dart' show dateOnly, dayKey;
+import 'habit_history_store.dart' show addDays, dateOnly;
 import 'habit_repository.dart';
 import 'vacation_log.dart';
 
@@ -15,11 +15,153 @@ abstract class CalendarRepository {
   /// Convenience for whatever month "today" falls in.
   Future<CalendarMonthStats> getCurrentMonth();
 
+  /// Just [CalendarMonthStats.currentStreak], without building a month
+  /// grid — for callers that only need the number (the user profile,
+  /// achievements).
+  Future<int> getCurrentStreak();
+
   /// Per-habit completion rate over the last [days] days (today inclusive) —
   /// a rolling window, not tied to the visible calendar month, so "your
   /// easiest / most-missed habit" stays meaningful on the 1st too. Only
   /// habits scheduled at least once in the window are included.
   Future<List<HabitStat>> getHabitStats({int days = 30});
+}
+
+/// How far back a streak walk looks, in days before today. A streak longer
+/// than this stops counting (400 days is more than a year).
+const kStreakMaxLookback = 400;
+
+/// Computes shared day status: today stays in progress regardless of completion.
+/// Off-schedule and [frozen] days count as neutral, rather than missed.
+CalendarDayStatus calendarDayStatus({
+  required DateTime date,
+  required DateTime today,
+  required List<Habit> scheduled,
+  required bool frozen,
+}) {
+  if (dateOnly(date) == today) return CalendarDayStatus.today;
+  if (scheduled.isEmpty || frozen) return CalendarDayStatus.done;
+  // Reaching a minimum saves the day from "missed"; "perfect" still means
+  // every habit was claimed.
+  if (!scheduled.any((h) => h.keptStreak)) return CalendarDayStatus.missed;
+  if (scheduled.every((h) => h.isCompletedToday)) {
+    return CalendarDayStatus.perfect;
+  }
+  return CalendarDayStatus.done;
+}
+
+/// What one day does to a streak being walked back from today.
+enum StreakStep { skip, count, stop }
+
+/// Classifies a day for aggregate streaks, skipping empty or vacation schedules.
+/// Past days need at least one kept habit; today counts only when all are kept.
+StreakStep streakStep(List<Habit> scheduled, {required bool isToday}) {
+  if (scheduled.isEmpty) return StreakStep.skip;
+  if (isToday) {
+    return scheduled.every((h) => h.keptStreak)
+        ? StreakStep.count
+        : StreakStep.skip;
+  }
+  return scheduled.any((h) => h.keptStreak)
+      ? StreakStep.count
+      : StreakStep.stop;
+}
+
+/// Builds the [year]/[month] grid and totals from hydrated [habitsFor] results.
+/// Never requests future days; uses [vacationLog] and the supplied [currentStreak].
+Future<CalendarMonthStats> buildMonthStats({
+  required int year,
+  required int month,
+  required DateTime today,
+  required Future<List<Habit>> Function(DateTime day) habitsFor,
+  required VacationLog vacationLog,
+  required int currentStreak,
+}) async {
+  final daysInMonth = DateTime(year, month + 1, 0).day;
+  // Monday-first grid padding, matching the Mon..Sun header.
+  final leadingEmpty = (DateTime(year, month, 1).weekday - DateTime.monday) % 7;
+
+  final statusByDay = <int, CalendarDayStatus>{};
+  var perfectDays = 0;
+  var missedDays = 0;
+  var habitsDone = 0;
+
+  for (var d = 1; d <= daysInMonth; d++) {
+    final date = DateTime(year, month, d);
+    if (date.isAfter(today)) {
+      statusByDay[d] = CalendarDayStatus.future;
+      continue;
+    }
+    final scheduled = await habitsFor(date);
+    habitsDone += scheduled.where((h) => h.isCompletedToday).length;
+
+    final status = calendarDayStatus(
+      date: date,
+      today: today,
+      scheduled: scheduled,
+      frozen: await vacationLog.isFrozen(date),
+    );
+    statusByDay[d] = status;
+    if (status == CalendarDayStatus.perfect) perfectDays++;
+    if (status == CalendarDayStatus.missed) missedDays++;
+  }
+
+  final days = <CalendarDay>[
+    for (var i = 0; i < leadingEmpty; i++)
+      const CalendarDay(day: null, status: CalendarDayStatus.empty),
+    for (var d = 1; d <= daysInMonth; d++)
+      CalendarDay(
+        day: d,
+        status: statusByDay[d]!,
+        date: DateTime(year, month, d),
+      ),
+  ];
+
+  return CalendarMonthStats(
+    year: year,
+    month: month,
+    monthLabel: monthFull(month),
+    currentStreak: currentStreak,
+    perfectDays: perfectDays,
+    habitsDone: habitsDone,
+    missedDays: missedDays,
+    days: days,
+  );
+}
+
+/// Per-habit completion over the last [days] days ending [today]: each
+/// habit's scheduled and completed day counts. [habitsFor] is as in
+/// [buildMonthStats]. Only habits scheduled at least once appear.
+Future<List<HabitStat>> buildHabitStats({
+  required int days,
+  required DateTime today,
+  required Future<List<Habit>> Function(DateTime day) habitsFor,
+}) async {
+  final scheduled = <String, int>{};
+  final completed = <String, int>{};
+  final meta = <String, Habit>{};
+
+  for (var back = 0; back < days; back++) {
+    for (final habit in await habitsFor(addDays(today, -back))) {
+      scheduled[habit.id] = (scheduled[habit.id] ?? 0) + 1;
+      meta[habit.id] = habit;
+      if (habit.isCompletedToday) {
+        completed[habit.id] = (completed[habit.id] ?? 0) + 1;
+      }
+    }
+  }
+
+  return [
+    for (final id in scheduled.keys)
+      HabitStat(
+        habitId: id,
+        name: meta[id]!.name,
+        icon: meta[id]!.icon,
+        color: meta[id]!.color,
+        scheduledDays: scheduled[id]!,
+        completedDays: completed[id] ?? 0,
+      ),
+  ];
 }
 
 /// Derives the calendar entirely from [HabitRepository.getHabitsForDate], so
@@ -38,154 +180,52 @@ class MockCalendarRepository implements CalendarRepository {
   }
 
   @override
+  Future<int> getCurrentStreak() => _currentStreak(dateOnly(DateTime.now()));
+
+  @override
   Future<CalendarMonthStats> getMonth(int year, int month) async {
     final today = dateOnly(DateTime.now());
-    final daysInMonth = DateTime(year, month + 1, 0).day;
-    // Monday-first grid padding, matching the Mon..Sun header.
-    final leadingEmpty = (DateTime(year, month, 1).weekday - DateTime.monday) % 7;
-
-    final statusByDay = <int, CalendarDayStatus>{};
-    var perfectDays = 0;
-    var missedDays = 0;
-    var habitsDone = 0;
-
-    for (var d = 1; d <= daysInMonth; d++) {
-      final date = DateTime(year, month, d);
-      if (date.isAfter(today)) {
-        statusByDay[d] = CalendarDayStatus.future;
-        continue;
-      }
-      final scheduled = await _habits.getHabitsForDate(date);
-      habitsDone += scheduled.where((h) => h.isCompletedToday).length;
-
-      final status = await _statusFor(date, today, scheduled);
-      statusByDay[d] = status;
-      if (status == CalendarDayStatus.perfect) perfectDays++;
-      if (status == CalendarDayStatus.missed) missedDays++;
-    }
-
-    final days = <CalendarDay>[
-      for (var i = 0; i < leadingEmpty; i++)
-        const CalendarDay(day: null, status: CalendarDayStatus.empty),
-      for (var d = 1; d <= daysInMonth; d++)
-        CalendarDay(
-          day: d,
-          status: statusByDay[d]!,
-          date: DateTime(year, month, d),
-        ),
-    ];
-
-    return CalendarMonthStats(
+    return buildMonthStats(
       year: year,
       month: month,
-      monthLabel: monthFull(month),
+      today: today,
+      habitsFor: _habits.getHabitsForDate,
+      vacationLog: _vacationLog,
       currentStreak: await _currentStreak(today),
-      perfectDays: perfectDays,
-      habitsDone: habitsDone,
-      missedDays: missedDays,
-      days: days,
     );
   }
 
-  /// Today always renders as [CalendarDayStatus.today] regardless of
-  /// progress — it's still in flight. A day with nothing scheduled (every
-  /// habit's schedule skips it) reads as [CalendarDayStatus.done] rather
-  /// than missed, per FEATURES.md §5: an off-schedule day isn't a broken
-  /// commitment. A day Vacation Mode was active on gets the same neutral
-  /// treatment — per FEATURES.md §2, paused time shouldn't read as a miss.
-  Future<CalendarDayStatus> _statusFor(
-    DateTime date,
-    DateTime today,
-    List<Habit> scheduled,
-  ) async {
-    if (dateOnly(date) == today) return CalendarDayStatus.today;
-    if (scheduled.isEmpty || await _vacationLog.isFrozen(date)) {
-      return CalendarDayStatus.done;
-    }
-    // Reaching a minimum saves the day from "missed"; "perfect" still means
-    // every habit was claimed.
-    if (!scheduled.any((h) => h.keptStreak)) return CalendarDayStatus.missed;
-    if (scheduled.every((h) => h.isCompletedToday)) {
-      return CalendarDayStatus.perfect;
-    }
-    return CalendarDayStatus.done;
-  }
-
-  /// Consecutive days (walking back from today) with at least one habit that
-  /// [Habit.keptStreak] (claimed, or logged up to its minimum), skipping days nothing was scheduled — mirrors the "streaks
-  /// aren't broken by off-schedule days" rule in FEATURES.md §5, applied
-  /// across all habits together since this is a single aggregate number.
-  /// Today itself only counts once every scheduled habit is kept; until
-  /// then it's "still in progress" rather than a break. Days Vacation Mode
-  /// was active on are skipped the same way — frozen, not missed.
+  /// Walks back from [today] asking [HabitRepository.getHabitsForDate] for
+  /// each day — see [streakStep] for the rules.
   Future<int> _currentStreak(DateTime today) async {
     var streak = 0;
-    var day = today;
-    while (today.difference(day).inDays <= 400) {
+    for (var back = 0; back <= kStreakMaxLookback; back++) {
+      final day = addDays(today, -back);
       final scheduled = await _vacationLog.isFrozen(day)
           ? const <Habit>[]
           : await _habits.getHabitsForDate(day);
-      if (scheduled.isNotEmpty) {
-        final isToday = dateOnly(day) == today;
-        final allKept = scheduled.every((h) => h.keptStreak);
-        final anyKept = scheduled.any((h) => h.keptStreak);
-        if (isToday) {
-          if (!allKept) {
-            day = day.subtract(const Duration(days: 1));
-            continue;
-          }
-        } else if (!anyKept) {
-          break;
-        }
-        streak++;
+      switch (streakStep(scheduled, isToday: day == today)) {
+        case StreakStep.skip:
+          continue;
+        case StreakStep.count:
+          streak++;
+        case StreakStep.stop:
+          return streak;
       }
-      day = day.subtract(const Duration(days: 1));
     }
     return streak;
   }
 
   @override
-  Future<List<HabitStat>> getHabitStats({int days = 30}) async {
-    final today = dateOnly(DateTime.now());
-    final scheduled = <String, int>{};
-    final completed = <String, int>{};
-    final meta = <String, Habit>{};
-
-    for (var back = 0; back < days; back++) {
-      final date = today.subtract(Duration(days: back));
-      final habits = await _habits.getHabitsForDate(date);
-      for (final habit in habits) {
-        scheduled[habit.id] = (scheduled[habit.id] ?? 0) + 1;
-        meta[habit.id] = habit;
-        if (habit.isCompletedToday) {
-          completed[habit.id] = (completed[habit.id] ?? 0) + 1;
-        }
-      }
-    }
-
-    return [
-      for (final id in scheduled.keys)
-        HabitStat(
-          habitId: id,
-          name: meta[id]!.name,
-          icon: meta[id]!.icon,
-          color: meta[id]!.color,
-          scheduledDays: scheduled[id]!,
-          completedDays: completed[id] ?? 0,
-        ),
-    ];
-  }
+  Future<List<HabitStat>> getHabitStats({int days = 30}) => buildHabitStats(
+    days: days,
+    today: dateOnly(DateTime.now()),
+    habitsFor: _habits.getHabitsForDate,
+  );
 }
 
-/// Real Firestore-backed [CalendarRepository]. Deliberately *not* a
-/// line-for-line port of [MockCalendarRepository] — that class calls
-/// [HabitRepository.getHabitsForDate] once per day (cheap when it's an
-/// in-memory map lookup, ruinous as up to ~400 separate network round-trips
-/// against Firestore for a streak walk). This fetches each visible date
-/// range with one call to [FirestoreHabitRepository.logsInRange] and derives
-/// every day's status/streak/stat in memory instead — see docs/BACKEND.md
-/// "Why habitLogs is a flat collection" for why that single range query is
-/// possible at all.
+/// Firestore calendar using one [FirestoreHabitRepository.logsInRange] query per range.
+/// Derives statuses, streaks and stats in memory with the shared rules.
 class FirestoreCalendarRepository implements CalendarRepository {
   FirestoreCalendarRepository(this._habits, this._vacationLog);
 
@@ -203,140 +243,67 @@ class FirestoreCalendarRepository implements CalendarRepository {
   }
 
   @override
+  Future<int> getCurrentStreak() async => _currentStreak(
+    dateOnly(DateTime.now()),
+    await _habits.fetchAllDefinitions(),
+  );
+
+  @override
   Future<CalendarMonthStats> getMonth(int year, int month) async {
     final today = dateOnly(DateTime.now());
-    final daysInMonth = DateTime(year, month + 1, 0).day;
-    final leadingEmpty = (DateTime(year, month, 1).weekday - DateTime.monday) % 7;
 
-    // Two queries total for the whole month — not one per day.
-    final definitions = await _habits.getTodayHabits();
-    final logs = await _habits.logsInRange(
-      DateTime(year, month, 1),
-      DateTime(year, month, daysInMonth),
-    );
+    // Two queries total for the whole month — not one per day — and run
+    // together, since neither needs the other.
+    final (definitions, logs) = await (
+      _habits.fetchAllDefinitions(),
+      _habits.logsInRange(
+        DateTime(year, month, 1),
+        DateTime(year, month + 1, 0),
+      ),
+    ).wait;
 
-    final statusByDay = <int, CalendarDayStatus>{};
-    var perfectDays = 0;
-    var missedDays = 0;
-    var habitsDone = 0;
-
-    for (var d = 1; d <= daysInMonth; d++) {
-      final date = DateTime(year, month, d);
-      if (date.isAfter(today)) {
-        statusByDay[d] = CalendarDayStatus.future;
-        continue;
-      }
-      final scheduled = _scheduledFor(date, today, definitions, logs);
-      habitsDone += scheduled.where((h) => h.isCompletedToday).length;
-
-      final status = await _statusFor(date, today, scheduled);
-      statusByDay[d] = status;
-      if (status == CalendarDayStatus.perfect) perfectDays++;
-      if (status == CalendarDayStatus.missed) missedDays++;
-    }
-
-    final days = <CalendarDay>[
-      for (var i = 0; i < leadingEmpty; i++)
-        const CalendarDay(day: null, status: CalendarDayStatus.empty),
-      for (var d = 1; d <= daysInMonth; d++)
-        CalendarDay(
-          day: d,
-          status: statusByDay[d]!,
-          date: DateTime(year, month, d),
-        ),
-    ];
-
-    return CalendarMonthStats(
+    return buildMonthStats(
       year: year,
       month: month,
-      monthLabel: monthFull(month),
+      today: today,
+      habitsFor: (day) async => hydrateScheduled(day, definitions, logs),
+      vacationLog: _vacationLog,
       currentStreak: await _currentStreak(today, definitions),
-      perfectDays: perfectDays,
-      habitsDone: habitsDone,
-      missedDays: missedDays,
-      days: days,
     );
   }
 
-  /// A day's habits, hydrated with that day's logged state — mirrors
-  /// [FirestoreHabitRepository.getHabitsForDate], but reads from an
-  /// already-fetched [logs] map instead of querying Firestore again, since
-  /// this gets called once per day in a loop ([getMonth], [_currentStreak],
-  /// [getHabitStats]). Today is a special case: its state already lives on
-  /// [definitions] themselves (see [FirestoreHabitRepository.getTodayHabits]),
-  /// not in `habitLogs`, so there's nothing to look up.
-  List<Habit> _scheduledFor(
-    DateTime date,
-    DateTime today,
-    List<Habit> definitions,
-    Map<String, HabitDayState> logs,
-  ) {
-    final day = dateOnly(date);
-    final scheduled = [
-      for (final definition in definitions)
-        if (definition.isScheduledOn(day)) definition,
-    ];
-    if (day == today) return scheduled;
-    final key = dayKey(day);
-    return [
-      for (final definition in scheduled)
-        definition.hydrate(logs['${key}_${definition.id}'] ?? HabitDayState.empty),
-    ];
-  }
+  /// The same walk as [MockCalendarRepository]'s, but reads [logsInRange] in
+  /// [_streakChunkDays]-day chunks, fetching the next older chunk only when
+  /// the walk actually reaches it. Fetching all 400 days up front cost every
+  /// habit's whole year of logs on each call, even for a 3-day streak.
+  static const _streakChunkDays = 45;
 
-  /// Same status rules as [MockCalendarRepository._statusFor] — see that
-  /// method's doc comment for the reasoning (today always "today", an
-  /// off-schedule or vacation-frozen day reads as [CalendarDayStatus.done]
-  /// rather than missed).
-  Future<CalendarDayStatus> _statusFor(
-    DateTime date,
-    DateTime today,
-    List<Habit> scheduled,
-  ) async {
-    if (dateOnly(date) == today) return CalendarDayStatus.today;
-    if (scheduled.isEmpty || await _vacationLog.isFrozen(date)) {
-      return CalendarDayStatus.done;
-    }
-    // Reaching a minimum saves the day from "missed"; "perfect" still means
-    // every habit was claimed.
-    if (!scheduled.any((h) => h.keptStreak)) return CalendarDayStatus.missed;
-    if (scheduled.every((h) => h.isCompletedToday)) {
-      return CalendarDayStatus.perfect;
-    }
-    return CalendarDayStatus.done;
-  }
-
-  /// Same walk-back logic as [MockCalendarRepository._currentStreak], but
-  /// the up-to-400-day walk reads from one pre-fetched [logsInRange] result
-  /// instead of issuing a Firestore query per day.
   Future<int> _currentStreak(DateTime today, List<Habit> definitions) async {
-    const maxLookback = 400;
-    final logs = await _habits.logsInRange(
-      today.subtract(const Duration(days: maxLookback)),
-      today,
-    );
+    final oldest = addDays(today, -kStreakMaxLookback);
+    final logs = <String, HabitDayState>{};
+    // Every day from here through today is already in [logs].
+    var fetchedFrom = addDays(today, 1);
 
     var streak = 0;
-    var day = today;
-    while (today.difference(day).inDays <= maxLookback) {
+    for (var day = today; !day.isBefore(oldest); day = addDays(day, -1)) {
+      if (day.isBefore(fetchedFrom)) {
+        final end = addDays(fetchedFrom, -1);
+        var start = addDays(end, 1 - _streakChunkDays);
+        if (start.isBefore(oldest)) start = oldest;
+        logs.addAll(await _habits.logsInRange(start, end));
+        fetchedFrom = start;
+      }
       final scheduled = await _vacationLog.isFrozen(day)
           ? const <Habit>[]
-          : _scheduledFor(day, today, definitions, logs);
-      if (scheduled.isNotEmpty) {
-        final isToday = dateOnly(day) == today;
-        final allKept = scheduled.every((h) => h.keptStreak);
-        final anyKept = scheduled.any((h) => h.keptStreak);
-        if (isToday) {
-          if (!allKept) {
-            day = day.subtract(const Duration(days: 1));
-            continue;
-          }
-        } else if (!anyKept) {
-          break;
-        }
-        streak++;
+          : hydrateScheduled(day, definitions, logs);
+      switch (streakStep(scheduled, isToday: day == today)) {
+        case StreakStep.skip:
+          continue;
+        case StreakStep.count:
+          streak++;
+        case StreakStep.stop:
+          return streak;
       }
-      day = day.subtract(const Duration(days: 1));
     }
     return streak;
   }
@@ -344,38 +311,12 @@ class FirestoreCalendarRepository implements CalendarRepository {
   @override
   Future<List<HabitStat>> getHabitStats({int days = 30}) async {
     final today = dateOnly(DateTime.now());
-    final definitions = await _habits.getTodayHabits();
-    final logs = await _habits.logsInRange(
-      today.subtract(Duration(days: days - 1)),
-      today,
+    final definitions = await _habits.fetchAllDefinitions();
+    final logs = await _habits.logsInRange(addDays(today, 1 - days), today);
+    return buildHabitStats(
+      days: days,
+      today: today,
+      habitsFor: (day) async => hydrateScheduled(day, definitions, logs),
     );
-
-    final scheduled = <String, int>{};
-    final completed = <String, int>{};
-    final meta = <String, Habit>{};
-
-    for (var back = 0; back < days; back++) {
-      final date = today.subtract(Duration(days: back));
-      final habitsOnDay = _scheduledFor(date, today, definitions, logs);
-      for (final habit in habitsOnDay) {
-        scheduled[habit.id] = (scheduled[habit.id] ?? 0) + 1;
-        meta[habit.id] = habit;
-        if (habit.isCompletedToday) {
-          completed[habit.id] = (completed[habit.id] ?? 0) + 1;
-        }
-      }
-    }
-
-    return [
-      for (final id in scheduled.keys)
-        HabitStat(
-          habitId: id,
-          name: meta[id]!.name,
-          icon: meta[id]!.icon,
-          color: meta[id]!.color,
-          scheduledDays: scheduled[id]!,
-          completedDays: completed[id] ?? 0,
-        ),
-    ];
   }
 }

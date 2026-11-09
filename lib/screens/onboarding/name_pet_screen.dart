@@ -1,20 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nori/data/app_data.dart';
+import 'package:nori/data/tips_store.dart';
+import 'package:nori/screens/onboarding/intro_screen.dart';
 import 'package:nori/theme/app_theme.dart';
+import 'package:nori/utils/app_log.dart';
+import 'package:nori/utils/validators.dart';
+import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_text_field.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
-/// Last onboarding step, shown once right after sign-up (email/password or
-/// a brand-new Google account) finishes claiming a username — see
-/// login_screen.dart's/sign_up_screen.dart's callers. Lets the person
-/// rename their starter pet away from the onUserCreate-provisioned default
-/// of 'Nori'; skipping just leaves it as 'Nori'
-/// (docs/BACKEND.md: "Onboarding writes the chosen pet name to pet/main
-/// ... skipping onboarding leaves it as 'Nori'").
-///
-/// Always pops back to its caller (never navigates on its own) so the
-/// caller can decide what comes after — currently always straight to
-/// '/home' — regardless of whether the person typed a name or skipped.
+/// Names the starter pet after username setup; skipping keeps 'Nori'.
+/// Shows [IntroScreen] if unseen, then pops so the caller can navigate onward.
 class NamePetScreen extends StatefulWidget {
   const NamePetScreen({super.key});
 
@@ -41,20 +38,44 @@ class _NamePetScreenState extends State<NamePetScreen> {
       _skip();
       return;
     }
+    final problem = validatePetName(name);
+    if (problem != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(problem)));
+      return;
+    }
     setState(() => _saving = true);
     try {
       await AppData.pet.renamePet(name);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      logError('renamePet', error, stackTrace);
       // Best-effort: onboarding isn't worth blocking on this failing (no
       // network right at this instant, etc.) — the pet just keeps
       // whatever name it already has, same as skipping.
     }
-    if (!mounted) return;
-    Navigator.pop(context);
+    await _finish();
   }
 
   void _skip() {
     if (_saving) return;
+    _finish();
+  }
+
+  /// Shows the intro cards once per account, then hands back to the caller.
+  /// Done here rather than in each caller (login, sign-up, finish-sign-up)
+  /// so all three get it, and the caller's "straight to Home" stays as is.
+  Future<void> _finish() async {
+    final store = TipsStore.current();
+    final seen = await store.hasSeenIntro();
+    if (!mounted) return;
+    if (!seen) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => IntroScreen(store: store)),
+      );
+      if (!mounted) return;
+    }
     Navigator.pop(context);
   }
 
@@ -77,16 +98,9 @@ class _NamePetScreenState extends State<NamePetScreen> {
                 child: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 420),
-                    child: Container(
+                    child: NoriCard(
                       padding: const EdgeInsets.all(AppSpacing.stackMd),
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(
-                          color: AppColors.ink,
-                          width: AppBorder.standard,
-                        ),
-                      ),
+                      radius: AppRadius.lg,
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -127,9 +141,14 @@ class _NamePetScreenState extends State<NamePetScreen> {
                           const SizedBox(height: AppSpacing.stackMd),
                           NoriTextField(
                             controller: _nameController,
-                            label: "Pet's Name",
+                            label: "Pet's name",
                             hint: 'Nori',
                             icon: Icons.pets,
+                            inputFormatters: [
+                              LengthLimitingTextInputFormatter(
+                                petNameMaxLength,
+                              ),
+                            ],
                             textInputAction: TextInputAction.done,
                             onSubmitted: (_) => _continue(),
                           ),

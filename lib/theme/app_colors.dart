@@ -9,7 +9,7 @@ class AppColors {
 
   // Ink — borders, headings, primary text.
   static const ink = Color(0xFF3A2E22);
-  static const inkMuted = Color(0xFF7A6B4F);
+  static const inkMuted = Color(0xFF6B5D43);
   static const inkFaint = Color(0xFF6E634F);
 
   // Paper — base surfaces.
@@ -20,11 +20,11 @@ class AppColors {
   // Moss — level progress, checkboxes, pet portrait card.
   static const moss = Color(0xFF8FA06B);
   static const mossLight = Color(0xFFDCE6CC);
-  static const mossDark = Color(0xFF5B7A45);
+  static const mossDark = Color(0xFF4A6A36);
 
   // Terracotta — FAB, today's-goal progress, happiness accent.
   static const terracotta = Color(0xFFC9986A);
-  static const terracottaDark = Color(0xFFB5652F);
+  static const terracottaDark = Color(0xFF944B1C);
 
   // Blush — avatar bg, happiness icon bg, "read" habit icon bg.
   static const blush = Color(0xFFEED9CF);
@@ -33,7 +33,7 @@ class AppColors {
   // Mustard — XP pill, streak accent.
   static const mustard = Color(0xFFFBE38A);
   static const mustardLight = Color(0xFFF4E3A8);
-  static const mustardDark = Color(0xFF9A7C1F);
+  static const mustardDark = Color(0xFF735B10);
 
   // Sky — "water" habit icon bg.
   static const sky = Color(0xFFD9E7EA);

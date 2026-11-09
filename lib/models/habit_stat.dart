@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// One habit's completion rate over a rolling window — see
-/// [CalendarRepository.getHabitStats]. A separate concept from
-/// [CalendarMonthStats]: that one is scoped to the visible calendar month
-/// (so it reads misleadingly thin on the 1st), this is a fixed trailing
-/// window so "your easiest / most-missed habit" stays meaningful all month.
+/// Habit completion rate over a fixed trailing window; see `getHabitStats`.
+/// Unlike calendar-month totals, this stays meaningful at the start of a month.
 class HabitStat {
   const HabitStat({
     required this.habitId,

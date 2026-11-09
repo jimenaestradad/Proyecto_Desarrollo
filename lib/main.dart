@@ -1,93 +1,144 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'data/app_data.dart';
 import 'firebase_options.dart';
 import 'navigation/nori_shell.dart';
+import 'screens/onboarding/finish_signup_screen.dart';
 import 'screens/onboarding/login_screen.dart';
 import 'screens/onboarding/sign_up_screen.dart';
 import 'screens/onboarding/welcome_screen.dart';
 import 'theme/app_theme.dart';
+import 'utils/account_setup.dart';
+import 'widgets/reward_burst.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // Not calling _connectToEmulatorsInDebug(): Valeria's side develops
-  // directly against the live nori-pet project (docs/BACKEND.md, "Local
-  // dev" — no Java runtime available for the emulator, and it was never
-  // actually used for this project). The function is left below rather
-  // than deleted in case Jimena wants to opt back in for her own machine.
-  // Firebase Auth restores a signed-in session from local storage on
-  // startup — checking it here is what makes "stay logged in between app
-  // launches" (Auth > Persistencia de sesión) work, instead of always
-  // dropping the person back on Welcome. Also points AppData.user (etc.)
-  // at that uid's real Firestore data before any screen can read it —
-  // see AppData.bindToUser.
+  // Online only (docs/technical/BACKEND.md): with persistence on, direct Firestore
+  // writes silently queue offline while Cloud Function calls fail, so half
+  // the app would appear to work. Off, everything fails the same way and
+  // RemoteLoadState's timeout surfaces it.
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: false,
+  );
+  // Restore the persisted Auth session and bind its repositories before screens load.
+  // The emulator connector below is currently unused; local development uses nori-pet.
   final currentUser = FirebaseAuth.instance.currentUser;
+  var initialRoute = '/welcome';
   if (currentUser != null) {
     AppData.bindToUser(currentUser.uid);
+    initialRoute = await isSignUpComplete(currentUser.uid)
+        ? '/home'
+        : '/finish-signup';
   }
-  runApp(NoriApp(initialRoute: currentUser != null ? '/home' : '/welcome'));
+  runApp(NoriApp(initialRoute: initialRoute));
 }
 
-/// Points every Firebase SDK at the Firebase Local Emulator Suite
-/// whenever this is a debug build -- see docs/BACKEND.md, "Local dev":
-/// "Use the Firebase Local Emulator Suite ... for both of you during
-/// development -- never point local `flutter run` at the production
-/// `nori-pet` project." Start the emulators first (`firebase
-/// emulators:start --only functions,auth,firestore` from the repo
-/// root, or `cd functions && npm run serve`) -- otherwise every call
-/// below just fails to connect and every Firebase-backed screen shows
-/// the generic "couldn't reach the server" error.
-///
-/// A release build never takes this branch -- `kDebugMode` is
-/// compile-time false there, so a real APK always talks to the real
-/// `nori-pet` project, never the emulators.
-///
-/// Currently unreferenced -- see the comment at its call site in main().
-// ignore: unused_element
-void _connectToEmulatorsInDebug() {
-  if (!kDebugMode) return;
-
-  // The emulators run on this same machine. An Android emulator (the
-  // only mobile target -- see pubspec.yaml's flutter_launcher_icons)
-  // reaches the host machine at the special alias 10.0.2.2, not
-  // localhost/127.0.0.1 -- that would resolve to the Android emulator
-  // itself, not this machine. Web (and anything else) shares this
-  // machine's network namespace, so plain 'localhost' is correct
-  // there. Ports match firebase.json's "emulators" block.
-  final host = (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
-      ? '10.0.2.2'
-      : 'localhost';
-
-  FirebaseFirestore.instance.useFirestoreEmulator(host, 8080);
-  FirebaseAuth.instance.useAuthEmulator(host, 9099);
-  FirebaseFunctions.instance.useFunctionsEmulator(host, 5001);
-}
-
-class NoriApp extends StatelessWidget {
+class NoriApp extends StatefulWidget {
   const NoriApp({super.key, this.initialRoute = '/welcome'});
 
   final String initialRoute;
 
   @override
+  State<NoriApp> createState() => _NoriAppState();
+}
+
+class _NoriAppState extends State<NoriApp> {
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  StreamSubscription<void>? _sessionLost;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionLost = AppData.auth.sessionLost.listen((_) => _onSessionLost());
+  }
+
+  @override
+  void dispose() {
+    _sessionLost?.cancel();
+    super.dispose();
+  }
+
+  /// The session ended without the person asking (expired or revoked token,
+  /// account disabled or deleted elsewhere). Every load after this would fail
+  /// with a generic error, so go back to Login and say why. Log out and
+  /// Delete account end the session on purpose and never get here.
+  void _onSessionLost() {
+    AppData.unbindUser();
+    _navigatorKey.currentState?.pushNamedAndRemoveUntil(
+      '/login',
+      (route) => false,
+    );
+    _messengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('You were signed out. Please log in again.'),
+        ),
+      );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
+      scaffoldMessengerKey: _messengerKey,
       title: 'Nori',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       scrollBehavior: AppScrollBehavior(),
-      initialRoute: initialRoute,
+      builder: (context, child) =>
+          RewardBurst.trackPointer(child: child ?? const SizedBox.shrink()),
+      initialRoute: widget.initialRoute,
       routes: {
         '/welcome': (context) => const WelcomeScreen(),
         '/signup': (context) => const SignUpScreen(),
+        '/finish-signup': (context) =>
+            const _SignedInOnly(child: FinishSignUpScreen()),
         '/login': (context) => const LoginScreen(),
-        '/home': (context) => const NoriShell(),
+        '/home': (context) => const _SignedInOnly(child: NoriShell()),
       },
+      // Any other address (a typed URL) lands on the guarded app: Home when
+      // signed in, Login when not.
+      onUnknownRoute: (settings) => MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/home'),
+        builder: (_) => const _SignedInOnly(child: NoriShell()),
+      ),
     );
   }
+}
+
+/// Wraps every screen that needs an account. A signed-out visitor (e.g.
+/// someone typing an address into the browser bar) goes to Login instead of
+/// seeing a screen whose every load fails.
+class _SignedInOnly extends StatefulWidget {
+  const _SignedInOnly({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_SignedInOnly> createState() => _SignedInOnlyState();
+}
+
+class _SignedInOnlyState extends State<_SignedInOnly> {
+  late final bool _signedIn = FirebaseAuth.instance.currentUser != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_signedIn) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.pushReplacementNamed(context, '/login');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _signedIn ? widget.child : const Scaffold();
 }

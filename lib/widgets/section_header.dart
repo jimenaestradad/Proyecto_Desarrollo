@@ -33,7 +33,8 @@ class SectionHeader extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: titleStyle ?? AppTextStyles.headlineMd.copyWith(fontSize: 18),
+            style:
+                titleStyle ?? AppTextStyles.headlineMd.copyWith(fontSize: 18),
           ),
         ),
         trailing,

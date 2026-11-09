@@ -10,7 +10,11 @@ void main() {
     for (final habit in habits) {
       final json = habit.toJson();
       final restored = Habit.fromJson(habit.id, json);
-      expect(restored.toJson(), equals(json), reason: 'mismatch for ${habit.id}');
+      expect(
+        restored.toJson(),
+        equals(json),
+        reason: 'mismatch for ${habit.id}',
+      );
     }
   });
 }

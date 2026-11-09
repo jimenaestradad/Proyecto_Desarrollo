@@ -5,14 +5,20 @@ import 'package:nori/data/care_item_catalog.dart';
 import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/models/inventory.dart';
 import 'package:nori/models/nori_user.dart';
+import 'package:nori/models/pet.dart';
+import 'package:nori/utils/ordered_queue.dart';
+import 'package:nori/utils/remote_errors.dart';
 import 'package:nori/widgets/accessory_art.dart';
 import 'package:nori/screens/customization/customization_screen.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/formatting.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
+import 'package:nori/widgets/nori_screen_header.dart';
 import 'package:nori/widgets/nori_scroll_scaffold.dart';
+import '../../widgets/scroll_edge_fade.dart';
 
 class _PreviewItem {
   const _PreviewItem({
@@ -21,6 +27,7 @@ class _PreviewItem {
     required this.color,
     required this.category,
     required this.price,
+    this.image,
     this.badge,
     this.badgeColor = AppColors.linenAlt,
     this.badgeTextColor = AppColors.inkMuted,
@@ -31,54 +38,101 @@ class _PreviewItem {
   final Color color;
   final int category;
   final String price;
+
+  /// Hand-drawn cutout shown instead of [icon] when set.
+  final String? image;
   final String? badge;
   final Color badgeColor;
   final Color badgeTextColor;
 }
 
 class ShopScreen extends StatefulWidget {
-  const ShopScreen({super.key});
+  /// Opens on Food & care, the first chip; the Wardrobe's "go shopping" link
+  /// passes [startOnAccessories] so it lands on the looks instead.
+  const ShopScreen({super.key, this.startOnAccessories = false});
+
+  final bool startOnAccessories;
 
   @override
   State<ShopScreen> createState() => _ShopScreenState();
 }
 
-class _ShopScreenState extends State<ShopScreen> {
+class _ShopScreenState extends State<ShopScreen>
+    with RemoteLoadState<ShopScreen> {
+  // Chip order: consumables first, then looks, then the rest.
   static const _categories = [
-    (label: 'Hats', icon: Icons.checkroom),
+    (label: 'Food & care', icon: Icons.restaurant),
+    (label: 'Accessories', icon: Icons.checkroom),
     (label: 'Clothes', icon: Icons.dry_cleaning),
-    (label: 'Food & Care', icon: Icons.restaurant),
     (label: 'Furniture', icon: Icons.chair),
     (label: 'Premium', icon: Icons.diamond),
   ];
 
-  static const _hatsCategory = 0;
-  static const _foodCategory = 2;
+  static const _foodCategory = 0;
+  static const _hatsCategory = 1;
 
   static const _previewItems = [
-    _PreviewItem(
-      name: 'Dino Onesie',
-      icon: Icons.checkroom,
-      color: AppColors.blush,
-      category: 1,
-      price: '550',
-    ),
     _PreviewItem(
       name: 'Royal Crown',
       icon: Icons.emoji_events,
       color: AppColors.mustardLight,
       category: 4,
       price: '800',
+      image: 'assets/images/accessories/royal-crown.png',
       badge: 'New',
       badgeColor: AppColors.errorContainer,
       badgeTextColor: AppColors.onErrorContainer,
     ),
   ];
 
-  int _selectedCategory = 0;
+  late int _selectedCategory = widget.startOnAccessories
+      ? _hatsCategory
+      : _foodCategory;
   NoriUser? _user;
   Inventory? _inventory;
-  bool _isPurchasing = false;
+
+  /// Which form the Shop's accessory previews draw. Stays baby until the pet
+  /// loads, and keeps the last known stage if a later read fails.
+  PetEvolutionStage _stage = PetEvolutionStage.baby;
+
+  /// Purchases and equips still waiting on the server; the screen re-syncs
+  /// once the last one lands (or any one fails).
+  int _pending = 0;
+
+  /// Coins and inventory as they were before the first change now in flight.
+  /// A failed call puts these back at once, so the undo doesn't depend on the
+  /// re-read below (which fails too when the server is unreachable). Dropped
+  /// once nothing is in flight.
+  (NoriUser, Inventory)? _baseline;
+
+  void _saveBaseline() {
+    final user = _user;
+    final inventory = _inventory;
+    if (_pending == 0 && user != null && inventory != null) {
+      _baseline = (user, inventory);
+    }
+  }
+
+  /// Ends one change: on failure restores the baseline, and clears it once
+  /// nothing is in flight.
+  void _settle({required bool ok}) {
+    _pending--;
+    final baseline = _baseline;
+    if (_pending == 0) _baseline = null;
+    if (ok || baseline == null || !mounted) return;
+    setState(() {
+      _user = baseline.$1;
+      _inventory = baseline.$2;
+    });
+  }
+
+  /// Bumps with every local change, so a fetch that began before one is
+  /// dropped instead of undoing it.
+  int _edits = 0;
+
+  /// Server calls run one after another, so equipping an accessory that was
+  /// just bought waits for the purchase to land.
+  final _serverQueue = OrderedQueue();
 
   @override
   void initState() {
@@ -86,23 +140,24 @@ class _ShopScreenState extends State<ShopScreen> {
     _loadData();
   }
 
-  Future<void> _loadData() async {
-    final user = await AppData.user.getCurrentUser();
-    final inventory = await AppData.inventory.getInventory();
-    if (!mounted) return;
-    setState(() {
-      _user = user;
-      _inventory = inventory;
-    });
-  }
+  Future<void> _loadData() => guardedLoad(_reloadData, hasData: _user != null);
 
   Future<void> _reloadData() async {
-    final user = await AppData.user.getCurrentUser();
-    final inventory = await AppData.inventory.getInventory();
-    if (!mounted) return;
+    final stamp = _edits;
+    final (user, inventory, stage) = await (
+      AppData.user.getCurrentUser(),
+      AppData.inventory.getInventory(),
+      // Only picks the preview art, so a failed read must not fail the Shop.
+      AppData.pet.getPet().then<PetEvolutionStage?>(
+        (pet) => pet.stage,
+        onError: (_) => null,
+      ),
+    ).wait;
+    if (!mounted || stamp != _edits) return;
     setState(() {
       _user = user;
       _inventory = inventory;
+      _stage = stage ?? _stage;
     });
   }
 
@@ -114,143 +169,180 @@ class _ShopScreenState extends State<ShopScreen> {
 
   void _showUnavailable() => _showSnack('Not available yet');
 
-  // purchaseCareItem/purchaseAccessory are Cloud-Function-only (see
-  // docs/BACKEND.md's Architecture table: buying spends coins to mint an
-  // owned item, which is exactly the currency-affecting write the
-  // Cloud-Functions boundary exists to guard) -- AppData.user.addCoins and
-  // AppData.inventory.addCareItem/addAccessory would just throw
-  // UnsupportedError against the real Firestore-backed repositories now
-  // that AppData.bindToUser wires them up, so these call the callable
-  // directly through cloud_functions_client.dart's shared helper instead
-  // of going through the repository interfaces for this one write.
+  // Purchases call Cloud Functions to spend coins and grant owned items.
+  // The real user/inventory repositories reject these currency-affecting writes.
 
-  Future<void> _buyCareItem(CareItem item) async {
-    if (_isPurchasing) return;
-    _isPurchasing = true;
-    try {
-      final user = _user;
-      if (user == null) return;
-      if (user.coins < item.price) {
-        _showSnack('Not enough coins.');
-        return;
-      }
-      try {
-        await callCloudFunction('purchaseCareItem', {
-          'itemId': item.id,
-          'quantity': 1,
-        });
-      } on CloudFunctionFailure catch (e) {
-        if (!mounted) return;
-        _showSnack(e.message);
-        return;
-      }
-      await _reloadData();
-      if (!mounted) return;
-      _showSnack('Bought ${item.name} — head to Home to use it!');
-    } finally {
-      _isPurchasing = false;
+  /// Shows a purchase at once (coins down, item added, confirmation) and runs
+  /// [call] in the background. A failure or the last purchase finishing
+  /// re-syncs coins and inventory from the server.
+  Future<void> _buy({
+    required int price,
+    required Inventory Function(Inventory) grant,
+    required Future<void> Function() call,
+    required String message,
+  }) async {
+    final user = _user;
+    final inventory = _inventory;
+    if (user == null || inventory == null) return;
+    if (user.coins < price) {
+      _showSnack('Not enough coins.');
+      return;
     }
+    _edits++;
+    _saveBaseline();
+    _pending++;
+    setState(() {
+      _user = user.copyWith(coins: user.coins - price);
+      _inventory = grant(inventory);
+    });
+    _showSnack(message);
+    final ok = await guardedAction(() => _serverQueue.run(call));
+    _settle(ok: ok);
+    if (mounted && (!ok || _pending == 0)) await guardedAction(_reloadData);
   }
 
-  Future<void> _buyAccessory(AccessoryItem item) async {
-    if (_isPurchasing) return;
-    _isPurchasing = true;
-    try {
-      final user = _user;
-      if (user == null) return;
-      if (user.coins < item.price) {
-        _showSnack('Not enough coins.');
-        return;
-      }
-      try {
-        await callCloudFunction('purchaseAccessory', {'accessoryId': item.id});
-      } on CloudFunctionFailure catch (e) {
-        if (!mounted) return;
-        _showSnack(e.message);
-        return;
-      }
-      await _reloadData();
-      if (!mounted) return;
-      _showSnack('Bought ${item.name}!');
-    } finally {
-      _isPurchasing = false;
-    }
-  }
+  Future<void> _buyCareItem(CareItem item) => _buy(
+    price: item.price,
+    grant: (inventory) => inventory.copyWith(
+      careItemCounts: {
+        ...inventory.careItemCounts,
+        item.id: inventory.countOf(item.id) + item.grants,
+      },
+    ),
+    call: () => callCloudFunction('purchaseCareItem', {
+      'itemId': item.id,
+      'quantity': 1,
+    }),
+    message: 'Bought ${item.name} — head to Home to use it!',
+  );
 
-  void _openCustomization() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const CustomizationScreen()),
+  Future<void> _buyAccessory(AccessoryItem item) => _buy(
+    price: item.price,
+    grant: (inventory) => inventory.copyWith(
+      ownedAccessoryIds: {...inventory.ownedAccessoryIds, item.id},
+    ),
+    call: () =>
+        callCloudFunction('purchaseAccessory', {'accessoryId': item.id}),
+    message: 'Bought ${item.name}!',
+  );
+
+  /// Equips [item], or takes it off if it is already worn, right on the
+  /// card. The card flips at once; a failed save re-reads the inventory.
+  Future<void> _toggleEquip(AccessoryItem item) async {
+    final inventory = _inventory;
+    if (inventory == null) return;
+    final accessoryId = inventory.equippedAccessoryId == item.id
+        ? null
+        : item.id;
+    _edits++;
+    _saveBaseline();
+    _pending++;
+    setState(() {
+      _inventory = inventory.copyWith(equippedAccessoryId: accessoryId);
+    });
+    final ok = await guardedAction(
+      () => _serverQueue.run(
+        () => AppData.inventory.setEquippedAccessory(accessoryId),
+      ),
     );
+    _settle(ok: ok);
+    if (mounted && !ok) await guardedAction(_reloadData);
+  }
+
+  Future<void> _openCustomization() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CustomizationScreen(openedFromShop: true),
+      ),
+    );
+    if (mounted) await guardedAction(_reloadData);
   }
 
   @override
   Widget build(BuildContext context) {
     final user = _user;
     final inventory = _inventory;
+    final error = loadError;
 
     return Scaffold(
       backgroundColor: AppColors.linen,
-      appBar: AppBar(title: const Text('Pet Boutique')),
-      body: user == null || inventory == null
-          ? const Center(child: CircularProgressIndicator())
-          : NoriScrollScaffold(
-              maxWidth: 1120,
-              children: [
-                Text(
-                  'Spoil your companion with new looks and treats!',
-                  style: AppTextStyles.bodyMd.copyWith(
-                    color: AppColors.inkMuted,
+      body: SafeArea(
+        child: user == null || inventory == null
+            ? error != null
+                  ? LoadErrorView(error: error, onRetry: _loadData)
+                  : const Center(child: CircularProgressIndicator())
+            : NoriScrollScaffold(
+                maxWidth: 1120,
+                children: [
+                  NoriScreenHeader(
+                    leading: NoriScreenHeader.backButton(context),
+                    title: 'Shop',
+                    titleStyle: AppTextStyles.headlineLgMobile,
+                    trailing: TextButton.icon(
+                      onPressed: _openCustomization,
+                      icon: const Icon(Icons.checkroom),
+                      label: const Text('Wardrobe'),
+                    ),
                   ),
-                ),
-                const SizedBox(height: AppSpacing.stackMd),
-                _BalanceCard(coins: user.coins),
-                const SizedBox(height: AppSpacing.stackMd),
-                SizedBox(
-                  height: 44,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _categories.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(width: AppSpacing.stackSm),
-                    itemBuilder: (context, index) {
-                      final category = _categories[index];
-                      return ChoiceChip(
-                        avatar: Icon(
-                          category.icon,
-                          size: 18,
-                          color: AppColors.ink,
-                        ),
-                        label: Text(category.label),
-                        selected: _selectedCategory == index,
-                        onSelected: (_) {
-                          setState(() => _selectedCategory = index);
+                  const SizedBox(height: AppSpacing.stackMd),
+                  Text(
+                    'Spend your coins on looks and treats for Nori.',
+                    style: AppTextStyles.bodyMd.copyWith(
+                      color: AppColors.inkMuted,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  _BalanceCard(coins: user.coins),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  SizedBox(
+                    height: 44,
+                    child: ScrollEdgeFade(
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _categories.length,
+                        separatorBuilder: (_, _) =>
+                            const SizedBox(width: AppSpacing.stackSm),
+                        itemBuilder: (context, index) {
+                          final category = _categories[index];
+                          return ChoiceChip(
+                            avatar: Icon(
+                              category.icon,
+                              size: 18,
+                              color: AppColors.ink,
+                            ),
+                            label: Text(category.label),
+                            selected: _selectedCategory == index,
+                            onSelected: (_) {
+                              setState(() => _selectedCategory = index);
+                            },
+                            labelStyle: AppTextStyles.labelLg.copyWith(
+                              color: AppColors.ink,
+                            ),
+                            selectedColor: AppColors.moss,
+                            backgroundColor: AppColors.white,
+                            side: const BorderSide(
+                              color: AppColors.ink,
+                              width: AppBorder.thin,
+                            ),
+                            shape: const StadiumBorder(),
+                            elevation: 0,
+                            pressElevation: 0,
+                            showCheckmark: false,
+                          );
                         },
-                        labelStyle: AppTextStyles.labelLg.copyWith(
-                          color: AppColors.ink,
-                        ),
-                        selectedColor: AppColors.moss,
-                        backgroundColor: AppColors.white,
-                        side: const BorderSide(
-                          color: AppColors.ink,
-                          width: AppBorder.thin,
-                        ),
-                        shape: const StadiumBorder(),
-                        elevation: 0,
-                        pressElevation: 0,
-                        showCheckmark: false,
-                      );
-                    },
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: AppSpacing.stackMd),
-                _buildGrid(inventory),
-              ],
-            ),
+                  const SizedBox(height: AppSpacing.stackMd),
+                  _buildGrid(inventory, user.coins),
+                ],
+              ),
+      ),
     );
   }
 
-  Widget _buildGrid(Inventory inventory) {
+  Widget _buildGrid(Inventory inventory, int coins) {
     if (_selectedCategory == _hatsCategory) {
       return GridView.count(
         crossAxisCount: 2,
@@ -263,9 +355,12 @@ class _ShopScreenState extends State<ShopScreen> {
           for (final item in kAccessoryCatalog)
             _AccessoryCard(
               item: item,
+              evolved: _stage != PetEvolutionStage.baby,
+              coins: coins,
               owned: inventory.ownedAccessoryIds.contains(item.id),
+              equipped: inventory.equippedAccessoryId == item.id,
               onBuy: () => _buyAccessory(item),
-              onEquip: _openCustomization,
+              onEquip: () => _toggleEquip(item),
             ),
         ],
       );
@@ -281,7 +376,11 @@ class _ShopScreenState extends State<ShopScreen> {
         childAspectRatio: 0.61,
         children: [
           for (final item in kCareItemCatalog)
-            _CareItemCard(item: item, onBuy: () => _buyCareItem(item)),
+            _CareItemCard(
+              item: item,
+              coins: coins,
+              onBuy: () => _buyCareItem(item),
+            ),
         ],
       );
     }
@@ -345,7 +444,7 @@ class _BalanceCard extends StatelessWidget {
                     letterSpacing: 0.8,
                   ),
                 ),
-                Text('$formatted Coins', style: AppTextStyles.headlineMd),
+                Text('$formatted coins', style: AppTextStyles.headlineMd),
               ],
             ),
           ),
@@ -368,7 +467,8 @@ class _ItemCardShell extends StatelessWidget {
     this.badge,
     this.badgeColor = AppColors.linenAlt,
     this.badgeTextColor = AppColors.inkMuted,
-    this.dimmed = false,
+    this.worn = false,
+    this.secondary = false,
   });
 
   final IconData icon;
@@ -381,7 +481,13 @@ class _ItemCardShell extends StatelessWidget {
   final String? badge;
   final Color badgeColor;
   final Color badgeTextColor;
-  final bool dimmed;
+
+  /// The accessory Nori is wearing: green card, thicker border.
+  final bool worn;
+
+  /// A white button for an action on something you already own (Equip),
+  /// so it doesn't read as the green "spend coins" Buy button.
+  final bool secondary;
 
   /// When set, replaces the flat [image]/[icon] with a live render sized to
   /// whatever height this card's image area actually gets (see
@@ -391,111 +497,113 @@ class _ItemCardShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Opacity(
-      opacity: dimmed ? 0.78 : 1,
-      child: NoriCard(
-        padding: const EdgeInsets.all(AppSpacing.stackSm),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: Stack(
-                children: [
-                  Positioned.fill(
+    return NoriCard(
+      color: worn ? AppColors.mossLight : AppColors.white,
+      borderWidth: worn ? AppBorder.thick : AppBorder.standard,
+      padding: const EdgeInsets.all(AppSpacing.stackSm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                      border: Border.all(
+                        color: AppColors.ink,
+                        width: AppBorder.thin,
+                      ),
+                    ),
+                    child: previewBuilder != null
+                        ? Padding(
+                            padding: const EdgeInsets.all(AppSpacing.unit),
+                            child: LayoutBuilder(
+                              builder: (context, inner) => Center(
+                                child: previewBuilder!(inner.maxHeight),
+                              ),
+                            ),
+                          )
+                        : image != null
+                        ? Padding(
+                            padding: const EdgeInsets.all(AppSpacing.stackSm),
+                            child: Image.asset(image!, fit: BoxFit.contain),
+                          )
+                        : Icon(icon, size: 54, color: AppColors.ink),
+                  ),
+                ),
+                if (badge != null)
+                  Positioned(
+                    top: AppSpacing.unit,
+                    left: AppSpacing.unit,
                     child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.unit,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                        color: badgeColor,
+                        borderRadius: BorderRadius.circular(AppRadius.full),
                         border: Border.all(
                           color: AppColors.ink,
                           width: AppBorder.thin,
                         ),
                       ),
-                      child: previewBuilder != null
-                          ? Padding(
-                              padding: const EdgeInsets.all(AppSpacing.unit),
-                              child: LayoutBuilder(
-                                builder: (context, inner) => Center(
-                                  child: previewBuilder!(inner.maxHeight),
-                                ),
-                              ),
-                            )
-                          : image != null
-                          ? Padding(
-                              padding: const EdgeInsets.all(AppSpacing.stackSm),
-                              child: Image.asset(image!, fit: BoxFit.contain),
-                            )
-                          : Icon(icon, size: 54, color: AppColors.ink),
-                    ),
-                  ),
-                  if (badge != null)
-                    Positioned(
-                      top: AppSpacing.unit,
-                      left: AppSpacing.unit,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.unit,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: badgeColor,
-                          borderRadius: BorderRadius.circular(AppRadius.full),
-                          border: Border.all(
-                            color: AppColors.ink,
-                            width: AppBorder.thin,
-                          ),
-                        ),
-                        child: Text(
-                          badge!,
-                          style: AppTextStyles.labelSm.copyWith(
-                            color: badgeTextColor,
-                          ),
+                      child: Text(
+                        badge!,
+                        style: AppTextStyles.labelSm.copyWith(
+                          color: badgeTextColor,
                         ),
                       ),
                     ),
-                ],
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.stackSm),
+          Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.labelLg,
+          ),
+          const SizedBox(height: 4),
+          SizedBox(height: 20, child: priceLabel),
+          const SizedBox(height: AppSpacing.stackSm),
+          FilledButton(
+            onPressed: onPressed,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(40),
+              backgroundColor: secondary ? AppColors.white : AppColors.moss,
+              foregroundColor: AppColors.ink,
+              // Set explicitly: the app theme gives FilledButtons a moss
+              // background in every state, so "Need 45 more" stayed green.
+              disabledBackgroundColor: AppColors.linenAlt,
+              disabledForegroundColor: AppColors.inkFaint,
+              textStyle: AppTextStyles.labelLg,
+              elevation: 0,
+              side: BorderSide(
+                color: onPressed == null ? AppColors.inkFaint : AppColors.ink,
+                width: AppBorder.standard,
               ),
             ),
-            const SizedBox(height: AppSpacing.stackSm),
-            Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.labelLg,
-            ),
-            const SizedBox(height: 4),
-            SizedBox(height: 20, child: priceLabel),
-            const SizedBox(height: AppSpacing.stackSm),
-            FilledButton(
-              onPressed: onPressed,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(40),
-                backgroundColor: onPressed == null
-                    ? AppColors.linenAlt
-                    : AppColors.moss,
-                foregroundColor: onPressed == null
-                    ? AppColors.inkMuted
-                    : AppColors.ink,
-                textStyle: AppTextStyles.labelLg,
-                elevation: 0,
-                side: const BorderSide(
-                  color: AppColors.ink,
-                  width: AppBorder.standard,
-                ),
-              ),
-              child: Text(buttonLabel),
-            ),
-          ],
-        ),
+            child: Text(buttonLabel),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _PriceRow extends StatelessWidget {
-  const _PriceRow({required this.price});
+  const _PriceRow({required this.price, this.affordable = true});
 
   final int price;
+
+  /// False turns the price red: you can't buy this yet.
+  final bool affordable;
 
   @override
   Widget build(BuildContext context) {
@@ -509,63 +617,137 @@ class _PriceRow extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           '$price',
-          style: AppTextStyles.labelLg.copyWith(color: AppColors.mustardDark),
+          style: AppTextStyles.labelLg.copyWith(
+            color: affordable ? AppColors.mustardDark : AppColors.error,
+          ),
         ),
       ],
     );
   }
 }
 
+/// Small status pill ("Owned", "Wearing") shown in a card's price row.
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({
+    required this.label,
+    required this.color,
+    required this.textColor,
+  });
+
+  final String label;
+  final Color color;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.unit,
+          vertical: 1,
+        ),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          border: Border.all(color: AppColors.ink, width: AppBorder.thin),
+        ),
+        child: Text(
+          label,
+          style: AppTextStyles.labelSm.copyWith(color: textColor),
+        ),
+      ),
+    );
+  }
+}
+
+/// Button label for something you can't afford yet.
+String _needMore(int price, int coins) => 'Need ${price - coins} more';
+
 class _AccessoryCard extends StatelessWidget {
   const _AccessoryCard({
     required this.item,
+    required this.evolved,
+    required this.coins,
     required this.owned,
+    required this.equipped,
     required this.onBuy,
     required this.onEquip,
   });
 
   final AccessoryItem item;
+
+  /// Draw the preview on the evolved pet instead of the baby.
+  final bool evolved;
+  final int coins;
   final bool owned;
+  final bool equipped;
   final VoidCallback onBuy;
   final VoidCallback onEquip;
 
   @override
   Widget build(BuildContext context) {
+    final affordable = coins >= item.price;
     return _ItemCardShell(
       icon: item.icon,
       color: item.color,
       name: item.name,
-      dimmed: owned,
+      worn: equipped,
+      secondary: owned,
       previewBuilder: (height) =>
-          NoriAccessoryPreview(height: height, item: item),
+          NoriAccessoryPreview(height: height, item: item, evolved: evolved),
+      // Owned items need no price, so the status pill takes the price row
+      // instead of sitting on top of the item's picture.
       priceLabel: owned
-          ? Text(
-              'Owned',
-              style: AppTextStyles.labelLg.copyWith(color: AppColors.inkMuted),
+          ? _StatusPill(
+              label: equipped ? 'Wearing' : 'Owned',
+              color: equipped ? AppColors.mossDark : AppColors.mossLight,
+              textColor: equipped ? AppColors.white : AppColors.mossDark,
             )
-          : _PriceRow(price: item.price),
-      buttonLabel: owned ? 'Equip' : 'Buy',
-      onPressed: owned ? onEquip : onBuy,
+          : _PriceRow(price: item.price, affordable: affordable),
+      buttonLabel: owned
+          ? (equipped ? 'Take off' : 'Equip')
+          : affordable
+          ? 'Buy'
+          : _needMore(item.price, coins),
+      onPressed: owned
+          ? onEquip
+          : affordable
+          ? onBuy
+          : null,
     );
   }
 }
 
 class _CareItemCard extends StatelessWidget {
-  const _CareItemCard({required this.item, required this.onBuy});
+  const _CareItemCard({
+    required this.item,
+    required this.coins,
+    required this.onBuy,
+  });
 
   final CareItem item;
+  final int coins;
   final VoidCallback onBuy;
 
   @override
   Widget build(BuildContext context) {
+    final affordable = coins >= item.price;
     return _ItemCardShell(
       icon: item.icon,
       image: item.image,
       color: item.color,
       name: item.name,
-      priceLabel: _PriceRow(price: item.price),
-      buttonLabel: 'Buy · +${item.grants}',
-      onPressed: onBuy,
+      // Names the stat the item refills; the tile colour is that stat's
+      // ring colour on Home.
+      badge: item.category.statLabel,
+      badgeColor: AppColors.white,
+      badgeTextColor: AppColors.ink,
+      priceLabel: _PriceRow(price: item.price, affordable: affordable),
+      buttonLabel: affordable
+          ? 'Buy · +${item.grants}'
+          : _needMore(item.price, coins),
+      onPressed: affordable ? onBuy : null,
     );
   }
 }
@@ -581,6 +763,7 @@ class _PreviewItemCard extends StatelessWidget {
     return _ItemCardShell(
       icon: item.icon,
       color: item.color,
+      image: item.image,
       name: item.name,
       badge: item.badge,
       badgeColor: item.badgeColor,

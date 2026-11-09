@@ -4,6 +4,9 @@ import 'package:nori/data/cloud_functions_client.dart';
 import 'package:nori/models/bucket_list_item.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/utils/id_generator.dart';
+import 'package:nori/utils/ordered_queue.dart';
+import 'package:nori/utils/remote_errors.dart';
+import 'package:nori/widgets/load_error_view.dart';
 import 'package:nori/widgets/nori_card.dart';
 import 'package:nori/widgets/nori_icon_badge.dart';
 import 'package:nori/widgets/nori_screen_header.dart';
@@ -11,7 +14,7 @@ import 'package:nori/widgets/nori_scroll_scaffold.dart';
 import 'package:nori/widgets/reward_pill.dart';
 import 'package:nori/widgets/tactile_button.dart';
 
-/// One-time major life goals — see docs/FEATURES.md §11. Reached from the
+/// One-time major life goals — see docs/product/FEATURES.md §11. Reached from the
 /// Habits screen topbar, not the bottom nav: distinct from the daily habit
 /// list, but not important enough to compete for a nav slot.
 class BucketListScreen extends StatefulWidget {
@@ -21,9 +24,9 @@ class BucketListScreen extends StatefulWidget {
   State<BucketListScreen> createState() => _BucketListScreenState();
 }
 
-class _BucketListScreenState extends State<BucketListScreen> {
+class _BucketListScreenState extends State<BucketListScreen>
+    with RemoteLoadState<BucketListScreen> {
   List<BucketListItem>? _items;
-  bool _isSyncing = false;
 
   @override
   void initState() {
@@ -31,53 +34,99 @@ class _BucketListScreenState extends State<BucketListScreen> {
     _loadItems();
   }
 
-  Future<void> _loadItems() async {
+  Future<void> _loadItems() =>
+      guardedLoad(_fetchItems, hasData: _items != null);
+
+  Future<void> _fetchItems() async {
+    final stamp = _edits;
     final items = await AppData.bucketList.getItems();
-    if (!mounted) return;
+    if (!mounted || stamp != _edits) return;
+    // Once the list shows the goal, the add did land; adding the same goal
+    // again is then deliberate and gets a new id.
+    if (items.any((item) => item.id == _unconfirmedAdd?.id)) {
+      _unconfirmedAdd = null;
+    }
     setState(() => _items = items);
   }
 
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+  /// The last goal whose add didn't report success (it timed out or failed).
+  /// A timed-out write can still commit, so adding the same goal again reuses
+  /// this id and overwrites that one document instead of creating a twin.
+  BucketListItem? _unconfirmedAdd;
+
+  int _pending = 0;
+  int _edits = 0;
+
+  /// The list before the first change now in flight; a failed call puts it
+  /// back at once, so the undo doesn't depend on the re-read (which fails
+  /// too when the server is unreachable). Dropped once nothing is in flight.
+  List<BucketListItem>? _baseline;
+
+  /// Server calls run in the order they were made, so an edit or delete never
+  /// overtakes the add it depends on.
+  final _serverQueue = OrderedQueue();
+
+  /// Shows a change on the list at once and runs [server] in the background.
+  /// A failure, or the last change finishing, re-reads the list (the server
+  /// owns reward state, ids and ordering).
+  Future<void> _optimistic(
+    List<BucketListItem> Function(List<BucketListItem>) change,
+    Future<void> Function() server,
+  ) async {
+    final items = _items;
+    if (items == null) return;
+    _edits++;
+    if (_pending == 0) _baseline = items;
+    _pending++;
+    setState(() => _items = change(items));
+    final ok = await guardedAction(() => _serverQueue.run(server));
+    _pending--;
+    final baseline = _baseline;
+    if (_pending == 0) _baseline = null;
+    if (!ok && baseline != null && mounted) {
+      setState(() => _items = baseline);
+    }
+    if (mounted && (!ok || _pending == 0)) await guardedAction(_fetchItems);
   }
 
-  // completeBucketListItem/uncompleteBucketListItem are Cloud-Function-only
-  // (docs/BACKEND.md's Architecture table: completing an item mints XP/
-  // coins, exactly what the Cloud-Functions boundary guards) --
-  // AppData.bucketList.completeItem/uncompleteItem would just throw
-  // UnsupportedError against the real Firestore-backed repository now that
-  // AppData.bindToUser wires it up, so this calls the callable directly
-  // through cloud_functions_client.dart's shared helper instead of going
-  // through the repository interface for this one write. The Cloud
-  // Function updates the item + user (XP/coins/level) atomically server-
-  // side, so there's no local reward to apply afterward -- just reload.
-  Future<void> _toggleComplete(BucketListItem item) async {
-    if (_isSyncing) return;
-    _isSyncing = true;
-    try {
-      await callCloudFunction(
-        item.isCompleted
-            ? 'uncompleteBucketListItem'
-            : 'completeBucketListItem',
-        {'itemId': item.id},
-      );
-      await _loadItems();
-      // Mirrors home_screen.dart/calendar_screen.dart/habits_list_screen.dart's
-      // own post-reward call -- a bucket-list completion can cross a level
-      // the same way a habit claim can. Currently a no-op for the real
-      // Firestore-backed pet (see firestore_pet_repository.dart's
-      // syncEvolution doc comment); kept here so this call site already
-      // exists once that seam is revisited.
-      final user = await AppData.user.getCurrentUser();
-      await AppData.pet.syncEvolution(user.level);
-    } on CloudFunctionFailure catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    } finally {
-      _isSyncing = false;
-    }
+  // Completion goes through Cloud Functions because it changes XP and coins
+  // atomically; the real repository rejects a direct write.
+  Future<void> _toggleComplete(BucketListItem item) {
+    final completing = !item.isCompleted;
+    return _optimistic(
+      (items) => [
+        for (final i in items)
+          if (i.id == item.id)
+            completing
+                ? i.copyWith(
+                    isCompleted: true,
+                    completedAt: DateTime.now(),
+                    rewardPaid: true,
+                  )
+                : i.copyWith(isCompleted: false, rewardPaid: false)
+          else
+            i,
+      ],
+      () async {
+        final result = await callCloudFunction(
+          completing ? 'completeBucketListItem' : 'uncompleteBucketListItem',
+          {'itemId': item.id},
+        );
+        if (completing && result['limited'] == true && mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Achieved! You have already collected '
+                  '${BucketListItem.paidGoalsPerWeek} goal rewards this week, '
+                  'so this one pays nothing.',
+                ),
+              ),
+            );
+        }
+      },
+    );
   }
 
   Future<void> _openAddDialog() async {
@@ -86,8 +135,13 @@ class _BucketListScreenState extends State<BucketListScreen> {
       builder: (_) => const _BucketItemDialog(),
     );
     if (added == null) return;
-    await AppData.bucketList.addItem(added);
-    await _loadItems();
+    final retry = _unconfirmedAdd;
+    final item = retry != null && retry.sameGoalAs(added) ? retry : added;
+    _unconfirmedAdd = item;
+    await _optimistic((items) => [...items, item], () async {
+      await AppData.bucketList.addItem(item);
+      if (_unconfirmedAdd?.id == item.id) _unconfirmedAdd = null;
+    });
   }
 
   Future<void> _openEditDialog(BucketListItem item) async {
@@ -96,29 +150,73 @@ class _BucketListScreenState extends State<BucketListScreen> {
       builder: (_) => _BucketItemDialog(existing: item),
     );
     if (updated == null) return;
-    await AppData.bucketList.updateItem(updated);
-    await _loadItems();
+    await _optimistic(
+      (items) => [for (final i in items) i.id == updated.id ? updated : i],
+      () => AppData.bucketList.updateItem(updated),
+    );
   }
 
+  /// Confirm deletion if the item ever paid rewards, since deletion claws them back.
+  /// Uncompleting retains the reward; never-paid items delete immediately.
   Future<void> _deleteItem(BucketListItem item) async {
-    await AppData.bucketList.deleteItem(item.id);
-    await _loadItems();
+    final paidOut = item.isCompleted || item.rewardPaid;
+    if (paidOut && !await _confirmDeleteCompleted(item)) return;
+    await _optimistic(
+      (items) => [
+        for (final i in items)
+          if (i.id != item.id) i,
+      ],
+      () => AppData.bucketList.deleteItem(item.id),
+    );
+  }
+
+  Future<bool> _confirmDeleteCompleted(BucketListItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
+        ),
+        title: Text('Delete "${item.title}"?'),
+        content: const Text(
+          'This one already paid out — deleting it takes back the XP and '
+          'coins it earned.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: AppTheme.destructiveFilledButton,
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 
   @override
   Widget build(BuildContext context) {
     final items = _items;
+    final error = loadError;
 
     return Scaffold(
       body: SafeArea(
         child: items == null
-            ? const Center(child: CircularProgressIndicator())
+            ? error != null
+                  ? LoadErrorView(error: error, onRetry: _loadItems)
+                  : const Center(child: CircularProgressIndicator())
             : NoriScrollScaffold(
                 maxWidth: 900,
                 children: [
                   NoriScreenHeader(
                     leading: NoriScreenHeader.backButton(context),
-                    title: 'Bucket List',
+                    title: 'Bucket list',
                     titleStyle: AppTextStyles.headlineLgMobile,
                   ),
                   const SizedBox(height: 2),
@@ -173,7 +271,7 @@ class _BucketListScreenState extends State<BucketListScreen> {
                     ],
                   const SizedBox(height: AppSpacing.stackMd),
                   TactileButton(
-                    label: 'Add Bucket List Goal',
+                    label: 'Add bucket list goal',
                     icon: Icons.add,
                     onPressed: _openAddDialog,
                   ),
@@ -271,7 +369,7 @@ class _BucketListCard extends StatelessWidget {
                 ),
               ),
               PopupMenuButton<void>(
-                tooltip: 'More',
+                tooltip: 'More options for ${item.title}',
                 padding: EdgeInsets.zero,
                 icon: const Icon(
                   Icons.more_vert,
@@ -307,7 +405,7 @@ class _BucketListCard extends StatelessWidget {
                   ),
                   textStyle: AppTextStyles.labelLg,
                 ),
-                child: Text(claimed ? 'Undo' : 'Mark Achieved'),
+                child: Text(claimed ? 'Undo' : 'Mark achieved'),
               ),
             ],
           ),
@@ -345,10 +443,13 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
 
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
-  late final TextEditingController _xpController;
-  late final TextEditingController _coinController;
+  late BucketGoalSize _size;
   late IconData _icon;
   late Color _color;
+
+  /// Shown under the title after Add/Save with it empty — the tap used to
+  /// do nothing at all.
+  String? _titleError;
 
   @override
   void initState() {
@@ -358,10 +459,9 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
     _descriptionController = TextEditingController(
       text: existing?.description ?? '',
     );
-    _xpController = TextEditingController(text: '${existing?.xpReward ?? 150}');
-    _coinController = TextEditingController(
-      text: '${existing?.coinReward ?? 75}',
-    );
+    _size = existing == null
+        ? BucketGoalSize.medium
+        : BucketGoalSize.nearest(existing.coinReward);
     _icon = existing?.icon ?? _icons.first;
     _color = existing?.color ?? _colors.first;
   }
@@ -370,23 +470,19 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
-    _xpController.dispose();
-    _coinController.dispose();
     super.dispose();
   }
 
   void _save() {
     final title = _titleController.text.trim();
-    if (title.isEmpty) return;
+    if (title.isEmpty) {
+      setState(() => _titleError = 'Give your goal a title.');
+      return;
+    }
     final description = _descriptionController.text.trim();
     final existing = widget.existing;
-    // Falls back to the item's own existing reward (not the new-item default)
-    // on an unparsable/cleared field, so editing another field can't silently
-    // reset an established reward back to 150/75.
-    final xpReward =
-        int.tryParse(_xpController.text.trim()) ?? existing?.xpReward ?? 150;
-    final coinReward =
-        int.tryParse(_coinController.text.trim()) ?? existing?.coinReward ?? 75;
+    final xpReward = _size.xp;
+    final coinReward = _size.coins;
 
     final item = existing == null
         ? BucketListItem(
@@ -419,8 +515,8 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
       ),
       title: Text(
         widget.existing == null
-            ? 'New Bucket List Goal'
-            : 'Edit Bucket List Goal',
+            ? 'New bucket list goal'
+            : 'Edit bucket list goal',
       ),
       content: SingleChildScrollView(
         child: Column(
@@ -431,9 +527,13 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
               controller: _titleController,
               autofocus: true,
               textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Title (e.g. Visit Japan)',
+                errorText: _titleError,
               ),
+              onChanged: (_) {
+                if (_titleError != null) setState(() => _titleError = null);
+              },
             ),
             const SizedBox(height: AppSpacing.stackSm),
             TextField(
@@ -442,24 +542,27 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
               decoration: const InputDecoration(labelText: 'Description'),
             ),
             const SizedBox(height: AppSpacing.stackSm),
-            Row(
+            Text('How big is this goal?', style: AppTextStyles.labelLg),
+            const SizedBox(height: AppSpacing.unit),
+            Wrap(
+              spacing: AppSpacing.unit,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _xpController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'XP reward'),
+                for (final size in BucketGoalSize.values)
+                  ChoiceChip(
+                    label: Text(size.label),
+                    selected: _size == size,
+                    showCheckmark: false,
+                    selectedColor: AppColors.mossLight,
+                    onSelected: (_) => setState(() => _size = size),
                   ),
-                ),
-                const SizedBox(width: AppSpacing.stackSm),
-                Expanded(
-                  child: TextField(
-                    controller: _coinController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Coin reward'),
-                  ),
-                ),
               ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${_size.xp} XP · ${_size.coins} coins. Only the first '
+              '${BucketListItem.paidGoalsPerWeek} goals you achieve each week '
+              'pay a reward.',
+              style: AppTextStyles.labelSm.copyWith(color: AppColors.inkMuted),
             ),
             const SizedBox(height: AppSpacing.stackSm),
             Wrap(
@@ -469,6 +572,10 @@ class _BucketItemDialogState extends State<_BucketItemDialog> {
                   ChoiceChip(
                     label: Icon(icon, size: 18),
                     selected: _icon == icon,
+                    // Selection reads from the fill alone (the goal's
+                    // chosen color), not a checkmark crowding the icon.
+                    showCheckmark: false,
+                    selectedColor: _color,
                     onSelected: (_) => setState(() => _icon = icon),
                   ),
               ],

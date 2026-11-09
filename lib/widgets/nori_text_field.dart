@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 
 /// Labeled, pill-bordered text field — the shape [SignUpScreen] originally
@@ -15,11 +16,13 @@ class NoriTextField extends StatelessWidget {
     this.keyboardType,
     this.textInputAction,
     this.autofillHints,
+    this.inputFormatters,
     this.onSubmitted,
     this.onChanged,
     this.suffixIcon,
     this.helperText,
     this.helperColor,
+    this.readOnly = false,
   });
 
   final TextEditingController controller;
@@ -30,6 +33,7 @@ class NoriTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
   final Iterable<String>? autofillHints;
+  final List<TextInputFormatter>? inputFormatters;
   final ValueChanged<String>? onSubmitted;
 
   /// Fires on every keystroke — used for live validation (e.g. the sign-up
@@ -46,6 +50,10 @@ class NoriTextField extends StatelessWidget {
   /// informational — doesn't block submission on its own.
   final String? helperText;
   final Color? helperColor;
+
+  /// Shows the value without letting it be edited (e.g. a Google account's
+  /// email, which belongs to Google).
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -66,12 +74,14 @@ class NoriTextField extends StatelessWidget {
           const SizedBox(height: AppSpacing.unit),
           TextField(
             controller: controller,
+            readOnly: readOnly,
             obscureText: obscureText,
             enableSuggestions: !obscureText,
             autocorrect: !obscureText,
             keyboardType: keyboardType,
             textInputAction: textInputAction,
             autofillHints: autofillHints,
+            inputFormatters: inputFormatters,
             onSubmitted: onSubmitted,
             onChanged: onChanged,
             style: AppTextStyles.bodyMd,
@@ -83,7 +93,7 @@ class NoriTextField extends StatelessWidget {
               prefixIcon: Icon(icon, color: AppColors.ink),
               suffixIcon: suffixIcon,
               filled: true,
-              fillColor: AppColors.linenAlt,
+              fillColor: readOnly ? AppColors.linen : AppColors.linenAlt,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.gutter,
                 vertical: AppSpacing.stackSm,

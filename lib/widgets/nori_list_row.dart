@@ -13,6 +13,7 @@ class NoriListRow extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.trailing,
+    this.destructive = false,
   });
 
   final IconData icon;
@@ -20,10 +21,15 @@ class NoriListRow extends StatelessWidget {
   final VoidCallback onTap;
   final Widget? trailing;
 
+  /// Red-tinted row for actions that destroy data (Delete Account), so they
+  /// don't look like every other settings row.
+  final bool destructive;
+
   @override
   Widget build(BuildContext context) {
+    final fg = destructive ? AppColors.onErrorContainer : AppColors.inkMuted;
     return Material(
-      color: AppColors.white,
+      color: destructive ? AppColors.errorContainer : AppColors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.sm),
         side: const BorderSide(color: AppColors.ink, width: AppBorder.thin),
@@ -35,14 +41,21 @@ class NoriListRow extends StatelessWidget {
           padding: const EdgeInsets.all(AppSpacing.gutter),
           child: Row(
             children: [
-              Icon(icon, color: AppColors.inkMuted),
+              Icon(icon, color: fg),
               const SizedBox(width: AppSpacing.stackSm),
-              Expanded(child: Text(label, style: AppTextStyles.labelLg)),
+              Expanded(
+                child: Text(
+                  label,
+                  style: destructive
+                      ? AppTextStyles.labelLg.copyWith(color: fg)
+                      : AppTextStyles.labelLg,
+                ),
+              ),
               if (trailing != null) ...[
                 trailing!,
                 const SizedBox(width: AppSpacing.unit),
               ],
-              const Icon(Icons.chevron_right, color: AppColors.inkMuted),
+              Icon(Icons.chevron_right, color: fg),
             ],
           ),
         ),

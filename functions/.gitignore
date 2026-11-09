@@ -4,3 +4,5 @@ lib/
 .env.*
 !.env.example
 *.log
+# Docker homework file, kept local only (PR #1). Remove this line to commit a real .env.example.
+.env.example

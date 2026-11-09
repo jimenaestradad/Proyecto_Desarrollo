@@ -1,6 +1,10 @@
 # Local-only notes, never committed (credentials, personal scratch notes, etc.)
 *.local.md
 
+# Local course reference PDFs
+/docs/course/Programa_Desarrollo_de_Productos_de_Software1.pdf
+/docs/course/RubricaProyectoFinal.pdf
+
 # Miscellaneous
 *.class
 *.log
@@ -50,3 +54,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Playwright MCP session output (screenshots, page dumps): local scratch, never commit
+.playwright-mcp/
+
+# Course reference material (copyrighted textbook), local only
+docs/course/IngenieriadeSoftware1.pdf
+
+# Firebase CLI hosting deploy cache
+.firebase/

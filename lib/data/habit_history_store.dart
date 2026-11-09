@@ -6,6 +6,13 @@ import '../models/habit_day_state.dart';
 /// Strips the time component so a [DateTime] can address a calendar day.
 DateTime dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
 
+/// The calendar day [days] after [date] (negative goes back), at midnight.
+/// Use this instead of `add(Duration(days: n))` when stepping through days:
+/// across a DST change a day is 23 or 25 hours long, so adding 24h either
+/// skips a date or lands on the same one twice.
+DateTime addDays(DateTime date, int days) =>
+    DateTime(date.year, date.month, date.day + days);
+
 /// Stable `yyyy-mm-dd` key for a date.
 String dayKey(DateTime date) {
   final d = dateOnly(date);
@@ -14,17 +21,8 @@ String dayKey(DateTime date) {
   return '${d.year}-$month-$day';
 }
 
-/// Every habit's logged state, keyed by date then habit id.
-///
-/// Single source of truth for history: [MockHabitRepository] reads and writes
-/// it, and [MockCalendarRepository] derives its day colours and month stats
-/// from the same data — so a day the calendar paints "Perfect" and that day's
-/// habit list can't contradict each other.
-///
-/// Backed by an in-memory map, which is the whole reason it is separate from
-/// the repositories: a real backend replaces this class with queries against
-/// a `habit_logs` table keyed by (habit id, date), and the repository code
-/// above it barely changes.
+/// In-memory habit state keyed by date and habit id.
+/// Shared by mock habit and calendar repositories so history and day colors agree.
 class HabitHistoryStore {
   HabitHistoryStore({this.seedDayCount = 90});
 
@@ -34,8 +32,7 @@ class HabitHistoryStore {
 
   final Map<String, Map<String, HabitDayState>> _byDate = {};
 
-  DateTime get earliestDate =>
-      dateOnly(DateTime.now()).subtract(Duration(days: seedDayCount));
+  DateTime get earliestDate => addDays(dateOnly(DateTime.now()), -seedDayCount);
 
   HabitDayState stateFor(String habitId, DateTime date) =>
       _byDate[dayKey(date)]?[habitId] ?? HabitDayState.empty;
@@ -44,18 +41,12 @@ class HabitHistoryStore {
     _byDate.putIfAbsent(dayKey(date), () => {})[habitId] = state;
   }
 
-  /// Fills in plausible past days so the calendar and history views have
-  /// something to show before a backend exists. Deliberately deterministic
-  /// (see [_stableHash]) so the same demo data comes back on every launch
-  /// instead of reshuffling under you mid-demo.
-  ///
-  /// Only past days are generated — today's state comes from the habit
-  /// definitions themselves, so the app opens on exactly the state it always
-  /// did.
+  /// Seeds deterministic past-day demo history using [_stableHash].
+  /// Today's state remains defined by the habits themselves.
   void seedHistory(List<Habit> habits) {
     final today = dateOnly(DateTime.now());
     for (var back = seedDayCount; back >= 1; back--) {
-      final date = today.subtract(Duration(days: back));
+      final date = addDays(today, -back);
       for (final habit in habits) {
         if (!habit.isScheduledOn(date)) continue;
         final state = _seedState(habit, date);

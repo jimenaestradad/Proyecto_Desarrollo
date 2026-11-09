@@ -1,6 +1,6 @@
 {
   "name": "functions",
-  "description": "Nori — Cloud Functions (Firebase Functions v2 for callables, v1 for the onUserCreate Auth trigger — see src/index.ts). See ../docs/BACKEND.md for the full function list and the Jimena/Valeria split.",
+  "description": "Nori — Cloud Functions (Firebase Functions v2 for callables, v1 for the onUserCreate Auth trigger — see src/onUserCreate.ts). See ../docs/BACKEND.md for the full function list and the Jimena/Valeria split.",
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
@@ -12,7 +12,7 @@
     "test": "npm run build && node --test lib/*.test.js"
   },
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "lib/index.js",
   "dependencies": {

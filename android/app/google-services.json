@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "868764908007-mb6cttl3feejntfh1oqt599o3osob0v0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.nori",
+            "certificate_hash": "9982ff9d970e0cc60ae945e507f9c69cc0434a30"
+          }
+        },
+        {
           "client_id": "868764908007-mn3gkeqg8l98gl109nc3edu35bgrs2l7.apps.googleusercontent.com",
           "client_type": 3
         }

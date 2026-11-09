@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nori/screens/premium/nori_plans.dart';
 import 'package:nori/theme/app_theme.dart';
 import 'package:nori/widgets/future_feature_banner.dart';
 import 'package:nori/widgets/nori_card.dart';
@@ -8,7 +9,9 @@ import 'package:nori/widgets/tactile_button.dart';
 enum _PaymentMethod { card, paypal, express }
 
 class PaymentMethodScreen extends StatefulWidget {
-  const PaymentMethodScreen({super.key});
+  const PaymentMethodScreen({super.key, required this.plan});
+
+  final PlanChoice plan;
 
   @override
   State<PaymentMethodScreen> createState() => _PaymentMethodScreenState();
@@ -28,14 +31,12 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
     return Scaffold(
       backgroundColor: AppColors.linen,
       appBar: AppBar(
-        centerTitle: true,
         leading: IconButton(
           tooltip: 'Back',
           onPressed: () => Navigator.pop(context),
           icon: const Icon(Icons.arrow_back),
         ),
-        title: Text('Payment Method', style: AppTextStyles.headlineLgMobile),
-        actions: const [SizedBox(width: 48)],
+        title: Text('Payment method', style: AppTextStyles.headlineLgMobile),
       ),
       body: NoriScrollScaffold(
         maxWidth: 680,
@@ -45,13 +46,13 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                 "Payments aren't implemented — nothing here is sent or stored.",
           ),
           const SizedBox(height: AppSpacing.stackMd),
-          const _PlanSummaryCard(),
+          _PlanSummaryCard(plan: widget.plan),
           const SizedBox(height: AppSpacing.stackMd),
           _PaymentOptionCard(
             selected: _selectedMethod == _PaymentMethod.card,
             onTap: () => setState(() => _selectedMethod = _PaymentMethod.card),
             icon: Icons.credit_card,
-            title: 'Credit / Debit Card',
+            title: 'Credit / debit card',
             child: _selectedMethod == _PaymentMethod.card
                 ? const _CardPreviewFields()
                 : null,
@@ -81,7 +82,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
             onTap: () =>
                 setState(() => _selectedMethod = _PaymentMethod.express),
             icon: Icons.phone_iphone,
-            title: 'Express Checkout',
+            title: 'Express checkout',
             child: _selectedMethod == _PaymentMethod.express
                 ? Row(
                     children: [
@@ -111,7 +112,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
               const Icon(Icons.lock, size: 20, color: AppColors.terracottaDark),
               const SizedBox(width: AppSpacing.unit),
               Text(
-                'Secure & Encrypted',
+                'Secure & encrypted',
                 style: AppTextStyles.labelSm.copyWith(
                   color: AppColors.terracottaDark,
                   letterSpacing: 0.7,
@@ -121,13 +122,18 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: _CheckoutBar(onConfirm: _showUnavailable),
+      bottomNavigationBar: _CheckoutBar(
+        plan: widget.plan,
+        onConfirm: _showUnavailable,
+      ),
     );
   }
 }
 
 class _PlanSummaryCard extends StatelessWidget {
-  const _PlanSummaryCard();
+  const _PlanSummaryCard({required this.plan});
+
+  final PlanChoice plan;
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +153,7 @@ class _PlanSummaryCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text('Nori Plus Yearly', style: AppTextStyles.headlineMd),
+                Text(plan.title, style: AppTextStyles.headlineMd),
               ],
             ),
           ),
@@ -156,13 +162,13 @@ class _PlanSummaryCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                r'$39.99',
+                plan.price,
                 style: AppTextStyles.headlineLgMobile.copyWith(
                   color: AppColors.terracottaDark,
                 ),
               ),
               Text(
-                '/year',
+                plan.unit,
                 style: AppTextStyles.bodyMd.copyWith(color: AppColors.inkMuted),
               ),
             ],
@@ -280,7 +286,7 @@ class _CardPreviewFields extends StatelessWidget {
     return const Column(
       children: [
         _PreviewTextField(
-          label: 'Card Number',
+          label: 'Card number',
           hint: '0000 0000 0000 0000',
           suffixIcon: Icons.credit_score,
         ),
@@ -288,7 +294,7 @@ class _CardPreviewFields extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: _PreviewTextField(label: 'Expiry Date', hint: 'MM/YY'),
+              child: _PreviewTextField(label: 'Expiry date', hint: 'MM/YY'),
             ),
             SizedBox(width: AppSpacing.gutter),
             Expanded(
@@ -297,7 +303,7 @@ class _CardPreviewFields extends StatelessWidget {
           ],
         ),
         SizedBox(height: AppSpacing.gutter),
-        _PreviewTextField(label: 'Cardholder Name', hint: 'Name on card'),
+        _PreviewTextField(label: 'Cardholder name', hint: 'Name on card'),
       ],
     );
   }
@@ -359,8 +365,9 @@ class _PreviewTextField extends StatelessWidget {
 }
 
 class _CheckoutBar extends StatelessWidget {
-  const _CheckoutBar({required this.onConfirm});
+  const _CheckoutBar({required this.plan, required this.onConfirm});
 
+  final PlanChoice plan;
   final VoidCallback onConfirm;
 
   @override
@@ -376,11 +383,8 @@ class _CheckoutBar extends StatelessWidget {
         top: false,
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.containerPaddingMobile),
-          // Align (not Center) with heightFactor: 1 so this shrink-wraps to
-          // its content's height — Scaffold lays bottomNavigationBar out
-          // with a loose (not tight) height constraint, and a plain Center
-          // expands to fill all of it, which made this bar balloon to
-          // consume nearly the whole screen and starve `body` of space.
+          // Align with heightFactor: 1 shrink-wraps the bottom bar.
+          // A plain Center expands under Scaffold's loose height constraint, starving the body.
           child: Align(
             heightFactor: 1,
             child: ConstrainedBox(
@@ -392,12 +396,12 @@ class _CheckoutBar extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Total Due Today',
+                        'Total due today',
                         style: AppTextStyles.bodyMd.copyWith(
                           color: AppColors.inkMuted,
                         ),
                       ),
-                      Text(r'$39.99', style: AppTextStyles.headlineLgMobile),
+                      Text(plan.price, style: AppTextStyles.headlineLgMobile),
                     ],
                   );
 
@@ -409,7 +413,7 @@ class _CheckoutBar extends StatelessWidget {
                         total,
                         const SizedBox(height: AppSpacing.stackSm),
                         TactileButton(
-                          label: 'Confirm & Subscribe',
+                          label: 'Confirm & subscribe',
                           icon: Icons.check_circle,
                           onPressed: onConfirm,
                         ),
@@ -423,7 +427,7 @@ class _CheckoutBar extends StatelessWidget {
                       const SizedBox(width: AppSpacing.stackMd),
                       Expanded(
                         child: TactileButton(
-                          label: 'Confirm & Subscribe',
+                          label: 'Confirm & subscribe',
                           icon: Icons.check_circle,
                           onPressed: onConfirm,
                         ),
