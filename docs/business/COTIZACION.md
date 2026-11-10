@@ -54,9 +54,6 @@ Los gastos mensuales de una persona del equipo suman **≈ Q1,200 a Q1,500** (co
 | K. QA y cierre | Pruebas automatizadas (8), QA manual (5), corrección de bugs (8), documentación y Demo Day (3) | 24 | 48 |
 | **Total** | **65 historias** | **306** | **612** |
 
-**Por qué 2 horas por punto y no 3.9.** El 3.9 del Release 0 fue la estimación a ciegas que la clase dice que se corrige con datos reales. Ahora hay un dato, impreciso: entre **300 y 600 h** en total (no medidas; el techo son unas 20 h por semana por persona durante las 15 semanas de historial de git), o **1 a 2 h por punto**. Usamos 2.0, el extremo alto, porque un cliente no tendría el contexto que el equipo ya tenía ni la ayuda de IA. **No cobramos US$15 × 48 h**: un precio de proyecto cubre también diseño, pruebas, documentación y riesgo.
-
-**Comprobaciones de orden de magnitud:** el repositorio tiene unas 38,500 líneas (Dart, TypeScript de Cloud Functions y pruebas), o **63 líneas por hora** con 612 h, un ritmo creíble solo con IA (con las 1,196 h del Release 0 serían 32). Y 734 h con colchón, para dos personas a 100 h al mes, son unos 3.7 meses; el historial real (28 de julio a 8 de noviembre) son unos 3.5.
 
 ## 3. PERT de las tres historias más riesgosas
 
@@ -83,7 +80,7 @@ Las tres caen cerca de las 16 h que da 2 h por punto para 8 puntos. La de acceso
 
 ## 5. Comparación con el mercado
 
-Para ver si US$11,000 es razonable buscamos precios de apps parecidas. **Casi todas las cifras vienen de agencias que venden desarrollo y tienden a ser altas**; no son cotizaciones para Nori.
+Para ver si US$11,000 es razonable buscamos precios de apps parecidas. **Casi todas las cifras vienen de agencias que venden desarrollo y tienden a ser altas**.
 
 | Referencia | Rango publicado |
 |---|---|
@@ -118,7 +115,7 @@ Los puntos son estimaciones retroactivas, a 2 h por punto.
 | Backend social real | Amigos, feed con fotos, leaderboard, competencias, circles, rachas con amigos, reportes | 52 | US$1,872 (104 h) |
 | **3. App Store (iOS)** | Configuración de iOS y firma (3), Sign in with Apple (3), compras con Apple (5), AdMob y push en iOS (5), pruebas en iPhone y TestFlight (5), ficha y revisión de la App Store (5) | 26 | US$936 (52 h) |
 
-Queremos publicar también en iOS más adelante. Es más caro que Android (cuenta anual, comisión, revisión más estricta y trabajo extra). Apple suele exigir Sign in with Apple si la app ofrece inicio de sesión con Google; hay que verificarlo en developer.apple.com. Hace falta una Mac con Xcode (el equipo ya tiene) y, idealmente, un iPhone para probar.
+Queremos publicar también en iOS más adelante. Es más caro que Android (cuenta anual, comisión, revisión más estricta y trabajo extra). Hace falta una Mac con Xcode (el equipo ya tiene) y un iPhone para probar.
 
 ## 8. Costos mensuales de operación (nube y otros)
 
@@ -137,7 +134,7 @@ Los paga quien opera la app, aparte de la cotización. Solo el gasto en Firebase
 
 Cloud Functions y Cloud Scheduler quedan dentro del nivel gratuito. Las fuentes difieren en el precio de las lecturas (US$0.03 contra US$0.06), así que hay que confirmarlo en la [página de Firebase](https://firebase.google.com/pricing) antes de lanzar.
 
-**`petCareCheck`** (la función que revisa a todas las mascotas y crea el aviso "tu mascota te necesita") es la única partida que crece sola. **La pasamos de cada hora a cada 6 horas** (24 → 4 lecturas por cuenta al día): el aviso es una entrada dentro de la app y una barra tarda unas 70 horas en bajar de 100 a 30, así que revisar cada hora no aportaba nada. El cambio está en el código; **la función en producción sigue corriendo cada hora hasta que se despliegue**. Sin él, la tabla de arriba costaría ≈ US$0.61, US$8, US$18 y US$98. Aun así, lee todas las mascotas creadas, también las abandonadas; la corrección de fondo (consultar solo las atendidas recientemente, con un índice sobre `lastDecayAt`) queda para después de la presentación.
+**`petCareCheck`** (la función que revisa a todas las mascotas y crea el aviso "tu mascota te necesita") es la única partida que crece sola. **La pasamos de cada hora a cada 6 horas** (24 → 4 lecturas por cuenta al día). Aun así, lee todas las mascotas creadas, también las abandonadas; la corrección de fondo (consultar solo las atendidas recientemente, con un índice sobre `lastDecayAt`) queda para después de la presentación.
 
 **Control de gasto** (revisado en vivo el 8 de noviembre):
 
@@ -181,6 +178,7 @@ La App Store sale más cara que Google Play: la cuenta cuesta cuatro veces más 
 **Gratis**
 - Los 5 tipos de hábito, rachas, calendario y XP adaptativo.
 - Mascota, evoluciones, cuidado y tienda con monedas del juego; modo vacaciones; logros; estadísticas básicas.
+- Límite de 1 mascota.
 - **Hasta 5 hábitos activos y 3 metas de bucket list.**
 - **Todo lo social:** amigos, feed, leaderboard de amigos, circles, competencias, rachas con amigos y visitar mascotas.
 - Anuncios: banner pequeño en pantallas secundarias y recompensados opcionales (máximo 3 al día).
@@ -188,8 +186,9 @@ La App Store sale más cara que Google Play: la cuenta cuesta cuatro veces más 
 **Nori Plus** (US$3.99 al mes o US$29.99 al año, 37% menos que pagar los doce meses). Todo lo gratuito, y además:
 - **Sin anuncios.**
 - **Hábitos y metas de bucket list ilimitados.**
+- Mascotas ilimitadas.
 - Bono diario de monedas (equivale a lo que darían los anuncios recompensados).
-- Un accesorio exclusivo nuevo cada mes.
+- Un accesorio exclusivo nuevo cada trimestre.
 - Estadísticas avanzadas (tendencias por hábito y por categoría) y temas de color.
 - Acceso anticipado a mascotas nuevas (huevos), cuando existan.
 
@@ -197,7 +196,7 @@ La App Store sale más cara que Google Play: la cuenta cuesta cuatro veces más 
 
 **Cómo decidimos qué es gratis.**
 - Nada que proteja al usuario se cobra (modo vacaciones, rachas, cuidado básico): volver a la app nunca debe sentirse como un castigo.
-- El límite es de **5 hábitos, no 3**: la economía está balanceada para unos 5, con los que la mascota llega a la primera evolución en unas dos semanas. Con 3, el usuario gratuito avanzaría más lento y sentiría el juego roto, no limitado.
+- El límite es de **5 hábitos**: la economía está balanceada para unos 5, con los que la mascota llega a la primera evolución en unas dos semanas. 
 - Lo social es gratis porque su valor depende de que haya gente. Plus y Duo venden comodidad y estética, no ventaja: no hay leaderboards globales, así que pagar no le quita nada a nadie.
 
 Hoy el tab Social funciona con datos simulados; esto describe cómo se cobraría cuando exista el backend social.
@@ -220,7 +219,7 @@ Nuestro primer mercado es Guatemala, en Android, con estudiantes y jóvenes prof
 | **Banner pequeño** | Tienda, calendario y logros | Nunca en Home, al registrar un hábito ni en las celebraciones de level-up o evolución |
 | **Intersticial** | — | No los usamos: interrumpen justo cuando el usuario termina un hábito |
 
-Los anuncios no son la fuente principal de ingresos: generan algo con quien no paga y le dan una razón para pasarse a Plus. Además, la categoría Premium de la tienda puede vender accesorios exclusivos sueltos (US$0.99 a US$1.99). **No vendemos monedas**: se ganan con hábitos, y comprarlas rompería el loop principal.
+Además, la categoría Premium de la tienda puede vender accesorios exclusivos sueltos (US$0.99 a US$1.99). **No vendemos monedas**: se ganan con hábitos, y comprarlas rompería el loop principal.
 
 ## Proyección de ingresos
 
@@ -241,7 +240,7 @@ Las suscripciones son entre 57% y 73% de los ingresos, así que la palanca más 
 
 ## Pendiente de decidir
 
-- Las pantallas Nori Plus y de pago ya muestran los planes, pero son una vista previa: los límites del plan gratuito, los pagos y los anuncios no están implementados (Fase 2).
+- Las pantallas Nori Plus y de pago ya muestran los planes, pero son una vista previa: los límites del plan gratuito, los pagos y los anuncios no están implementados.
 - Cantidades exactas del bono diario de Plus y de la recompensa por anuncio (próximo pase de balance de la economía).
 - Duo y los beneficios sociales dependen del backend social, que no es parte del MVP. Cuándo lanzar en iOS y si conviene el Small Business Program de Apple.
 
